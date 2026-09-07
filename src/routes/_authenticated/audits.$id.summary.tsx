@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { AlertCircle, ArrowRight, FileSpreadsheet, Loader2, PenLine, Trash2 } from "lucide-react";
+import { FileSpreadsheet, Loader2, PenLine, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { loadReportModel } from "@/lib/report-data";
 import { logAuditEdit } from "@/lib/generate-reports";
-import { countUnanswered, type ScoringSection } from "@/lib/scoring";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
@@ -38,48 +37,6 @@ function SummaryPage() {
     queryKey: ["audit-summary", id],
     queryFn: () => loadReportModel(id),
   });
-
-  const { data: unanswered } = useQuery({
-    queryKey: ["audit-unanswered", id, model?.sections.length],
-    enabled: !!model,
-    queryFn: () => {
-      const scoringSections: ScoringSection[] = (model?.sections ?? []).map((section) => ({
-        id: section.id,
-        nameAr: section.nameAr,
-        isDelivery: section.isDelivery,
-        isNa: section.excluded,
-        questions: section.groups.flatMap((group) =>
-          group.questions.map((question) => ({ id: question.id, maxScore: question.maxScore })),
-        ),
-        deductions: [],
-      }));
-      const answers: Record<string, { score: number | null; isNa: boolean }> = {};
-      (model?.sections ?? []).forEach((section) =>
-        section.groups.forEach((group) =>
-          group.questions.forEach((question) => {
-            answers[question.id] = { score: question.score, isNa: question.isNa };
-          }),
-        ),
-      );
-      return countUnanswered(scoringSections, answers);
-    },
-  });
-
-  const missingErrors = (model?.sections ?? [])
-    .map((sec, secIdx) => ({ sec, secIdx }))
-    .filter(({ sec }) => !sec.excluded)
-    .flatMap(({ sec, secIdx }) =>
-      sec.groups.flatMap((grp) =>
-        grp.questions
-          .filter((q) => !q.isNa && q.score === null)
-          .map((q) => ({
-            sectionIndex: secIdx,
-            sectionName: sec.nameAr,
-            questionId: q.id,
-            text: q.textAr,
-          }))
-      )
-    );
 
   if (isLoading || !model) {
     return (
@@ -112,33 +69,61 @@ function SummaryPage() {
   };
 
   const submitAudit = async () => {
-    if ((unanswered ?? 0) > 0) {
-      toast.error(`يوجد ${unanswered} بند لم يتم تقييمه بعد`);
-      return;
-    }
     setSubmitting(true);
-    const { error } = await supabase
-      .from("audits")
-      .update({
-        status: "submitted",
-        submitted_at: new Date().toISOString(),
-        score: result.finalPercentage,
-        overall_score: result.overallPercentage,
-      } as never)
-      .eq("id", id);
-    setSubmitting(false);
 
-    if (error) {
+    try {
+      // 1. جلب الأسئلة المسجلة في جدول الإجابات
+      const [allQuestionsRes, existingAnswersRes] = await Promise.all([
+        supabase.from("questions").select("id, max_score, section_id").eq("active", true),
+        supabase.from("audit_answers").select("question_id").eq("audit_id", id),
+      ]);
+
+      const existingQuestionIds = new Set((existingAnswersRes.data ?? []).map((a) => a.question_id));
+      const excludedSectionIds = new Set(
+        model.sections.filter((sec) => sec.excluded).map((sec) => sec.id)
+      );
+
+      // 2. تجميع كل الأسئلة التي لم تُلمس لحفظها بقيمتها الافتراضية (4)
+      const defaultAnswersToInsert = (allQuestionsRes.data ?? [])
+        .filter((q) => !existingQuestionIds.has(q.id) && !excludedSectionIds.has(q.section_id))
+        .map((q) => ({
+          audit_id: id,
+          question_id: q.id,
+          score: q.max_score ?? 4,
+          is_na: false,
+          comment: null,
+        }));
+
+      if (defaultAnswersToInsert.length > 0) {
+        await supabase
+          .from("audit_answers")
+          .upsert(defaultAnswersToInsert, { onConflict: "audit_id,question_id" });
+      }
+
+      // 3. اعتماد الفحص وتغيير حالته إلى submitted
+      const { error } = await supabase
+        .from("audits")
+        .update({
+          status: "submitted",
+          submitted_at: new Date().toISOString(),
+          score: result.finalPercentage,
+          overall_score: result.overallPercentage,
+        } as never)
+        .eq("id", id);
+
+      if (error) throw error;
+
+      await logAuditEdit(id, "submitted", `النتيجة النهائية ${result.finalPercentage}%`);
+      toast.success("تم إنهاء واعتماد الفحص بنجاح!");
+      queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
+
+      // الانتقال المباشر لتقرير الفحص
+      navigate({ to: "/audits/$id/report", params: { id } });
+    } catch {
       toast.error("تعذر إنهاء واعتماد الفحص");
-      return;
+    } finally {
+      setSubmitting(false);
     }
-    await logAuditEdit(id, "submitted", `النتيجة النهائية ${result.finalPercentage}%`);
-    toast.success("تم إنهاء واعتماد الفحص بنجاح!");
-    queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
-
-
-    // 👇 أضف هذا السطر هنا لنقلك فوراً للتقرير النهائي
-    navigate({ to: "/audits/$id/report", params: { id } });
   };
 
   return (
@@ -176,34 +161,6 @@ function SummaryPage() {
           <div className="text-4xl font-extrabold">{result.finalPercentage}%</div>
         </div>
       </div>
-
-      {missingErrors.length > 0 && isDraft && (
-        <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 p-4" dir="rtl">
-          <div className="flex items-center gap-2 font-bold text-destructive mb-2">
-            <AlertCircle className="size-5" />
-            <span>يوجد {missingErrors.length} بند يتطلب الإجابة - اضغط على الخطأ للانتقال لمكانه مباشرة:</span>
-          </div>
-          <div className="space-y-1.5">
-            {missingErrors.map((err, i) => (
-              <Link
-                key={i}
-                to="/audits/$id"
-                params={{ id }}
-                search={{ section: err.sectionIndex, questionId: err.questionId }}
-                className="flex items-center justify-between rounded-md bg-background/80 p-2.5 text-xs text-foreground shadow-sm hover:bg-background transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{err.sectionName}</Badge>
-                  <span>{err.text}</span>
-                </div>
-                <span className="flex items-center text-primary font-semibold">
-                  تصحيح في ({err.sectionName}) <ArrowRight className="size-3 mr-1" />
-                </span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="surface-card mt-4 overflow-x-auto p-0" dir="rtl">
         <table className="w-full text-sm text-right">
@@ -302,7 +259,6 @@ function SummaryPage() {
         </div>
       </div>
 
-      {/* أزرار الإجراءات السفلية: تم إزالة PDF/Word بالكامل */}
       <div className="mt-6 flex flex-wrap gap-2" dir="rtl">
         {isDraft && (
           <Button disabled={submitting} onClick={submitAudit} className="gap-2 font-bold">
