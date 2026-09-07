@@ -179,21 +179,40 @@ function AuditRunner() {
     }));
   }, [data, sectionNa]);
 
+  // دمج الإجابات مع القيمة الافتراضية الكاملة (4) لكي يبدأ القسم بنسبة 100%
+  const effectiveAnswers = useMemo(() => {
+    const map: Record<string, AnswerState> = {};
+    if (!data?.questions) return answers;
+
+    data.questions.forEach((q) => {
+      if (answers[q.id]) {
+        map[q.id] = answers[q.id];
+      } else {
+        map[q.id] = {
+          score: q.max_score ?? 4,
+          isNa: false,
+          comment: "",
+        };
+      }
+    });
+
+    return map;
+  }, [answers, data]);
+
   const result = useMemo(
     () =>
       computeAudit(
         scoringSections,
-        answers,
+        effectiveAnswers,
         (data?.generalDeductions ?? []).map((deduction) => ({
           reasonText: deduction.reason_text,
           percentage: Number(deduction.percentage),
         })),
       ),
-    [scoringSections, answers, data],
+    [scoringSections, effectiveAnswers, data],
   );
 
-  // حساب الدرجة اللحظية المباشرة (Live Score)
-  // حساب الدرجة اللحظية المباشرة (Live Score) مع جعل الافتراضي 4 للبنود غير الملموسة
+  // حساب الدرجة اللحظية المباشرة (Live Score) مع القيمة الافتراضية
   const liveStats = useMemo(() => {
     let earned = 0;
     let max = 0;
@@ -201,20 +220,16 @@ function AuditRunner() {
     if (!data?.questions) return { earned: 0, max: 0, pct: "0.0" };
 
     data.questions.forEach((q) => {
-      // لو القسم نفسه معمول N/A نتجاهل البند بالكامل
       if (sectionNa[q.section_id]) return;
 
       const a = answers[q.id];
       const maxScore = q.max_score ?? 4;
 
       if (a) {
-        // لو متسجل و N/A نتجاهله
         if (a.isNa) return;
-        // لو متسجل برقم معين
         earned += a.score !== null ? a.score : maxScore;
         max += maxScore;
       } else {
-        // الديفولت للبند الذي لم يُلمس بعد: الدرجة الكاملة
         earned += maxScore;
         max += maxScore;
       }
@@ -368,7 +383,8 @@ function AuditRunner() {
       {!isNaSection && (
         <div className="space-y-4 pb-20">
           {sectionQuestions.map((question) => {
-            const answer = answers[question.id] ?? { score: question.max_score ?? 4, isNa: false, comment: "" }; const header = data.headers.find((entry) => entry.id === question.header_id);
+            const answer = answers[question.id] ?? { score: question.max_score ?? 4, isNa: false, comment: "" };
+            const header = data.headers.find((entry) => entry.id === question.header_id);
             const needsPhoto =
               question.requires_photo_if_below_max &&
               !answer.isNa &&
@@ -376,10 +392,19 @@ function AuditRunner() {
               answer.score < question.max_score;
             const questionPhotos = photosByQuestion[question.id] ?? [];
 
-            // تحديد إمكانية كتابة ملاحظات:
-            // في GHP: تُمنع الملاحظات تماماً إلا إذا كان البند خاص بالعادات الخاطئة
             const isHabitItem = question.text_ar.includes("عادات خاطئة") || question.text_ar.includes("العادات الخاطئة") || question.item_id.includes("HABIT");
             const allowComments = !isGhpAudit || isHabitItem;
+
+            // فحص هل البند تابع لنقاط التحكم الحرجة CCP أو المتطلبات التشغيلية الأولية OPRP
+            const isCcpOrOprp =
+              section.name_ar.includes("CCP") ||
+              section.name_ar.includes("OPRP") ||
+              section.name_ar.includes("نقاط التحكم الحرجة") ||
+              (header?.label_ar && (
+                header.label_ar.includes("CCP") ||
+                header.label_ar.includes("OPRP") ||
+                header.label_ar.includes("نقاط التحكم الحرجة")
+              ));
 
             return (
               <div key={question.id} id={`q-${question.id}`} className="surface-card p-4 transition-all duration-300">
@@ -393,17 +418,23 @@ function AuditRunner() {
 
                 {/* أزرار تقييم الدرجة */}
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
-                  {SCORE_OPTIONS.filter((option) => option.value <= question.max_score).map((option) => (
-                    <Button
-                      key={option.value}
-                      size="sm"
-                      variant={!answer.isNa && answer.score === option.value ? "default" : "outline"}
-                      disabled={readOnly}
-                      onClick={() => updateAnswer(question.id, { score: option.value, isNa: false })}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
+                  {SCORE_OPTIONS.filter((option) => option.value <= question.max_score).map((option) => {
+                    // إذا كان القسم أو الهيدر CCP أو OPRP: يُسمح فقط بـ 4 و 0 وتُعطّل 1 و 2
+                    const isOptionDisabled = readOnly || (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
+
+                    return (
+                      <Button
+                        key={option.value}
+                        size="sm"
+                        variant={!answer.isNa && answer.score === option.value ? "default" : "outline"}
+                        disabled={isOptionDisabled}
+                        onClick={() => updateAnswer(question.id, { score: option.value, isNa: false })}
+                        className={isOptionDisabled && !readOnly ? "opacity-30 cursor-not-allowed" : ""}
+                      >
+                        {option.label}
+                      </Button>
+                    );
+                  })}
                   <Button
                     size="sm"
                     variant={answer.isNa ? "secondary" : "outline"}
@@ -414,7 +445,7 @@ function AuditRunner() {
                   </Button>
                 </div>
 
-                {/* خانة الملاحظات: تظهر فقط لو التدقيق ليس GHP أو كان البند هو العادات الخاطئة */}
+                {/* خانة الملاحظات */}
                 {allowComments && (
                   <Textarea
                     className="mt-3 text-xs"
@@ -524,8 +555,7 @@ function AuditRunner() {
         )}
       </div>
 
-      {/* شريط الدرجة اللحظي العائم المباشر (Floating Live Score Bar) */}
-      {/* شريط الدرجة اللحظي العائم المباشر (Responsive Live Score Bar) */}
+      {/* شريط الدرجة اللحظي العائم المباشر */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border shadow-lg px-3 py-2 sm:px-4 sm:py-2.5">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3" dir="rtl">
 
@@ -547,7 +577,7 @@ function AuditRunner() {
             </Badge>
           </div>
 
-          {/* 2. بيانات القسم الحالي (درجات + نسبة مئوية) ظاهرة دائماً في الموبايل واللابتوب */}
+          {/* 2. بيانات القسم الحالي تبدأ من 100% */}
           {sectionResult && (
             <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs">
               <span className="text-muted-foreground font-semibold">القسم:</span>
