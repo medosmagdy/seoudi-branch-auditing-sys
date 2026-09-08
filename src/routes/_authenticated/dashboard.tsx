@@ -145,7 +145,9 @@ function ExecutiveDashboard() {
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
     const normalizeName = (name: string) => {
-      const clean = name.trim();
+      // إزالة كلمة "قسم" من بداية أي اسم لتجنب تكرار (الأسماك / قسم الأسماك)
+      let clean = name.trim().replace(/^قسم\s+/i, "");
+
       if (/تجارة الكترونية|الكترونية|توصيل/i.test(clean)) {
         return "التوصيل";
       }
@@ -180,12 +182,21 @@ function ExecutiveDashboard() {
       }>;
     }> = {};
 
+
     data.sections.forEach((s) => {
       const cleanName = normalizeName(s.name_ar || "بدون قسم");
       const aType = data.auditTypes.find((t) => t.id === s.audit_type_id);
-      const isGhp = /ghp/i.test(aType?.code || "") || /ghp/i.test(aType?.name_ar || "");
-      const isFsms = /fsms/i.test(aType?.code || "") || /fsms/i.test(aType?.name_ar || "");
-      const program = isGhp ? "GHP" : isFsms ? "FSMS" : "FS";
+
+      const typeCode = (aType?.code || "").toLowerCase();
+      const typeName = (aType?.name_ar || "").toLowerCase();
+
+      const isGhp = typeCode.includes("ghp") || typeName.includes("ghp");
+      const isFsms = typeCode.includes("fsms") || typeName.includes("fsms");
+
+      // لو القسم ينتمي للـ FSMS يتم تجاهله من كروت المؤشرات لأن له سكشن خاص بالفروع
+      if (isFsms) return;
+
+      const program: "FS" | "GHP" = isGhp ? "GHP" : "FS";
 
       const key = `${program}__${cleanName}`;
       if (!sectionDataMap[key]) {
@@ -199,6 +210,7 @@ function ExecutiveDashboard() {
         };
       }
     });
+
 
     let totalNonCompliantItems = 0;
     let totalCritical = 0;
