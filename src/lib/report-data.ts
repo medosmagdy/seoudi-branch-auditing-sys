@@ -111,9 +111,24 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
 
   const urls = await signedPhotoUrls(photoRows.map((photo) => photo.storage_path));
 
-  const answerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
+  // 1. خريطة الإجابات المسجلة
+  const rawAnswerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
   answerRows.forEach((row) => {
-    answerMap[row.question_id] = { score: row.score, isNa: row.is_na, comment: row.comment ?? "" };
+    rawAnswerMap[row.question_id] = { score: row.score, isNa: row.is_na, comment: row.comment ?? "" };
+  });
+
+  // 2. دمج الإجابات مع القيمة الافتراضية (4 أو max_score) إذا لم يتم الإجابة عليها
+  const answerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
+  questionRows.forEach((q) => {
+    if (rawAnswerMap[q.id]) {
+      answerMap[q.id] = rawAnswerMap[q.id];
+    } else {
+      answerMap[q.id] = {
+        score: q.max_score ?? 4,
+        isNa: false,
+        comment: "",
+      };
+    }
   });
 
   const scoringSections: ScoringSection[] = sectionRows.map((section) => ({
@@ -136,30 +151,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     percentage: Number(row.percentage),
   }));
 
-  let result = computeAudit(scoringSections, answerMap, generalRows);
-
-  if (!result || !Number.isFinite(result.finalScore) || (result.finalScore === 0 && answerRows.length > 0)) {
-    let earnedSum = 0;
-    let possibleSum = 0;
-
-    const questionMetaMap = new Map(questionRows.map((q) => [q.id, q.max_score ?? 4]));
-
-    answerRows.forEach((ans) => {
-      if (!ans.is_na && ans.score !== null) {
-        const max = questionMetaMap.get(ans.question_id) ?? 4;
-        earnedSum += Number(ans.score);
-        possibleSum += max;
-      }
-    });
-
-    const fallbackScore = possibleSum > 0 ? Math.round((earnedSum / possibleSum) * 100) : 100;
-    result = {
-      ...result,
-      finalScore: fallbackScore,
-      totalDeductions: result?.totalDeductions ?? 0,
-      sections: result?.sections ?? [],
-    };
-  }
+  const result = computeAudit(scoringSections, answerMap, generalRows);
 
   const ncrs: ReportNCR[] = [];
   const allPhotos: ReportModel["allPhotos"] = [];
@@ -183,10 +175,10 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
           labelAr: header?.label_ar ?? "",
           questions: groupQuestions.map((question) => {
             const answer = answerMap[question.id];
-            const earned = answer?.score !== undefined ? answer.score : null;
+            const max = question.max_score ?? 4;
+            const earned = answer?.score !== undefined && answer?.score !== null ? answer.score : max;
             const isNa = answer?.isNa ?? false;
             const comment = answer?.comment ?? "";
-            const max = question.max_score ?? 4;
 
             const questionPhotos = photoRows
               .filter((photo) => photo.question_id === question.id)
