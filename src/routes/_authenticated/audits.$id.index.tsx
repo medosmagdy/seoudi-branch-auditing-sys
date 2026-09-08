@@ -95,7 +95,6 @@ function AuditRunner() {
     },
   });
 
-  // فحص هل نوع التدقيق هو GHP
   const isGhpAudit = useMemo(() => {
     const typeName = (data?.audit?.audit_types as { name_ar?: string; code?: string } | null)?.name_ar || "";
     const typeCode = (data?.audit?.audit_types as { name_ar?: string; code?: string } | null)?.code || "";
@@ -179,7 +178,6 @@ function AuditRunner() {
     }));
   }, [data, sectionNa]);
 
-  // دمج الإجابات مع القيمة الافتراضية الكاملة (4) لكي يبدأ القسم بنسبة 100%
   const effectiveAnswers = useMemo(() => {
     const map: Record<string, AnswerState> = {};
     if (!data?.questions) return answers;
@@ -212,7 +210,6 @@ function AuditRunner() {
     [scoringSections, effectiveAnswers, data],
   );
 
-  // حساب الدرجة اللحظية المباشرة (Live Score) مع القيمة الافتراضية
   const liveStats = useMemo(() => {
     let earned = 0;
     let max = 0;
@@ -341,7 +338,6 @@ function AuditRunner() {
         </div>
       }
     >
-      {/* شريط التقدم */}
       <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-muted">
         <div
           className="h-full bg-primary transition-all"
@@ -349,7 +345,6 @@ function AuditRunner() {
         />
       </div>
 
-      {/* أزرار التنقل بين الأقسام */}
       <div className="mb-4 flex flex-wrap gap-1.5" dir="rtl">
         {data.sections.map((entry, index) => (
           <button
@@ -366,7 +361,6 @@ function AuditRunner() {
         ))}
       </div>
 
-      {/* رأس القسم الحالي */}
       <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
         <div className="text-right">
           <h2 className="text-lg font-bold">{section.name_ar}</h2>
@@ -395,7 +389,6 @@ function AuditRunner() {
             const isHabitItem = question.text_ar.includes("عادات خاطئة") || question.text_ar.includes("العادات الخاطئة") || question.item_id.includes("HABIT");
             const allowComments = !isGhpAudit || isHabitItem;
 
-            // فحص هل البند تابع لنقاط التحكم الحرجة CCP أو المتطلبات التشغيلية الأولية OPRP
             const isCcpOrOprp =
               section.name_ar.includes("CCP") ||
               section.name_ar.includes("OPRP") ||
@@ -416,10 +409,8 @@ function AuditRunner() {
                   <p className="text-sm font-semibold leading-relaxed text-foreground">{question.text_ar}</p>
                 </div>
 
-                {/* أزرار تقييم الدرجة */}
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
                   {SCORE_OPTIONS.filter((option) => option.value <= question.max_score).map((option) => {
-                    // إذا كان القسم أو الهيدر CCP أو OPRP: يُسمح فقط بـ 4 و 0 وتُعطّل 1 و 2
                     const isOptionDisabled = readOnly || (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
 
                     return (
@@ -445,7 +436,6 @@ function AuditRunner() {
                   </Button>
                 </div>
 
-                {/* خانة الملاحظات */}
                 {allowComments && (
                   <Textarea
                     className="mt-3 text-xs"
@@ -458,7 +448,6 @@ function AuditRunner() {
                   />
                 )}
 
-                {/* رفع وتوثيق الصور */}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {!readOnly && (
                     <div className="flex gap-2">
@@ -496,7 +485,6 @@ function AuditRunner() {
                   )}
                 </div>
 
-                {/* عرض الصور المرفوعة */}
                 {questionPhotos.length > 0 && (
                   <div className="mt-3 border-t border-border/50 pt-3">
                     <div className="flex flex-wrap gap-2">
@@ -537,7 +525,6 @@ function AuditRunner() {
         </div>
       )}
 
-      {/* أزرار التنقل التالية والسابقة */}
       <div className="mt-6 flex items-center gap-2 mb-20">
         <Button variant="outline" disabled={stepIndex === 0} onClick={() => changeStep(stepIndex - 1)}>
           <ChevronLeft className="size-4 ml-1" /> السابق
@@ -555,11 +542,8 @@ function AuditRunner() {
         )}
       </div>
 
-      {/* شريط الدرجة اللحظي العائم المباشر */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border shadow-lg px-3 py-2 sm:px-4 sm:py-2.5">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3" dir="rtl">
-
-          {/* 1. المجموع اللحظي الكلي */}
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-1.5 text-primary font-bold">
               <Award className="size-4 text-emerald-600" />
@@ -577,7 +561,6 @@ function AuditRunner() {
             </Badge>
           </div>
 
-          {/* 2. بيانات القسم الحالي تبدأ من 100% */}
           {sectionResult && (
             <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] sm:text-xs">
               <span className="text-muted-foreground font-semibold">القسم:</span>
@@ -595,7 +578,6 @@ function AuditRunner() {
               </span>
             </div>
           )}
-
         </div>
       </div>
     </AppShell>
