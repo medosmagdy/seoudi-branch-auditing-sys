@@ -19,7 +19,7 @@ import {
   Layers,
   ExternalLink,
   ShieldAlert,
-  FileText
+  FileText,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
@@ -52,7 +52,7 @@ function ExecutiveDashboard() {
   const [branchSearch, setBranchSearch] = useState("");
 
   const [recentBranchFilter, setRecentBranchFilter] = useState<string>("all");
-  const [recentMonthFilter, setRecentMonthFilter] = useState<string>("");
+  const [recentMonthFilter, setRecentMonthFilter] = useState<string>("all");
 
   const [activeSectionName, setActiveSectionName] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
@@ -145,60 +145,81 @@ function ExecutiveDashboard() {
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
     const normalizeName = (name: string) => {
-      // إزالة كلمة "قسم" من بداية أي اسم لتجنب تكرار (الأسماك / قسم الأسماك)
       let clean = name.trim().replace(/^قسم\s+/i, "");
-
       if (/تجارة الكترونية|الكترونية|توصيل/i.test(clean)) {
         return "التوصيل";
       }
       return clean;
     };
 
-    const sectionDataMap: Record<string, {
-      nameAr: string;
-      program: "FS" | "GHP" | "FSMS";
-      earned: number;
-      possible: number;
-      criticalCount: number;
-      months: Record<string, {
+    // التحقق الصريح من استبعاد أقسام الـ FSMS
+    const isFsmsSection = (name: string) => {
+      return /fsms|الدورة المستندية|مبيعات مشتركة|نظام سلامة الغذاء|المستندية/i.test(name);
+    };
+
+    const sectionDataMap: Record<
+      string,
+      {
+        nameAr: string;
+        program: "FS" | "GHP" | "FSMS";
         earned: number;
         possible: number;
-        branches: Record<string, {
-          branchId: string;
-          branchName: string;
-          earned: number;
-          possible: number;
-          auditId: string;
-          items: Array<{
-            auditId: string;
-            date: string;
-            itemId: string;
-            questionText: string;
-            comment: string;
-            score: number | null;
-            maxScore: number;
-          }>;
-        }>;
-      }>;
-    }> = {};
-
+        criticalCount: number;
+        months: Record<
+          string,
+          {
+            earned: number;
+            possible: number;
+            branches: Record<
+              string,
+              {
+                branchId: string;
+                branchName: string;
+                earned: number;
+                possible: number;
+                auditId: string;
+                items: Array<{
+                  auditId: string;
+                  date: string;
+                  itemId: string;
+                  questionText: string;
+                  comment: string;
+                  score: number | null;
+                  maxScore: number;
+                }>;
+              }
+            >;
+          }
+        >;
+      }
+    > = {};
 
     data.sections.forEach((s) => {
-      const cleanName = normalizeName(s.name_ar || "بدون قسم");
-      const aType = data.auditTypes.find((t) => t.id === s.audit_type_id);
+      const rawName = s.name_ar || "بدون قسم";
+      const cleanName = normalizeName(rawName);
 
+      // استبعاد أقسام الـ FSMS تماماً من كروت المؤشرات العلوية
+      if (isFsmsSection(rawName) || isFsmsSection(cleanName)) return;
+
+      const aType = data.auditTypes.find((t) => t.id === s.audit_type_id);
       const typeCode = (aType?.code || "").toLowerCase();
       const typeName = (aType?.name_ar || "").toLowerCase();
 
-      const isGhp = typeCode.includes("ghp") || typeName.includes("ghp");
-      const isFsms = typeCode.includes("fsms") || typeName.includes("fsms");
+      const isGhp =
+        typeCode.includes("ghp") ||
+        typeName.includes("ghp") ||
+        typeName.includes("نظافة") ||
+        typeName.includes("ممارسات");
+      const isFsms =
+        typeCode.includes("fsms") ||
+        typeName.includes("fsms") ||
+        typeName.includes("مستند");
 
-      // لو القسم ينتمي للـ FSMS يتم تجاهله من كروت المؤشرات لأن له سكشن خاص بالفروع
       if (isFsms) return;
 
       const program: "FS" | "GHP" = isGhp ? "GHP" : "FS";
-
       const key = `${program}__${cleanName}`;
+
       if (!sectionDataMap[key]) {
         sectionDataMap[key] = {
           nameAr: cleanName,
@@ -211,28 +232,42 @@ function ExecutiveDashboard() {
       }
     });
 
-
     let totalNonCompliantItems = 0;
     let totalCritical = 0;
 
     data.answers.forEach((ans) => {
-      // احتساب الإجابات والملاحظات التابعة للفحوصات الخاصة بالمستخدم الحالي فقط
       if (!submittedAuditIds.has(ans.audit_id)) return;
       if (ans.is_na) return;
 
       const q = questionMap.get(ans.question_id);
       if (!q) return;
       const sec = sectionMap.get(q.section_id);
-      const cleanName = normalizeName(sec?.name_ar || "عام");
+      const rawSecName = sec?.name_ar || "عام";
+      const cleanName = normalizeName(rawSecName);
+
+      // استبعاد أي إجابات خاصة بالـ FSMS من كروت الـ FS/GHP
+      if (isFsmsSection(rawSecName) || isFsmsSection(cleanName)) return;
 
       const audit = auditMap.get(ans.audit_id);
       if (!audit) return;
 
-      const isGhp = /ghp/i.test(audit.typeCode) || /ghp/i.test(audit.typeName);
-      const isFsms = /fsms/i.test(audit.typeCode) || /fsms/i.test(audit.typeName);
-      const program = isGhp ? "GHP" : isFsms ? "FSMS" : "FS";
+      const typeCode = (audit.typeCode || "").toLowerCase();
+      const typeName = (audit.typeName || "").toLowerCase();
 
+      const isGhp =
+        typeCode.includes("ghp") ||
+        typeName.includes("ghp") ||
+        typeName.includes("نظافة");
+      const isFsms =
+        typeCode.includes("fsms") ||
+        typeName.includes("fsms") ||
+        typeName.includes("مستند");
+
+      if (isFsms) return;
+
+      const program: "FS" | "GHP" = isGhp ? "GHP" : "FS";
       const key = `${program}__${cleanName}`;
+
       if (!sectionDataMap[key]) {
         sectionDataMap[key] = {
           nameAr: cleanName,
@@ -342,15 +377,20 @@ function ExecutiveDashboard() {
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
       .map((b) => {
         const branchFsmsAudits = submittedAudits.filter(
-          (a) => a.branch_id === b.id && (/fsms/i.test(a.typeCode) || /fsms/i.test(a.typeName))
+          (a) => a.branch_id === b.id && (/fsms/i.test(a.typeCode) || /fsms/i.test(a.typeName) || /مستند/i.test(a.typeName))
         );
         const latestAudit = branchFsmsAudits[0];
         return {
           branchId: b.id,
           branchName: b.name_ar,
           branchCode: b.code || "—",
-          // score: latestAudit?.score !== undefined && latestAudit?.score !== null ? Number(latestAudit.score) : null,
-          score: (latestAudit as any)?.score != null ? Number((latestAudit as any).score) : (latestAudit as any)?.final_score != null ? Number((latestAudit as any).final_score) : null, auditDate: latestAudit?.audit_date || null,
+          score:
+            (latestAudit as any)?.score != null
+              ? Number((latestAudit as any).score)
+              : (latestAudit as any)?.final_score != null
+                ? Number((latestAudit as any).final_score)
+                : null,
+          auditDate: latestAudit?.audit_date || null,
           auditId: latestAudit?.id || null,
         };
       })
@@ -369,18 +409,20 @@ function ExecutiveDashboard() {
       }
     });
 
-    const branchesSummary = branchesToDisplay.map((b) => {
-      const bAudits = branchAuditsMap[b.id] || [];
-      return {
-        id: b.id,
-        nameAr: b.name_ar,
-        code: b.code || "—",
-        total: bAudits.length,
-        completed: bAudits.filter((a) => a.status === "submitted").length,
-        drafts: bAudits.filter((a) => a.status === "draft").length,
-        audits: bAudits,
-      };
-    }).sort((a, b) => b.total - a.total);
+    const branchesSummary = branchesToDisplay
+      .map((b) => {
+        const bAudits = branchAuditsMap[b.id] || [];
+        return {
+          id: b.id,
+          nameAr: b.name_ar,
+          code: b.code || "—",
+          total: bAudits.length,
+          completed: bAudits.filter((a) => a.status === "submitted").length,
+          drafts: bAudits.filter((a) => a.status === "draft").length,
+          audits: bAudits,
+        };
+      })
+      .sort((a, b) => b.total - a.total);
 
     const totalEarned = Object.values(sectionDataMap).reduce((a, c) => a + c.earned, 0);
     const totalPossible = Object.values(sectionDataMap).reduce((a, c) => a + c.possible, 0);
@@ -404,14 +446,14 @@ function ExecutiveDashboard() {
     };
   }, [data, profile, isAdmin, startDate, endDate]);
 
-  // استرجاع الفلترة السريعة لسجل الفحوصات
+  // فلترة سجل الفحوصات المسجلة
   const filteredRecentAudits = useMemo(() => {
     if (!filteredData) return [];
     return filteredData.audits.filter((audit) => {
       if (recentBranchFilter !== "all" && audit.branch_id !== recentBranchFilter) {
         return false;
       }
-      if (recentMonthFilter && !audit.audit_date?.startsWith(recentMonthFilter)) {
+      if (recentMonthFilter && recentMonthFilter !== "all" && !audit.audit_date?.startsWith(recentMonthFilter)) {
         return false;
       }
       return true;
@@ -439,18 +481,24 @@ function ExecutiveDashboard() {
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
     const buildTreeForProgram = (typeMatch: (code: string, name: string) => boolean) => {
-      const monthsMap: Record<string, {
-        monthKey: string;
-        earned: number;
-        possible: number;
-        auditId: string;
-        sections: Record<string, {
-          sectionName: string;
+      const monthsMap: Record<
+        string,
+        {
+          monthKey: string;
           earned: number;
           possible: number;
-          items: any[];
-        }>;
-      }> = {};
+          auditId: string;
+          sections: Record<
+            string,
+            {
+              sectionName: string;
+              earned: number;
+              possible: number;
+              items: any[];
+            }
+          >;
+        }
+      > = {};
 
       data.answers.forEach((ans) => {
         if (!branchAuditIds.has(ans.audit_id)) return;
@@ -528,18 +576,33 @@ function ExecutiveDashboard() {
     };
 
     return {
-      foodSafety: buildTreeForProgram((code, name) => !code.includes("GHP") && !code.includes("FSMS") && !name.includes("GHP") && !name.includes("FSMS")),
-      ghp: buildTreeForProgram((code, name) => code.includes("GHP") || name.includes("GHP")),
-      fsms: buildTreeForProgram((code, name) => code.includes("FSMS") || name.includes("FSMS")),
+      foodSafety: buildTreeForProgram(
+        (code, name) =>
+          !code.toUpperCase().includes("GHP") &&
+          !code.toUpperCase().includes("FSMS") &&
+          !name.includes("GHP") &&
+          !name.includes("FSMS") &&
+          !name.includes("نظام سلامة الغذاء") &&
+          !name.includes("المستندية")
+      ),
+      ghp: buildTreeForProgram((code, name) => code.toUpperCase().includes("GHP") || name.includes("GHP")),
+      fsms: buildTreeForProgram(
+        (code, name) =>
+          code.toUpperCase().includes("FSMS") ||
+          name.includes("FSMS") ||
+          name.includes("نظام سلامة الغذاء") ||
+          name.includes("المستندية")
+      ),
     };
   }, [activeBranch, filteredData, data]);
 
   const displayedBranches = useMemo(() => {
     if (!filteredData) return [];
     if (!branchSearch.trim()) return filteredData.branchesSummary;
-    return filteredData.branchesSummary.filter((b) =>
-      b.nameAr.toLowerCase().includes(branchSearch.toLowerCase()) ||
-      b.code.toLowerCase().includes(branchSearch.toLowerCase())
+    return filteredData.branchesSummary.filter(
+      (b) =>
+        b.nameAr.toLowerCase().includes(branchSearch.toLowerCase()) ||
+        b.code.toLowerCase().includes(branchSearch.toLowerCase())
     );
   }, [filteredData, branchSearch]);
 
@@ -608,9 +671,6 @@ function ExecutiveDashboard() {
       border: cellCenter.border,
     };
 
-    // -------------------------------------------------------------------------
-    // 1. شيت الفروع والزيارات
-    // -------------------------------------------------------------------------
     const dynamicSections = [
       "الأسماك",
       "الجزارة",
@@ -625,7 +685,6 @@ function ExecutiveDashboard() {
       "التوصيل",
     ];
 
-    // إضافة خانة نوع الفحص (Audit Type)
     const branchHeaders = [
       "Title (كود الفحص)",
       "Branch (الفرع)",
@@ -646,11 +705,14 @@ function ExecutiveDashboard() {
     const questionMap = new Map(data.questions.map((q) => [q.id, q]));
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
-    const auditScoresMap: Record<string, {
-      earned: number;
-      possible: number;
-      secScores: Record<string, { earned: number; possible: number }>;
-    }> = {};
+    const auditScoresMap: Record<
+      string,
+      {
+        earned: number;
+        possible: number;
+        secScores: Record<string, { earned: number; possible: number }>;
+      }
+    > = {};
 
     const discrepancyLog: Array<{
       auditCode: string;
@@ -785,7 +847,9 @@ function ExecutiveDashboard() {
         ];
 
         dynamicSections.forEach((secTarget) => {
-          const sData = Object.entries(calc.secScores).find(([name]) => name.includes(secTarget) || secTarget.includes(name));
+          const sData = Object.entries(calc.secScores).find(
+            ([name]) => name.includes(secTarget) || secTarget.includes(name)
+          );
           if (sData && sData[1].possible > 0) {
             const sPct = Math.round((sData[1].earned / sData[1].possible) * 100);
             rowValues.push({
@@ -820,8 +884,8 @@ function ExecutiveDashboard() {
       { wch: 25 },
       { wch: 18 },
       { wch: 13 },
-      { wch: 18 }, // نوع الفحص
-      { wch: 18 }, // المراجع
+      { wch: 18 },
+      { wch: 18 },
       { wch: 18 },
       { wch: 15 },
       { wch: 12 },
@@ -837,9 +901,7 @@ function ExecutiveDashboard() {
     XLSX.utils.book_append_sheet(wb, wsBranchesData as any, "الفروع والزيارات");
     (wb as any).Workbook.Sheets.push({ name: "الفروع والزيارات", RTL: true });
 
-    // -------------------------------------------------------------------------
-    // 2. شيت مؤشرات الأقسام
-    // -------------------------------------------------------------------------
+    // شيت مؤشرات الأقسام
     const secDeductionMap: Record<string, { pct: number; reasons: string[] }> = {};
     secDeductions.forEach((sd) => {
       const qAudit = data.audits.find((a) => a.id === sd.audit_id);
@@ -891,9 +953,10 @@ function ExecutiveDashboard() {
       let mSecIndex = 1;
       filteredData.allSections.forEach((sec) => {
         const monthData = sec.months?.find((m: any) => m.monthKey === mKey);
-        const secMonthRate = monthData !== undefined && monthData.complianceRate !== undefined
-          ? monthData.complianceRate
-          : 100;
+        const secMonthRate =
+          monthData !== undefined && monthData.complianceRate !== undefined
+            ? monthData.complianceRate
+            : 100;
 
         const comboKey = `${mKey}__${sec.nameAr}`;
         const sDed = secDeductionMap[comboKey] || { pct: 0, reasons: [] };
@@ -923,7 +986,7 @@ function ExecutiveDashboard() {
           },
           { v: sDed.reasons.length > 0 ? sDed.reasons.join(" | ") : "—", s: cellLeft },
           { v: nonCompliantCount, s: cellCenter },
-          { v: monthData ? (sec.criticalCount || 0) : 0, s: cellCenter },
+          { v: monthData ? sec.criticalCount || 0 : 0, s: cellCenter },
         ];
 
         sRow.forEach((valObj, cIdx) => {
@@ -958,11 +1021,21 @@ function ExecutiveDashboard() {
     XLSX.utils.book_append_sheet(wb, wsSecSummaryData as any, "مؤشرات الأقسام");
     (wb as any).Workbook.Sheets.push({ name: "مؤشرات الأقسام", RTL: true });
 
-    // -------------------------------------------------------------------------
-    // 3. شيت خطة العمل وسجل الملاحظات التفصيلي (Discrepancy Log)
-    // -------------------------------------------------------------------------
+    // شيت خطة العمل وسجل الملاحظات
     const wsLogData: Record<string, any> = {};
-    const logHeaders = ["م", "الفرع", "التاريخ", "نوع الفحص", "المراجع", "القسم", "كود البند", "نص البند والاشتراط", "الملاحظة المسجلة", "الدرجة المستحقة", "الدرجة القصوى"];
+    const logHeaders = [
+      "م",
+      "الفرع",
+      "التاريخ",
+      "نوع الفحص",
+      "المراجع",
+      "القسم",
+      "كود البند",
+      "نص البند والاشتراط",
+      "الملاحظة المسجلة",
+      "الدرجة المستحقة",
+      "الدرجة القصوى",
+    ];
 
     logHeaders.forEach((hText, cIdx) => {
       const colLetter = XLSX.utils.encode_col(cIdx);
@@ -1002,8 +1075,8 @@ function ExecutiveDashboard() {
       { wch: 6 },
       { wch: 18 },
       { wch: 13 },
-      { wch: 16 }, // نوع الفحص
-      { wch: 18 }, // المراجع
+      { wch: 16 },
+      { wch: 18 },
       { wch: 20 },
       { wch: 14 },
       { wch: 45 },
@@ -1016,9 +1089,6 @@ function ExecutiveDashboard() {
     XLSX.utils.book_append_sheet(wb, wsLogData as any, "سجل الملاحظات والمتابعة");
     (wb as any).Workbook.Sheets.push({ name: "سجل الملاحظات والمتابعة", RTL: true });
 
-    // -------------------------------------------------------------------------
-    // تنزيل الملف
-    // -------------------------------------------------------------------------
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `Executive_Quality_Dashboard_${dateStr}.xlsx`);
   };
@@ -1066,7 +1136,15 @@ function ExecutiveDashboard() {
             />
           </div>
           {(startDate || endDate) && (
-            <Button size="sm" variant="ghost" onClick={() => { setStartDate(""); setEndDate(""); }} className="h-7 px-2 text-xs text-destructive">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="h-7 px-2 text-xs text-destructive"
+            >
               <X className="size-3 ml-1" /> مسح
             </Button>
           )}
@@ -1236,8 +1314,10 @@ function ExecutiveDashboard() {
                         </span>
                       </div>
                       <div className="text-left">
-                        <span className={`text-sm font-black font-mono px-2 py-0.5 rounded ${(b.score ?? 0) >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                          }`}>
+                        <span
+                          className={`text-sm font-black font-mono px-2 py-0.5 rounded ${(b.score ?? 0) >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
+                            }`}
+                        >
                           {b.score}%
                         </span>
                       </div>
@@ -1336,14 +1416,17 @@ function ExecutiveDashboard() {
                   <Input
                     type="month"
                     className="h-7 text-xs flex-1"
-                    value={recentMonthFilter}
+                    value={recentMonthFilter === "all" ? "" : recentMonthFilter}
                     onChange={(e) => setRecentMonthFilter(e.target.value)}
                   />
-                  {(recentBranchFilter !== "all" || recentMonthFilter) && (
+                  {(recentBranchFilter !== "all" || (recentMonthFilter && recentMonthFilter !== "all")) && (
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => { setRecentBranchFilter("all"); setRecentMonthFilter(""); }}
+                      onClick={() => {
+                        setRecentBranchFilter("all");
+                        setRecentMonthFilter("all");
+                      }}
                       className="h-7 px-2 text-xs text-destructive"
                       title="مسح الفلاتر"
                     >
@@ -1399,7 +1482,7 @@ function ExecutiveDashboard() {
         </div>
       )}
 
-      {/* 1. نافذة عرض تفاصيل وملاحظات القسم بالشهور والفروع (Collapse Hierarchy) */}
+      {/* 1. نافذة تفاصيل وملاحظات القسم بالشهور والفروع */}
       <Dialog open={!!activeSectionName} onOpenChange={(open) => !open && setActiveSectionName(null)}>
         <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto" dir="rtl">
           <DialogHeader className="text-right border-b border-border pb-3">
@@ -1469,8 +1552,10 @@ function ExecutiveDashboard() {
                                 <div className="flex items-center gap-2">
                                   <Store className="size-3.5 text-muted-foreground" />
                                   <span className="font-bold text-xs text-foreground">{bObj.branchName}</span>
-                                  <span className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${bObj.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                                    }`}>
+                                  <span
+                                    className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${bObj.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
+                                      }`}
+                                  >
                                     {bObj.complianceRate}% امتثال
                                   </span>
                                   <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono">
@@ -1532,7 +1617,7 @@ function ExecutiveDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* 2. نافذة تفاصيل الفرع المحددة (Collapse Hierarchy بالشهور والنسب والأقسام) */}
+      {/* 2. نافذة تفاصيل الفرع المحددة */}
       <Dialog open={!!selectedBranchId} onOpenChange={(open) => !open && setSelectedBranchId(null)}>
         <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto" dir="rtl">
           <DialogHeader className="text-right border-b border-border pb-3">
@@ -1611,8 +1696,10 @@ function ExecutiveDashboard() {
                                     <div className="flex items-center gap-2">
                                       <Layers className="size-3.5 text-primary" />
                                       <span className="font-bold text-xs text-foreground">{sec.sectionName}</span>
-                                      <span className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${sec.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                                        }`}>
+                                      <span
+                                        className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${sec.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
+                                          }`}
+                                      >
                                         {sec.complianceRate}% امتثال
                                       </span>
                                       <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono">
@@ -1678,10 +1765,14 @@ function SectionCard({ sec, onSelect }: { sec: any; onSelect: () => void }) {
     >
       <div className="flex justify-between items-start mb-1.5">
         <span className="font-bold text-xs text-foreground">{sec.nameAr}</span>
-        <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${sec.complianceRate >= 90 ? "bg-emerald-100 text-emerald-800" :
-          sec.complianceRate >= 75 ? "bg-amber-100 text-amber-800" :
-            "bg-destructive/10 text-destructive"
-          }`}>
+        <span
+          className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${sec.complianceRate >= 90
+              ? "bg-emerald-100 text-emerald-800"
+              : sec.complianceRate >= 75
+                ? "bg-amber-100 text-amber-800"
+                : "bg-destructive/10 text-destructive"
+            }`}
+        >
           {sec.complianceRate}% امتثال
         </span>
       </div>
