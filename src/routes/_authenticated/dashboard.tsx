@@ -83,7 +83,20 @@ function ExecutiveDashboard() {
         supabase.from("branches").select("*").order("name_ar"),
         supabase.from("sections").select("*").order("order_index"),
         supabase.from("questions").select("*"),
-        supabase.from("audit_answers").select("*").limit(50000),
+        (async () => {
+          const pageSize = 1000;
+          const rows: any[] = [];
+          for (let from = 0; ; from += pageSize) {
+            const { data: page, error } = await supabase
+              .from("audit_answers")
+              .select("*")
+              .range(from, from + pageSize - 1);
+            if (error) throw error;
+            rows.push(...(page ?? []));
+            if (!page || page.length < pageSize) break;
+          }
+          return { data: rows, error: null };
+        })(),
         supabase.from("audit_types").select("*"),
         supabase.from("profiles").select("id, full_name, email"),
       ]);
@@ -155,7 +168,7 @@ function ExecutiveDashboard() {
       {
         id: string;
         nameAr: string;
-        program: "FS" | "GHP";
+        program: "FS" | "GHP" | "FSMS";
         auditTypeId: string;
         earned: number;
         possible: number;
@@ -190,9 +203,8 @@ function ExecutiveDashboard() {
     > = {};
 
     data.sections.forEach((s) => {
-      if (s.audit_type_id === FSMS_TYPE_ID) return;
-
-      const program = s.audit_type_id === GHP_TYPE_ID ? "GHP" : "FS";
+      const program =
+        s.audit_type_id === GHP_TYPE_ID ? "GHP" : s.audit_type_id === FSMS_TYPE_ID ? "FSMS" : "FS";
       const key = `${program}__${s.id}`;
 
       sectionDataMap[key] = {
@@ -221,10 +233,10 @@ function ExecutiveDashboard() {
       if (!q || !q.section_id) return;
 
       const sec = sectionMap.get(q.section_id);
-      if (!sec || sec.audit_type_id === FSMS_TYPE_ID) return;
+      if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
-      // الفصل الصارم بين برامج الفحص منعاً لتداخل GHP في Food Safety
-      const program = sec.audit_type_id === GHP_TYPE_ID ? "GHP" : "FS";
+      const program =
+        sec.audit_type_id === GHP_TYPE_ID ? "GHP" : sec.audit_type_id === FSMS_TYPE_ID ? "FSMS" : "FS";
       const key = `${program}__${sec.id}`;
 
       const secEntry = sectionDataMap[key];
@@ -281,7 +293,7 @@ function ExecutiveDashboard() {
       }
     });
 
-    const formatSections = (programType: "FS" | "GHP") => {
+    const formatSections = (programType: "FS" | "GHP" | "FSMS") => {
       return Object.values(sectionDataMap)
         .filter((s) => s.program === programType)
         .map((s) => {
@@ -322,6 +334,7 @@ function ExecutiveDashboard() {
 
     const fsSections = formatSections("FS");
     const ghpSections = formatSections("GHP");
+    const fsmsSections = formatSections("FSMS");
 
     const fsmsBranchScores = data.branches
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
@@ -388,7 +401,8 @@ function ExecutiveDashboard() {
       overallScore,
       fsSections,
       ghpSections,
-      allSections: [...fsSections, ...ghpSections],
+      fsmsSections,
+      allSections: [...fsSections, ...ghpSections, ...fsmsSections],
       fsmsBranchScores,
       branchesSummary,
       submittedAuditIds: allSubmittedAuditIds,
@@ -458,7 +472,7 @@ function ExecutiveDashboard() {
         const q = questionMap.get(ans.question_id);
         if (!q) return;
         const sec = sectionMap.get(q.section_id);
-        if (!sec) return;
+        if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
         if (sec.audit_type_id !== targetSectionTypeId) return;
 
@@ -1016,6 +1030,33 @@ function ExecutiveDashboard() {
               ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.ghpSections.map((sec) => (
+                    <SectionCard key={sec.id} sec={sec} onSelect={() => setActiveSectionId(sec.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="surface-card p-4 rounded-xl border border-border">
+              <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5" dir="rtl">
+                <div>
+                  <h3 className="text-sm font-bold flex items-center gap-1.5 text-amber-700">
+                    <BarChart3 className="size-4" />
+                    مؤشرات أقسام FSMS (المعتمدة فقط)
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">تفصيل أقسام نظام إدارة سلامة الغذاء حسب الشهر والفرع</p>
+                </div>
+                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-300">
+                  {filteredData?.fsmsSections?.length ?? 0} أقسام
+                </Badge>
+              </div>
+
+              {isLoading ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">جاري تحميل البيانات...</p>
+              ) : filteredData?.fsmsSections?.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">لا توجد بيانات أقسام FSMS مرتبطة بتدقيقات معتمدة.</p>
+              ) : (
+                <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredData?.fsmsSections.map((sec) => (
                     <SectionCard key={sec.id} sec={sec} onSelect={() => setActiveSectionId(sec.id)} />
                   ))}
                 </div>
