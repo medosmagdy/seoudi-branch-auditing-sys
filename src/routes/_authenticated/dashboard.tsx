@@ -748,7 +748,7 @@ function ExecutiveDashboard() {
 
     sortedMonths.forEach((mKey) => {
       const monthAudits = auditsByMonth[mKey]!;
-      const monthTitle = ` 📅 شهر: ${mKey} (إجمالي ${monthAudits.length} زيارة) `;
+      const monthTitle = ` 📅 شهر: ${mKey} (إجما��ي ${monthAudits.length} زيارة) `;
 
       wsBranchesData[`A${bRowIdx}`] = { v: monthTitle, t: "s", s: monthSeparatorStyle };
       for (let c = 1; c < branchHeaders.length; c++) {
@@ -854,6 +854,46 @@ function ExecutiveDashboard() {
 
     XLSX.utils.book_append_sheet(wb, wsBranchesData as any, "الفروع والزيارات");
     (wb as any).Workbook.Sheets.push({ name: "الفروع والزيارات", RTL: true });
+
+    const executiveRows = [
+      ["المؤشر", "القيمة"],
+      ["إجمالي الزيارات", filteredData.totalAudits],
+      ["الفحوصات المعتمدة", filteredData.submittedCount],
+      ["المسودات", filteredData.draftsCount],
+      ["متوسط الامتثال العام", `${filteredData.overallScore}%`],
+      ["حالات عدم المطابقة", filteredData.totalComments],
+      ["المخالفات الحرجة", filteredData.totalCritical],
+      ["عدد الفروع", filteredData.totalBranches],
+    ];
+    const wsExecutive = XLSX.utils.aoa_to_sheet(executiveRows);
+    wsExecutive["!cols"] = [{ wch: 28 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsExecutive, "الملخص التنفيذي");
+
+    const sectionRows = [["البرنامج", "القسم", "عدد الزيارات", "نسبة الامتثال", "حالات عدم المطابقة", "مخالفات حرجة"]];
+    filteredData.allSections.forEach((section) => {
+      const visits = section.months.reduce((sum, month) => sum + month.branches.length, 0);
+      sectionRows.push([section.program, section.nameAr, visits, `${section.complianceRate}%`, section.commentsCount, section.criticalCount]);
+    });
+    const wsSections = XLSX.utils.aoa_to_sheet(sectionRows);
+    wsSections["!cols"] = [{ wch: 14 }, { wch: 32 }, { wch: 15 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, wsSections, "مؤشرات الأقسام");
+
+    const wsIssues = XLSX.utils.json_to_sheet(discrepancyLog.map((row) => ({
+      "كود الفحص": row.auditCode,
+      "الفرع": row.branchName,
+      "التاريخ": row.date,
+      "البرنامج": row.auditType,
+      "المراجع": row.auditorName,
+      "القسم": row.sectionName,
+      "كود البند": row.itemId,
+      "نص البند": row.questionText,
+      "الملاحظة": row.comment,
+      "الدرجة": row.score,
+      "الدرجة القصوى": row.maxScore,
+      "نسبة البند": row.maxScore ? `${Math.round((row.score / row.maxScore) * 100)}%` : "0%",
+    })));
+    wsIssues["!cols"] = [{ wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 28 }, { wch: 16 }, { wch: 45 }, { wch: 36 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, wsIssues, "سجل الملاحظات");
 
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `Executive_Quality_Dashboard_${dateStr}.xlsx`);

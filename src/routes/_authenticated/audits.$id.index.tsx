@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { computeAudit, type ScoringSection } from "@/lib/scoring";
-import { deletePhoto, signedPhotoUrls, uploadQuestionPhoto } from "@/lib/photos";
+import { deletePhoto, signedPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
 
 type AuditSearchParams = {
   section?: number;
@@ -312,13 +312,14 @@ function AuditRunner() {
     queryClient.invalidateQueries({ queryKey: ["audit", id] });
   };
 
-  const handlePhoto = async (questionId: string, file: File) => {
+  const handlePhotos = async (questionId: string, files: File[]) => {
+    if (files.length === 0) return;
     try {
-      await uploadQuestionPhoto(id, questionId, file);
+      await uploadQuestionPhotos(id, questionId, files);
       queryClient.invalidateQueries({ queryKey: ["audit", id] });
-      toast.success("تم رفع الصورة بنجاح");
+      toast.success(`تم رفع ${files.length} صورة بنجاح`);
     } catch {
-      toast.error("تعذر رفع الصورة");
+      toast.error("تعذر رفع بعض الصور أو كلها");
     }
   };
 
@@ -457,10 +458,10 @@ function AuditRunner() {
                           type="file"
                           accept="image/*"
                           capture="environment"
+                          multiple
                           className="hidden"
                           onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) handlePhoto(question.id, file);
+                            void handlePhotos(question.id, Array.from(event.target.files ?? []));
                             event.target.value = "";
                           }}
                         />
@@ -470,10 +471,10 @@ function AuditRunner() {
                         <input
                           type="file"
                           accept="image/*"
+                          multiple
                           className="hidden"
                           onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) handlePhoto(question.id, file);
+                            void handlePhotos(question.id, Array.from(event.target.files ?? []));
                             event.target.value = "";
                           }}
                         />
