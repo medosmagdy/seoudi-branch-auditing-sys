@@ -36,6 +36,12 @@ const FS_TYPE_ID = "dfcbaad0-679d-41e4-9e52-8037e3d1311f";
 const GHP_TYPE_ID = "fbfdfde7-6945-4e09-ba63-8ad8d6430a57";
 const FSMS_TYPE_ID = "2119873b-1f4c-4d6e-9df7-b6ce426ccc4f";
 
+const PROGRAM_LABELS = {
+  FS: "مؤشرات أقسام سلامة الغذاء — Food Safety",
+  GHP: "مؤشرات أقسام النظافة والممارسات الصحية — GHP",
+  FSMS: "مؤشرات أقسام أنظمة سلامة الغذاء — FSMS",
+} as const;
+
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
@@ -735,6 +741,66 @@ function ExecutiveDashboard() {
       }
     });
 
+    const sectionIndicatorRows = (typeId: string) => {
+      const submittedAudits = filteredData.audits.filter(
+        (audit: any) => audit.status === "submitted" && audit.audit_type_id === typeId
+      );
+      const auditIds = new Set(submittedAudits.map((audit: any) => audit.id));
+      const bySection: Record<string, { name: string; earned: number; possible: number }> = {};
+
+      data.sections
+        .filter((section: any) => section.audit_type_id === typeId)
+        .forEach((section: any) => {
+          bySection[section.id] = {
+            name: (section.name_ar || "قسم غير مسمى").replace(/^قسم\\s+/i, "").trim(),
+            earned: 0,
+            possible: 0,
+          };
+        });
+
+      data.answers.forEach((answer: any) => {
+        if (!answer.audit_id || !auditIds.has(answer.audit_id) || answer.is_na || answer.score === null) return;
+        const question = questionMap.get(answer.question_id);
+        const section = question ? sectionMap.get(question.section_id) : null;
+        if (!section || section.audit_type_id !== typeId || !bySection[section.id]) return;
+        const maxScore = Number(question?.max_score || 4);
+        bySection[section.id].earned += Number(answer.score);
+        bySection[section.id].possible += maxScore;
+      });
+
+      return Object.values(bySection).map((row) => ({
+        ...row,
+        percentage: row.possible > 0 ? Math.round((row.earned / row.possible) * 100) : 0,
+      }));
+    };
+
+    const programSectionSheets = [
+      { code: "FS", typeId: FS_TYPE_ID },
+      { code: "GHP", typeId: GHP_TYPE_ID },
+      { code: "FSMS", typeId: FSMS_TYPE_ID },
+    ];
+
+    programSectionSheets.forEach(({ code, typeId }) => {
+      const rows = sectionIndicatorRows(typeId);
+      const sheetRows = [
+        [PROGRAM_LABELS[code as keyof typeof PROGRAM_LABELS]],
+        ["النسب محسوبة من التدقيقات المعتمدة فقط"],
+        ["القسم", "الدرجة المحققة", "إجمالي الدرجة", "نسبة القسم"],
+        ...rows.map((row) => [row.name, row.earned, row.possible, `${row.percentage}%`]),
+      ];
+      const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
+      sheet["!cols"] = [{ wch: 38 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+      sheet["!freeze"] = { xSplit: 0, ySplit: 3 };
+      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:D1");
+      for (let row = range.s.r; row <= range.e.r; row += 1) {
+        for (let col = range.s.c; col <= range.e.c; col += 1) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
+          if (cell) cell.s = row < 3 ? monthSeparatorStyle : row === 2 ? headerBlueStyle : cellCenter;
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, sheet, `${code} - أقسام`);
+    });
+
     const auditsByMonth: Record<string, any[]> = {};
     filteredData.audits.forEach((audit: any) => {
       const mKey = audit.audit_date ? audit.audit_date.slice(0, 7) : "غير محدد";
@@ -748,7 +814,7 @@ function ExecutiveDashboard() {
 
     sortedMonths.forEach((mKey) => {
       const monthAudits = auditsByMonth[mKey]!;
-      const monthTitle = ` 📅 شهر: ${mKey} (إجما��ي ${monthAudits.length} زيارة) `;
+      const monthTitle = ` 📅 شهر: ${mKey} (إجما����ي ${monthAudits.length} زيارة) `;
 
       wsBranchesData[`A${bRowIdx}`] = { v: monthTitle, t: "s", s: monthSeparatorStyle };
       for (let c = 1; c < branchHeaders.length; c++) {
