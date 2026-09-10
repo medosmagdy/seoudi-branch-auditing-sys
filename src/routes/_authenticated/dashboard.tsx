@@ -28,13 +28,33 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DASHBOARD_PROGRAM_IDS,
+  auditMonthKey,
+  cleanSectionName,
+  compliancePercentage,
+  formatAuditComment,
+  maxQuestionScore,
+  numericScore,
+  programFromAuditTypeId,
+} from "@/lib/dashboard/metrics";
 
-const FS_TYPE_ID = "dfcbaad0-679d-41e4-9e52-8037e3d1311f";
-const GHP_TYPE_ID = "fbfdfde7-6945-4e09-ba63-8ad8d6430a57";
-const FSMS_TYPE_ID = "2119873b-1f4c-4d6e-9df7-b6ce426ccc4f";
+const { FS: FS_TYPE_ID, GHP: GHP_TYPE_ID, FSMS: FSMS_TYPE_ID } = DASHBOARD_PROGRAM_IDS;
 
 const PROGRAM_LABELS = {
   FS: "مؤشرات أقسام سلامة الغذاء — Food Safety",
@@ -209,13 +229,12 @@ function ExecutiveDashboard() {
     > = {};
 
     data.sections.forEach((s) => {
-      const program =
-        s.audit_type_id === GHP_TYPE_ID ? "GHP" : s.audit_type_id === FSMS_TYPE_ID ? "FSMS" : "FS";
+      const program = programFromAuditTypeId(s.audit_type_id);
       const key = `${program}__${s.id}`;
 
       sectionDataMap[key] = {
         id: s.id,
-        nameAr: (s.name_ar || "").replace(/^قسم\s+/i, "").trim(),
+        nameAr: cleanSectionName(s.name_ar),
         program,
         auditTypeId: s.audit_type_id,
         earned: 0,
@@ -242,20 +261,24 @@ function ExecutiveDashboard() {
       if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
       const program =
-        sec.audit_type_id === GHP_TYPE_ID ? "GHP" : sec.audit_type_id === FSMS_TYPE_ID ? "FSMS" : "FS";
+        sec.audit_type_id === GHP_TYPE_ID
+          ? "GHP"
+          : sec.audit_type_id === FSMS_TYPE_ID
+            ? "FSMS"
+            : "FS";
       const key = `${program}__${sec.id}`;
 
       const secEntry = sectionDataMap[key];
       if (!secEntry) return;
 
-      const maxScore = Number(q.max_score || 4);
-      const score = ans.score !== null && ans.score !== undefined ? Number(ans.score) : 0;
+      const maxScore = maxQuestionScore(q.max_score);
+      const score = numericScore(ans.score);
 
       secEntry.earned += score;
       secEntry.possible += maxScore;
 
       const auditDate = audit.audit_date || "—";
-      const monthKey = auditDate !== "—" ? auditDate.slice(0, 7) : "غير محدد";
+      const monthKey = auditMonthKey(audit.audit_date);
       const branchId = audit.branch_id || "unknown";
       const branchName = audit.branchName || "فرع غير مسجل";
 
@@ -292,7 +315,7 @@ function ExecutiveDashboard() {
           date: auditDate,
           itemId: q.item_id || "—",
           questionText: q.text_ar || "بند الفحص",
-          comment: ans.comment && ans.comment.trim() ? ans.comment.trim() : "خصم درجات (عدم مطابقة)",
+          comment: formatAuditComment(ans.comment),
           score: ans.score,
           maxScore,
         });
@@ -303,14 +326,14 @@ function ExecutiveDashboard() {
       return Object.values(sectionDataMap)
         .filter((s) => s.program === programType)
         .map((s) => {
-          const complianceRate = s.possible > 0 ? Math.round((s.earned / s.possible) * 100) : 100;
+          const complianceRate = compliancePercentage(s.earned, s.possible);
           let notesCount = 0;
 
           const monthsList = Object.entries(s.months)
             .map(([monthKey, mVal]) => {
-              const monthRate = mVal.possible > 0 ? Math.round((mVal.earned / mVal.possible) * 100) : 100;
+              const monthRate = compliancePercentage(mVal.earned, mVal.possible);
               const branchesList = Object.values(mVal.branches).map((b) => {
-                const bRate = b.possible > 0 ? Math.round((b.earned / b.possible) * 100) : 100;
+                const bRate = compliancePercentage(b.earned, b.possible);
                 notesCount += b.items.length;
                 return {
                   ...b,
@@ -346,7 +369,7 @@ function ExecutiveDashboard() {
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
       .map((b) => {
         const branchFsmsAudits = allSubmittedAudits.filter(
-          (a) => a.branch_id === b.id && a.audit_type_id === FSMS_TYPE_ID
+          (a) => a.branch_id === b.id && a.audit_type_id === FSMS_TYPE_ID,
         );
         const latestAudit = branchFsmsAudits[0];
         return {
@@ -365,7 +388,9 @@ function ExecutiveDashboard() {
       })
       .filter((item) => item.score !== null);
 
-    const branchesToDisplay = isAdmin ? data.branches : data.branches.filter((b) => allowedBranchIds.has(b.id));
+    const branchesToDisplay = isAdmin
+      ? data.branches
+      : data.branches.filter((b) => allowedBranchIds.has(b.id));
     const branchAuditsMap: Record<string, any[]> = {};
     branchesToDisplay.forEach((b) => {
       branchAuditsMap[b.id] = [];
@@ -441,7 +466,9 @@ function ExecutiveDashboard() {
   const branchProgramsTree = useMemo(() => {
     if (!activeBranch || !filteredData || !data) return { foodSafety: [], ghp: [], fsms: [] };
 
-    const branchSubmittedAudits = (activeBranch.audits || []).filter((a: any) => a.status === "submitted");
+    const branchSubmittedAudits = (activeBranch.audits || []).filter(
+      (a: any) => a.status === "submitted",
+    );
     const branchAuditMap = new Map(branchSubmittedAudits.map((a: any) => [a.id, a]));
     const branchAuditIds = new Set(branchSubmittedAudits.map((a: any) => a.id));
 
@@ -482,10 +509,10 @@ function ExecutiveDashboard() {
 
         if (sec.audit_type_id !== targetSectionTypeId) return;
 
-        const cleanSecName = (sec.name_ar || "عام").replace(/^قسم\s+/i, "").trim();
-        const monthKey = audit.audit_date ? audit.audit_date.slice(0, 7) : "غير محدد";
-        const maxScore = Number(q.max_score || 4);
-        const score = ans.score !== null && ans.score !== undefined ? Number(ans.score) : 0;
+        const cleanSecName = cleanSectionName(sec.name_ar);
+        const monthKey = auditMonthKey(audit.audit_date);
+        const maxScore = maxQuestionScore(q.max_score);
+        const score = numericScore(ans.score);
 
         if (!monthsMap[monthKey]) {
           monthsMap[monthKey] = {
@@ -518,7 +545,7 @@ function ExecutiveDashboard() {
             date: audit.audit_date,
             itemId: q.item_id || "—",
             questionText: q.text_ar || "بند الفحص",
-            comment: ans.comment && ans.comment.trim() ? ans.comment.trim() : "خصم درجات (عدم مطابقة)",
+            comment: formatAuditComment(ans.comment),
             score: ans.score,
             maxScore,
           });
@@ -527,9 +554,9 @@ function ExecutiveDashboard() {
 
       return Object.values(monthsMap)
         .map((m) => {
-          const monthRate = m.possible > 0 ? Math.round((m.earned / m.possible) * 100) : 100;
+          const monthRate = compliancePercentage(m.earned, m.possible);
           const sectionsList = Object.values(m.sections).map((s) => {
-            const secRate = s.possible > 0 ? Math.round((s.earned / s.possible) * 100) : 100;
+            const secRate = compliancePercentage(s.earned, s.possible);
             return {
               ...s,
               complianceRate: secRate,
@@ -560,7 +587,7 @@ function ExecutiveDashboard() {
     return filteredData.branchesSummary.filter(
       (b) =>
         (b.nameAr || "").toLowerCase().includes(term) ||
-        (b.code || "").toLowerCase().includes(term)
+        (b.code || "").toLowerCase().includes(term),
     );
   }, [filteredData, branchSearch]);
 
@@ -743,7 +770,7 @@ function ExecutiveDashboard() {
 
     const sectionIndicatorRows = (typeId: string) => {
       const submittedAudits = filteredData.audits.filter(
-        (audit: any) => audit.status === "submitted" && audit.audit_type_id === typeId
+        (audit: any) => audit.status === "submitted" && audit.audit_type_id === typeId,
       );
       const auditIds = new Set(submittedAudits.map((audit: any) => audit.id));
       const bySection: Record<string, { name: string; earned: number; possible: number }> = {};
@@ -759,7 +786,13 @@ function ExecutiveDashboard() {
         });
 
       data.answers.forEach((answer: any) => {
-        if (!answer.audit_id || !auditIds.has(answer.audit_id) || answer.is_na || answer.score === null) return;
+        if (
+          !answer.audit_id ||
+          !auditIds.has(answer.audit_id) ||
+          answer.is_na ||
+          answer.score === null
+        )
+          return;
         const question = questionMap.get(answer.question_id);
         const section = question ? sectionMap.get(question.section_id) : null;
         if (!section || section.audit_type_id !== typeId || !bySection[section.id]) return;
@@ -795,7 +828,8 @@ function ExecutiveDashboard() {
       for (let row = range.s.r; row <= range.e.r; row += 1) {
         for (let col = range.s.c; col <= range.e.c; col += 1) {
           const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
-          if (cell) cell.s = row < 3 ? monthSeparatorStyle : row === 2 ? headerBlueStyle : cellCenter;
+          if (cell)
+            cell.s = row < 3 ? monthSeparatorStyle : row === 2 ? headerBlueStyle : cellCenter;
         }
       }
       XLSX.utils.book_append_sheet(wb, sheet, `${code} - أقسام`);
@@ -820,7 +854,10 @@ function ExecutiveDashboard() {
       for (let c = 1; c < branchHeaders.length; c++) {
         wsBranchesData[`${XLSX.utils.encode_col(c)}${bRowIdx}`] = { v: "", s: monthSeparatorStyle };
       }
-      branchesMerges.push({ s: { r: bRowIdx - 1, c: 0 }, e: { r: bRowIdx - 1, c: branchHeaders.length - 1 } });
+      branchesMerges.push({
+        s: { r: bRowIdx - 1, c: 0 },
+        e: { r: bRowIdx - 1, c: branchHeaders.length - 1 },
+      });
       bRowIdx++;
 
       branchHeaders.forEach((hText, cIdx) => {
@@ -832,7 +869,10 @@ function ExecutiveDashboard() {
       monthAudits.forEach((audit: any) => {
         const calc = auditScoresMap[audit.id] || { earned: 0, possible: 0, secScores: {} };
         const rawPct = calc.possible > 0 ? (calc.earned / calc.possible) * 100 : 0;
-        const finalPct = audit.score !== null && audit.score !== undefined ? Number(audit.score) : Math.round(rawPct);
+        const finalPct =
+          audit.score !== null && audit.score !== undefined
+            ? Number(audit.score)
+            : Math.round(rawPct);
 
         const isPassed = finalPct >= 85;
         const scoreStyle = {
@@ -860,7 +900,11 @@ function ExecutiveDashboard() {
             v: gDed.pct > 0 ? `${gDed.pct}%` : "0%",
             s: {
               ...cellCenter,
-              font: { ...cellCenter.font, bold: gDed.pct > 0, color: { rgb: gDed.pct > 0 ? "CC0000" : "000000" } },
+              font: {
+                ...cellCenter.font,
+                bold: gDed.pct > 0,
+                color: { rgb: gDed.pct > 0 ? "CC0000" : "000000" },
+              },
             },
           },
           { v: gDed.reasons.length > 0 ? gDed.reasons.join(" | ") : "—", s: cellLeft },
@@ -868,7 +912,7 @@ function ExecutiveDashboard() {
 
         dynamicSections.forEach((secTarget) => {
           const sData = Object.entries(calc.secScores).find(
-            ([name]) => name.includes(secTarget) || secTarget.includes(name)
+            ([name]) => name.includes(secTarget) || secTarget.includes(name),
           );
           if (sData && sData[1].possible > 0) {
             const sPct = Math.round((sData[1].earned / sData[1].possible) * 100);
@@ -876,7 +920,11 @@ function ExecutiveDashboard() {
               v: `${sPct}%`,
               s: {
                 ...cellCenter,
-                font: { ...cellCenter.font, bold: true, color: { rgb: sPct >= 85 ? "006600" : "CC0000" } },
+                font: {
+                  ...cellCenter.font,
+                  bold: true,
+                  color: { rgb: sPct >= 85 ? "006600" : "CC0000" },
+                },
               },
             });
           } else {
@@ -935,30 +983,61 @@ function ExecutiveDashboard() {
     wsExecutive["!cols"] = [{ wch: 28 }, { wch: 20 }];
     XLSX.utils.book_append_sheet(wb, wsExecutive, "الملخص التنفيذي");
 
-    const sectionRows = [["البرنامج", "القسم", "عدد الزيارات", "نسبة الامتثال", "حالات عدم المطابقة", "مخالفات حرجة"]];
+    const sectionRows = [
+      ["البرنامج", "القسم", "عدد الزيارات", "نسبة الامتثال", "حالات عدم المطابقة", "مخالفات حرجة"],
+    ];
     filteredData.allSections.forEach((section) => {
       const visits = section.months.reduce((sum, month) => sum + month.branches.length, 0);
-      sectionRows.push([section.program, section.nameAr, visits, `${section.complianceRate}%`, section.commentsCount, section.criticalCount]);
+      sectionRows.push([
+        section.program,
+        section.nameAr,
+        visits,
+        `${section.complianceRate}%`,
+        section.commentsCount,
+        section.criticalCount,
+      ]);
     });
     const wsSections = XLSX.utils.aoa_to_sheet(sectionRows);
-    wsSections["!cols"] = [{ wch: 14 }, { wch: 32 }, { wch: 15 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
+    wsSections["!cols"] = [
+      { wch: 14 },
+      { wch: 32 },
+      { wch: 15 },
+      { wch: 16 },
+      { wch: 22 },
+      { wch: 18 },
+    ];
     XLSX.utils.book_append_sheet(wb, wsSections, "مؤشرات الأقسام");
 
-    const wsIssues = XLSX.utils.json_to_sheet(discrepancyLog.map((row) => ({
-      "كود الفحص": row.auditCode,
-      "الفرع": row.branchName,
-      "التاريخ": row.date,
-      "البرنامج": row.auditType,
-      "المراجع": row.auditorName,
-      "القسم": row.sectionName,
-      "كود البند": row.itemId,
-      "نص البند": row.questionText,
-      "الملاحظة": row.comment,
-      "الدرجة": row.score,
-      "الدرجة القصوى": row.maxScore,
-      "نسبة البند": row.maxScore ? `${Math.round((row.score / row.maxScore) * 100)}%` : "0%",
-    })));
-    wsIssues["!cols"] = [{ wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 28 }, { wch: 16 }, { wch: 45 }, { wch: 36 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
+    const wsIssues = XLSX.utils.json_to_sheet(
+      discrepancyLog.map((row) => ({
+        "كود الفحص": row.auditCode,
+        الفرع: row.branchName,
+        التاريخ: row.date,
+        البرنامج: row.auditType,
+        المراجع: row.auditorName,
+        القسم: row.sectionName,
+        "كود البند": row.itemId,
+        "نص البند": row.questionText,
+        الملاحظة: row.comment,
+        الدرجة: row.score,
+        "الدرجة القصوى": row.maxScore,
+        "نسبة البند": row.maxScore ? `${Math.round((row.score / row.maxScore) * 100)}%` : "0%",
+      })),
+    );
+    wsIssues["!cols"] = [
+      { wch: 24 },
+      { wch: 20 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 28 },
+      { wch: 16 },
+      { wch: 45 },
+      { wch: 36 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 14 },
+    ];
     XLSX.utils.book_append_sheet(wb, wsIssues, "سجل الملاحظات");
 
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -968,21 +1047,37 @@ function ExecutiveDashboard() {
   return (
     <AppShell
       title={`لوحة المتابعة والتحليلات — ${profile?.full_name || "إدارة الجودة"}`}
-      subtitle={isAdmin ? "متابعة دقيقة لنسب الامتثال وملاحظات الفروع والأقسام بالشهور" : "الملخص العام ومؤشرات الأداء"}
+      subtitle={
+        isAdmin
+          ? "متابعة دقيقة لنسب الامتثال وملاحظات الفروع والأقسام بالشهور"
+          : "الملخص العام ومؤشرات الأداء"
+      }
       action={
         isAdmin && (
           <div className="flex items-center gap-2 print:hidden" dir="rtl">
-            <Button onClick={exportToExcel} size="sm" variant="outline" className="h-8 gap-1.5 text-xs font-bold shadow-sm">
+            <Button
+              onClick={exportToExcel}
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs font-bold shadow-sm"
+            >
               <FileSpreadsheet className="size-3.5 text-emerald-600" /> تصدير Excel
             </Button>
-            <Button onClick={() => window.print()} size="sm" className="h-8 gap-1.5 text-xs font-bold shadow-sm">
+            <Button
+              onClick={() => window.print()}
+              size="sm"
+              className="h-8 gap-1.5 text-xs font-bold shadow-sm"
+            >
               <Printer className="size-3.5" /> طباعة / PDF
             </Button>
           </div>
         )
       }
     >
-      <div className="surface-card mb-5 p-3.5 rounded-xl border border-border flex flex-wrap items-center justify-between gap-3 print:hidden" dir="rtl">
+      <div
+        className="surface-card mb-5 p-3.5 rounded-xl border border-border flex flex-wrap items-center justify-between gap-3 print:hidden"
+        dir="rtl"
+      >
         <div className="flex items-center gap-2">
           <Calendar className="size-4 text-primary" />
           <span className="text-xs font-bold">فلترة الفترة الزمنية:</span>
@@ -1007,7 +1102,15 @@ function ExecutiveDashboard() {
             />
           </div>
           {(startDate || endDate) && (
-            <Button size="sm" variant="ghost" onClick={() => { setStartDate(""); setEndDate(""); }} className="h-7 px-2 text-xs text-destructive">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="h-7 px-2 text-xs text-destructive"
+            >
               <X className="size-3 ml-1" /> مسح
             </Button>
           )}
@@ -1015,7 +1118,11 @@ function ExecutiveDashboard() {
       </div>
 
       <div className="grid gap-2.5 sm:grid-cols-3 print:hidden">
-        <Button asChild size="sm" className="h-auto py-2.5 flex justify-between bg-primary text-primary-foreground shadow-sm rounded-lg">
+        <Button
+          asChild
+          size="sm"
+          className="h-auto py-2.5 flex justify-between bg-primary text-primary-foreground shadow-sm rounded-lg"
+        >
           <Link to="/audits/new">
             <span className="font-bold flex items-center gap-1.5 text-xs">
               <FilePlus2 className="size-4" /> بدء فحص جديد
@@ -1023,20 +1130,34 @@ function ExecutiveDashboard() {
             <span className="text-[11px] opacity-80">تسجيل</span>
           </Link>
         </Button>
-        <Button asChild variant="outline" size="sm" className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
+        >
           <Link to="/audits" search={{ status: "draft" as const }}>
             <span className="font-bold flex items-center gap-1.5 text-xs">
               <ClipboardList className="size-4 text-amber-600" /> مسودات المتابعة
             </span>
-            <Badge variant="secondary" className="text-xs px-2 py-0">{filteredData?.draftsCount ?? 0}</Badge>
+            <Badge variant="secondary" className="text-xs px-2 py-0">
+              {filteredData?.draftsCount ?? 0}
+            </Badge>
           </Link>
         </Button>
-        <Button asChild variant="outline" size="sm" className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card">
+        <Button
+          asChild
+          variant="outline"
+          size="sm"
+          className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
+        >
           <Link to="/audits" search={{ status: "submitted" as const }}>
             <span className="font-bold flex items-center gap-1.5 text-xs">
               <FileCheck2 className="size-4 text-emerald-600" /> الفحوصات المعتمدة
             </span>
-            <Badge variant="secondary" className="text-xs px-2 py-0">{filteredData?.submittedCount ?? 0}</Badge>
+            <Badge variant="secondary" className="text-xs px-2 py-0">
+              {filteredData?.submittedCount ?? 0}
+            </Badge>
           </Link>
         </Button>
       </div>
@@ -1051,9 +1172,7 @@ function ExecutiveDashboard() {
 
         <div className="surface-card p-3 text-center rounded-xl border border-border">
           <span className="text-[11px] text-muted-foreground">إجمالي الزيارات</span>
-          <div className="mt-1 text-xl font-black">
-            {filteredData?.totalAudits ?? 0}
-          </div>
+          <div className="mt-1 text-xl font-black">{filteredData?.totalAudits ?? 0}</div>
         </div>
 
         <div className="surface-card p-3 text-center rounded-xl border border-border">
@@ -1089,7 +1208,10 @@ function ExecutiveDashboard() {
         <>
           <div className="mt-6 space-y-6">
             <div className="surface-card p-4 rounded-xl border border-border">
-              <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5" dir="rtl">
+              <div
+                className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
+                dir="rtl"
+              >
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-emerald-700">
                     <BarChart3 className="size-4" />
@@ -1099,24 +1221,36 @@ function ExecutiveDashboard() {
                     اضغط على أي قسم لعرض نسب الشهور والفروع والملاحظات بالتفصيل
                   </p>
                 </div>
-                <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300"
+                >
                   {filteredData?.fsSections?.length ?? 0} أقسام
                 </Badge>
               </div>
 
               {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">جاري تحميل البيانات...</p>
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  جاري تحميل البيانات...
+                </p>
               ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.fsSections.map((sec) => (
-                    <SectionCard key={sec.id} sec={sec} onSelect={() => setActiveSectionId(sec.id)} />
+                    <SectionCard
+                      key={sec.id}
+                      sec={sec}
+                      onSelect={() => setActiveSectionId(sec.id)}
+                    />
                   ))}
                 </div>
               )}
             </div>
 
             <div className="surface-card p-4 rounded-xl border border-border">
-              <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5" dir="rtl">
+              <div
+                className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
+                dir="rtl"
+              >
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700">
                     <BarChart3 className="size-4" />
@@ -1126,59 +1260,92 @@ function ExecutiveDashboard() {
                     مؤشرات الأقسام التابعة لتدقيق الـ GHP
                   </p>
                 </div>
-                <Badge variant="outline" className="text-xs bg-indigo-50 text-indigo-800 border-indigo-300">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-indigo-50 text-indigo-800 border-indigo-300"
+                >
                   {filteredData?.ghpSections?.length ?? 0} أقسام
                 </Badge>
               </div>
 
               {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">جاري تحميل البيانات...</p>
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  جاري تحميل البيانات...
+                </p>
               ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.ghpSections.map((sec) => (
-                    <SectionCard key={sec.id} sec={sec} onSelect={() => setActiveSectionId(sec.id)} />
+                    <SectionCard
+                      key={sec.id}
+                      sec={sec}
+                      onSelect={() => setActiveSectionId(sec.id)}
+                    />
                   ))}
                 </div>
               )}
             </div>
 
             <div className="surface-card p-4 rounded-xl border border-border">
-              <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5" dir="rtl">
+              <div
+                className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
+                dir="rtl"
+              >
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-amber-700">
                     <BarChart3 className="size-4" />
                     مؤشرات أقسام FSMS (المعتمدة فقط)
                   </h3>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">تفصيل أقسام نظام إدارة سلامة الغذاء حسب الشهر والفرع</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    تفصيل أقسام نظام إدارة سلامة الغذاء حسب الشهر والفرع
+                  </p>
                 </div>
-                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-300">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-amber-50 text-amber-800 border-amber-300"
+                >
                   {filteredData?.fsmsSections?.length ?? 0} أقسام
                 </Badge>
               </div>
 
               {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">جاري تحميل البيانات...</p>
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  جاري تحميل البيانات...
+                </p>
               ) : filteredData?.fsmsSections?.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">لا توجد بيانات أقسام FSMS مرتبطة بتدقيقات معتمدة.</p>
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  لا توجد بيانات أقسام FSMS مرتبطة بتدقيقات معتمدة.
+                </p>
               ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.fsmsSections.map((sec) => (
-                    <SectionCard key={sec.id} sec={sec} onSelect={() => setActiveSectionId(sec.id)} />
+                    <SectionCard
+                      key={sec.id}
+                      sec={sec}
+                      onSelect={() => setActiveSectionId(sec.id)}
+                    />
                   ))}
                 </div>
               )}
             </div>
 
             <div className="surface-card p-4 rounded-xl border border-border">
-              <div className="mb-3 flex items-center justify-between border-b border-border pb-2.5" dir="rtl">
+              <div
+                className="mb-3 flex items-center justify-between border-b border-border pb-2.5"
+                dir="rtl"
+              >
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-amber-700">
                     <FileText className="size-4" />
                     نتائج تدقيق الدورة المستندية ونظام ISO 22000 — FSMS
                   </h3>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">درجة التقييم المعتمدة لكل فرع</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    درجة التقييم المعتمدة لكل فرع
+                  </p>
                 </div>
-                <Badge variant="outline" className="text-xs bg-amber-50 text-amber-800 border-amber-300">
+                <Badge
+                  variant="outline"
+                  className="text-xs bg-amber-50 text-amber-800 border-amber-300"
+                >
                   {filteredData?.fsmsBranchScores.length ?? 0} فروع مدققة
                 </Badge>
               </div>
@@ -1188,19 +1355,30 @@ function ExecutiveDashboard() {
                   لا توجد تقييمات معتمدة لتدقيق FSMS حتى الآن.
                 </p>
               ) : (
-                <div className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4" dir="rtl">
+                <div
+                  className="grid gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                  dir="rtl"
+                >
                   {filteredData?.fsmsBranchScores.map((b) => (
-                    <div key={b.branchId} className="p-3 rounded-lg border border-border bg-card shadow-2xs flex justify-between items-center">
+                    <div
+                      key={b.branchId}
+                      className="p-3 rounded-lg border border-border bg-card shadow-2xs flex justify-between items-center"
+                    >
                       <div>
-                        <span className="font-bold text-xs text-foreground block">{b.branchName}</span>
+                        <span className="font-bold text-xs text-foreground block">
+                          {b.branchName}
+                        </span>
                         <span className="text-[10px] text-muted-foreground font-mono">
                           {b.auditDate || "—"}
                         </span>
                       </div>
                       <div className="text-left">
                         <span
-                          className={`text-sm font-black font-mono px-2 py-0.5 rounded ${(b.score ?? 0) >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                            }`}
+                          className={`text-sm font-black font-mono px-2 py-0.5 rounded ${
+                            (b.score ?? 0) >= 85
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-destructive/10 text-destructive"
+                          }`}
                         >
                           {b.score}%
                         </span>
@@ -1213,13 +1391,18 @@ function ExecutiveDashboard() {
           </div>
 
           <div className="surface-card mt-6 p-4 rounded-xl border border-border">
-            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5" dir="rtl">
+            <div
+              className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
+              dir="rtl"
+            >
               <div>
                 <h3 className="text-sm font-bold flex items-center gap-1.5">
                   <Store className="size-4 text-primary" />
                   متابعة نشاط الفروع (اضغط لعرض البرامج والملاحظات بالشهور)
                 </h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">تقسيم برامج الفحص والنسب والملاحظات</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  تقسيم برامج الفحص والنسب والملاحظات
+                </p>
               </div>
               <div className="w-48 print:hidden">
                 <Input
@@ -1241,8 +1424,12 @@ function ExecutiveDashboard() {
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="font-bold text-xs text-foreground block">{branch.nameAr}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono">الكود: {branch.code}</span>
+                      <span className="font-bold text-xs text-foreground block">
+                        {branch.nameAr}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        الكود: {branch.code}
+                      </span>
                     </div>
                     <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono">
                       {branch.total} فحص
@@ -1333,13 +1520,23 @@ function ExecutiveDashboard() {
                   >
                     <div>
                       <span className="font-bold block">{audit.branchName}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono">{audit.audit_date}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {audit.audit_date}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Badge variant={audit.status === "submitted" ? "default" : "outline"} className="text-[10px] px-1.5 py-0">
+                      <Badge
+                        variant={audit.status === "submitted" ? "default" : "outline"}
+                        className="text-[10px] px-1.5 py-0"
+                      >
                         {audit.status === "submitted" ? "مكتمل" : "مسودة"}
                       </Badge>
-                      <Button asChild size="sm" variant="ghost" className="print:hidden h-6 text-xs px-2">
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="ghost"
+                        className="print:hidden h-6 text-xs px-2"
+                      >
                         <Link
                           to={audit.status === "submitted" ? "/audits/$id/report" : "/audits/$id"}
                           params={{ id: audit.id }}
@@ -1355,11 +1552,15 @@ function ExecutiveDashboard() {
           </div>
         </>
       ) : (
-        <div className="mt-8 surface-card p-6 rounded-xl border border-dashed border-border text-center" dir="rtl">
+        <div
+          className="mt-8 surface-card p-6 rounded-xl border border-dashed border-border text-center"
+          dir="rtl"
+        >
           <ShieldAlert className="size-8 text-muted-foreground mx-auto mb-2 opacity-60" />
           <h4 className="text-xs font-bold text-foreground">عرض مخصص للمفتشين</h4>
           <p className="text-[11px] text-muted-foreground mt-1 max-w-md mx-auto">
-            يتم عرض الملخص العام لزياراتك أعلاه، بينما التحليلات التفصيلية لمؤشرات الأقسام وأداء الفروع مقتصرة على حسابات الإدارة (Administrators).
+            يتم عرض الملخص العام لزياراتك أعلاه، بينما التحليلات التفصيلية لمؤشرات الأقسام وأداء
+            الفروع مقتصرة على حسابات الإدارة (Administrators).
           </p>
         </div>
       )}
@@ -1394,7 +1595,10 @@ function ExecutiveDashboard() {
                 const isMonthOpen = expandedNodes[monthKey] ?? true;
 
                 return (
-                  <div key={mObj.monthKey} className="rounded-xl border border-border bg-card overflow-hidden">
+                  <div
+                    key={mObj.monthKey}
+                    className="rounded-xl border border-border bg-card overflow-hidden"
+                  >
                     <div
                       onClick={() => toggleNode(monthKey)}
                       className="cursor-pointer flex items-center justify-between p-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/60 select-none"
@@ -1414,7 +1618,9 @@ function ExecutiveDashboard() {
                         <span className="text-[11px] text-muted-foreground font-semibold">
                           {mObj.branches.length} فروع
                         </span>
-                        <ChevronDown className={`size-4 text-muted-foreground transition-transform duration-200 ${isMonthOpen ? "rotate-180" : ""}`} />
+                        <ChevronDown
+                          className={`size-4 text-muted-foreground transition-transform duration-200 ${isMonthOpen ? "rotate-180" : ""}`}
+                        />
                       </div>
                     </div>
 
@@ -1425,34 +1631,52 @@ function ExecutiveDashboard() {
                           const isBranchOpen = expandedNodes[branchKey] ?? false;
 
                           return (
-                            <div key={bObj.branchId} className="rounded-lg border border-border/80 bg-background overflow-hidden">
+                            <div
+                              key={bObj.branchId}
+                              className="rounded-lg border border-border/80 bg-background overflow-hidden"
+                            >
                               <div
                                 onClick={() => toggleNode(branchKey)}
                                 className="cursor-pointer flex items-center justify-between p-2.5 hover:bg-muted/30 transition-colors select-none"
                               >
                                 <div className="flex items-center gap-2">
                                   <Store className="size-3.5 text-muted-foreground" />
-                                  <span className="font-bold text-xs text-foreground">{bObj.branchName}</span>
+                                  <span className="font-bold text-xs text-foreground">
+                                    {bObj.branchName}
+                                  </span>
                                   <span
-                                    className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${bObj.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                                      }`}
+                                    className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${
+                                      bObj.complianceRate >= 85
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-destructive/10 text-destructive"
+                                    }`}
                                   >
                                     {bObj.complianceRate}% امتثال
                                   </span>
-                                  <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono">
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] py-0 px-1 font-mono"
+                                  >
                                     {bObj.items.length} عدم مطابقة
                                   </Badge>
                                 </div>
 
                                 <div className="flex items-center gap-1.5">
                                   {bObj.auditId && (
-                                    <Button asChild size="sm" variant="ghost" className="h-6 text-[10px] px-2 text-primary font-bold">
+                                    <Button
+                                      asChild
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 text-[10px] px-2 text-primary font-bold"
+                                    >
                                       <Link to="/audits/$id/report" params={{ id: bObj.auditId }}>
                                         فتح التقرير <ExternalLink className="size-2.5 mr-1" />
                                       </Link>
                                     </Button>
                                   )}
-                                  <ChevronDown className={`size-3.5 text-muted-foreground transition-transform duration-200 ${isBranchOpen ? "rotate-180" : ""}`} />
+                                  <ChevronDown
+                                    className={`size-3.5 text-muted-foreground transition-transform duration-200 ${isBranchOpen ? "rotate-180" : ""}`}
+                                  />
                                 </div>
                               </div>
 
@@ -1464,7 +1688,10 @@ function ExecutiveDashboard() {
                                     </p>
                                   ) : (
                                     bObj.items.map((item, itIdx) => (
-                                      <div key={itIdx} className="p-2 rounded border border-border/70 bg-card text-xs space-y-1">
+                                      <div
+                                        key={itIdx}
+                                        className="p-2 rounded border border-border/70 bg-card text-xs space-y-1"
+                                      >
                                         <div className="flex justify-between items-center">
                                           <span className="font-mono text-[10px] bg-muted px-1.5 py-0.2 rounded border border-border">
                                             {item.itemId}
@@ -1477,7 +1704,9 @@ function ExecutiveDashboard() {
                                           {item.questionText}
                                         </p>
                                         <div className="p-1.5 bg-muted/40 rounded border border-border/40 text-[11px]">
-                                          <span className="font-bold text-destructive block text-[10px]">الملاحظة:</span>
+                                          <span className="font-bold text-destructive block text-[10px]">
+                                            الملاحظة:
+                                          </span>
                                           {item.comment}
                                         </div>
                                       </div>
@@ -1506,15 +1735,22 @@ function ExecutiveDashboard() {
               متابعة نشاط وملاحظات: {activeBranch?.nameAr}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              كود الفرع: {activeBranch?.code} • إجمالي الفحوصات المعتمدة: {activeBranch?.completed ?? 0}
+              كود الفرع: {activeBranch?.code} • إجمالي الفحوصات المعتمدة:{" "}
+              {activeBranch?.completed ?? 0}
             </DialogDescription>
           </DialogHeader>
 
           <Tabs defaultValue="fs" className="w-full mt-2" dir="rtl">
             <TabsList className="grid grid-cols-3 w-full bg-muted/60 h-8 p-0.5 rounded-lg">
-              <TabsTrigger value="fs" className="text-xs py-1 font-bold">Food Safety</TabsTrigger>
-              <TabsTrigger value="ghp" className="text-xs py-1 font-bold">GHP</TabsTrigger>
-              <TabsTrigger value="fsms" className="text-xs py-1 font-bold">FSMS</TabsTrigger>
+              <TabsTrigger value="fs" className="text-xs py-1 font-bold">
+                Food Safety
+              </TabsTrigger>
+              <TabsTrigger value="ghp" className="text-xs py-1 font-bold">
+                GHP
+              </TabsTrigger>
+              <TabsTrigger value="fsms" className="text-xs py-1 font-bold">
+                FSMS
+              </TabsTrigger>
             </TabsList>
 
             {[
@@ -1533,14 +1769,19 @@ function ExecutiveDashboard() {
                     const isMOpen = expandedNodes[mKey] ?? true;
 
                     return (
-                      <div key={mGroup.monthKey} className="rounded-xl border border-border bg-card overflow-hidden">
+                      <div
+                        key={mGroup.monthKey}
+                        className="rounded-xl border border-border bg-card overflow-hidden"
+                      >
                         <div
                           onClick={() => toggleNode(mKey)}
                           className="cursor-pointer flex items-center justify-between p-3 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/60 select-none"
                         >
                           <div className="flex items-center gap-2">
                             <Calendar className="size-4 text-primary" />
-                            <span className="font-bold text-xs font-mono">شهر: {mGroup.monthKey}</span>
+                            <span className="font-bold text-xs font-mono">
+                              شهر: {mGroup.monthKey}
+                            </span>
                             <Badge
                               variant={mGroup.complianceRate >= 85 ? "default" : "destructive"}
                               className="text-[10px] font-mono px-2 py-0"
@@ -1551,13 +1792,20 @@ function ExecutiveDashboard() {
 
                           <div className="flex items-center gap-2">
                             {mGroup.auditId && (
-                              <Button asChild size="sm" variant="ghost" className="h-6 text-[10px] px-2 text-primary font-bold">
+                              <Button
+                                asChild
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] px-2 text-primary font-bold"
+                              >
                                 <Link to="/audits/$id/report" params={{ id: mGroup.auditId }}>
                                   عرض التقرير <ExternalLink className="size-2.5 mr-1" />
                                 </Link>
                               </Button>
                             )}
-                            <ChevronDown className={`size-4 text-muted-foreground transition-transform duration-200 ${isMOpen ? "rotate-180" : ""}`} />
+                            <ChevronDown
+                              className={`size-4 text-muted-foreground transition-transform duration-200 ${isMOpen ? "rotate-180" : ""}`}
+                            />
                           </div>
                         </div>
 
@@ -1568,25 +1816,38 @@ function ExecutiveDashboard() {
                               const isSecOpen = expandedNodes[secNodeKey] ?? false;
 
                               return (
-                                <div key={sec.sectionName} className="rounded-lg border border-border/80 bg-background overflow-hidden">
+                                <div
+                                  key={sec.sectionName}
+                                  className="rounded-lg border border-border/80 bg-background overflow-hidden"
+                                >
                                   <div
                                     onClick={() => toggleNode(secNodeKey)}
                                     className="cursor-pointer flex items-center justify-between p-2.5 hover:bg-muted/30 transition-colors select-none"
                                   >
                                     <div className="flex items-center gap-2">
                                       <Layers className="size-3.5 text-primary" />
-                                      <span className="font-bold text-xs text-foreground">{sec.sectionName}</span>
+                                      <span className="font-bold text-xs text-foreground">
+                                        {sec.sectionName}
+                                      </span>
                                       <span
-                                        className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${sec.complianceRate >= 85 ? "bg-emerald-100 text-emerald-800" : "bg-destructive/10 text-destructive"
-                                          }`}
+                                        className={`text-[10px] font-bold font-mono px-1.5 py-0.2 rounded ${
+                                          sec.complianceRate >= 85
+                                            ? "bg-emerald-100 text-emerald-800"
+                                            : "bg-destructive/10 text-destructive"
+                                        }`}
                                       >
                                         {sec.complianceRate}% امتثال
                                       </span>
-                                      <Badge variant="outline" className="text-[10px] py-0 px-1 font-mono">
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] py-0 px-1 font-mono"
+                                      >
                                         {sec.items.length} عدم مطابقة
                                       </Badge>
                                     </div>
-                                    <ChevronDown className={`size-3.5 text-muted-foreground transition-transform duration-200 ${isSecOpen ? "rotate-180" : ""}`} />
+                                    <ChevronDown
+                                      className={`size-3.5 text-muted-foreground transition-transform duration-200 ${isSecOpen ? "rotate-180" : ""}`}
+                                    />
                                   </div>
 
                                   {isSecOpen && (
@@ -1597,7 +1858,10 @@ function ExecutiveDashboard() {
                                         </p>
                                       ) : (
                                         sec.items.map((it, itIdx) => (
-                                          <div key={itIdx} className="p-2 rounded border border-border/70 bg-card text-xs space-y-1">
+                                          <div
+                                            key={itIdx}
+                                            className="p-2 rounded border border-border/70 bg-card text-xs space-y-1"
+                                          >
                                             <div className="flex justify-between items-center">
                                               <span className="font-mono text-[10px] bg-muted px-1.5 py-0.2 rounded border border-border">
                                                 {it.itemId}
@@ -1610,7 +1874,9 @@ function ExecutiveDashboard() {
                                               {it.questionText}
                                             </p>
                                             <div className="p-1.5 bg-muted/40 rounded border border-border/40 text-[11px]">
-                                              <span className="font-bold text-destructive block text-[10px]">الملاحظة:</span>
+                                              <span className="font-bold text-destructive block text-[10px]">
+                                                الملاحظة:
+                                              </span>
                                               {it.comment}
                                             </div>
                                           </div>
@@ -1646,12 +1912,13 @@ function SectionCard({ sec, onSelect }: { sec: any; onSelect: () => void }) {
       <div className="flex justify-between items-start mb-1.5">
         <span className="font-bold text-xs text-foreground">{sec.nameAr}</span>
         <span
-          className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${sec.complianceRate >= 90
+          className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+            sec.complianceRate >= 90
               ? "bg-emerald-100 text-emerald-800"
               : sec.complianceRate >= 75
                 ? "bg-amber-100 text-amber-800"
                 : "bg-destructive/10 text-destructive"
-            }`}
+          }`}
         >
           {sec.complianceRate}% امتثال
         </span>
