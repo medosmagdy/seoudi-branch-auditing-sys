@@ -86,6 +86,10 @@ function ExecutiveDashboard() {
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
+  const [activeMetric, setActiveMetric] = useState<"compliance" | "visits" | "nonCompliance" | "critical" | null>(null);
+  const [issueBranchFilter, setIssueBranchFilter] = useState("all");
+  const [issueProgramFilter, setIssueProgramFilter] = useState("all");
+  const [issueMonthFilter, setIssueMonthFilter] = useState("");
 
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
 
@@ -220,6 +224,7 @@ function ExecutiveDashboard() {
                   comment: string;
                   score: number | null;
                   maxScore: number;
+                  sectionName: string;
                 }>;
               }
             >;
@@ -318,6 +323,7 @@ function ExecutiveDashboard() {
           comment: formatAuditComment(ans.comment),
           score: ans.score,
           maxScore,
+          sectionName: cleanSectionName(sec.name_ar),
         });
       }
     });
@@ -364,6 +370,24 @@ function ExecutiveDashboard() {
     const fsSections = formatSections("FS");
     const ghpSections = formatSections("GHP");
     const fsmsSections = formatSections("FSMS");
+
+    const issueRecords = [...fsSections, ...ghpSections, ...fsmsSections].flatMap((section) =>
+      section.months.flatMap((month) =>
+        month.branches.flatMap((branch) =>
+          branch.items.map((item) => ({
+            ...item,
+            branchId: branch.branchId,
+            branchName: branch.branchName,
+            monthKey: month.monthKey,
+            program: section.program,
+            sectionName: section.nameAr,
+            sectionRate: section.complianceRate,
+            branchRate: branch.complianceRate,
+            critical: item.score === 0,
+          })),
+        ),
+      ),
+    );
 
     const fsmsBranchScores = data.branches
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
@@ -433,6 +457,7 @@ function ExecutiveDashboard() {
       fsSections,
       ghpSections,
       fsmsSections,
+      issueRecords,
       allSections: [...fsSections, ...ghpSections, ...fsmsSections],
       fsmsBranchScores,
       branchesSummary,
@@ -462,6 +487,15 @@ function ExecutiveDashboard() {
     if (!selectedBranchId || !filteredData) return null;
     return filteredData.branchesSummary.find((b) => b.id === selectedBranchId) || null;
   }, [selectedBranchId, filteredData]);
+
+  const activeIssues = useMemo(() => {
+    const records = filteredData?.issueRecords ?? [];
+    return records.filter((issue) =>
+      (issueBranchFilter === "all" || issue.branchId === issueBranchFilter) &&
+      (issueProgramFilter === "all" || issue.program === issueProgramFilter) &&
+      (!issueMonthFilter || issue.monthKey === issueMonthFilter),
+    );
+  }, [filteredData, issueBranchFilter, issueProgramFilter, issueMonthFilter]);
 
   const branchProgramsTree = useMemo(() => {
     if (!activeBranch || !filteredData || !data) return { foodSafety: [], ghp: [], fsms: [] };
@@ -868,13 +902,15 @@ function ExecutiveDashboard() {
 
       monthAudits.forEach((audit: any) => {
         const calc = auditScoresMap[audit.id] || { earned: 0, possible: 0, secScores: {} };
-        const rawPct = calc.possible > 0 ? (calc.earned / calc.possible) * 100 : 0;
+        const rawPct = calc.possible > 0 ? (calc.earned / calc.possible) * 100 : null;
         const finalPct =
-          audit.score !== null && audit.score !== undefined
-            ? Number(audit.score)
-            : Math.round(rawPct);
+          rawPct === null
+            ? null
+            : audit.score !== null && audit.score !== undefined
+              ? Number(audit.score)
+              : Math.round(rawPct);
 
-        const isPassed = finalPct >= 85;
+        const isPassed = finalPct !== null && finalPct >= 85;
         const scoreStyle = {
           ...cellCenter,
           font: { ...cellCenter.font, bold: true, color: { rgb: isPassed ? "006600" : "CC0000" } },
@@ -895,7 +931,7 @@ function ExecutiveDashboard() {
           { v: audit.status === "submitted" ? "Approved (معتمد)" : "Draft (مسودة)", s: cellCenter },
           { v: calc.earned, s: cellCenter },
           { v: calc.possible, s: cellCenter },
-          { v: `${finalPct}%`, s: scoreStyle },
+          { v: finalPct === null ? "N/A" : `${finalPct}%`, s: scoreStyle },
           {
             v: gDed.pct > 0 ? `${gDed.pct}%` : "0%",
             s: {
@@ -980,8 +1016,17 @@ function ExecutiveDashboard() {
       ["عدد الفروع", filteredData.totalBranches],
     ];
     const wsExecutive = XLSX.utils.aoa_to_sheet(executiveRows);
-    wsExecutive["!cols"] = [{ wch: 28 }, { wch: 20 }];
+    wsExecutive["!cols"] = [{ wch: 30 }, { wch: 22 }];
+    wsExecutive["!freeze"] = { xSplit: 0, ySplit: 1 };
+    wsExecutive["!autofilter"] = { ref: "A1:B8" };
+    wsExecutive["!views"] = [{ rightToLeft: true }];
+    for (const address of ["A1", "B1"]) wsExecutive[address]!.s = headerBlueStyle;
+    for (let row = 2; row <= executiveRows.length; row += 1) {
+      wsExecutive[`A${row}`]!.s = cellLeft;
+      wsExecutive[`B${row}`]!.s = cellCenter;
+    }
     XLSX.utils.book_append_sheet(wb, wsExecutive, "الملخص التنفيذي");
+    (wb as any).Workbook.Sheets.push({ name: "الملخص التنفيذي", RTL: true });
 
     const sectionRows = [
       ["البرنامج", "القسم", "عدد الزيارات", "نسبة الامتثال", "حالات عدم المطابقة", "مخالفات حرجة"],
@@ -999,14 +1044,17 @@ function ExecutiveDashboard() {
     });
     const wsSections = XLSX.utils.aoa_to_sheet(sectionRows);
     wsSections["!cols"] = [
-      { wch: 14 },
-      { wch: 32 },
-      { wch: 15 },
-      { wch: 16 },
-      { wch: 22 },
-      { wch: 18 },
+      { wch: 14 }, { wch: 32 }, { wch: 15 }, { wch: 16 }, { wch: 22 }, { wch: 18 },
     ];
+    wsSections["!freeze"] = { xSplit: 0, ySplit: 1 };
+    wsSections["!autofilter"] = { ref: `A1:F${sectionRows.length}` };
+    wsSections["!views"] = [{ rightToLeft: true }];
+    for (let col = 0; col < 6; col += 1) wsSections[XLSX.utils.encode_cell({ r: 0, c: col })]!.s = headerBlueStyle;
+    for (let row = 1; row < sectionRows.length; row += 1) {
+      for (let col = 0; col < 6; col += 1) wsSections[XLSX.utils.encode_cell({ r: row, c: col })]!.s = col === 1 ? cellLeft : cellCenter;
+    }
     XLSX.utils.book_append_sheet(wb, wsSections, "مؤشرات الأقسام");
+    (wb as any).Workbook.Sheets.push({ name: "مؤشرات الأقسام", RTL: true });
 
     const wsIssues = XLSX.utils.json_to_sheet(
       discrepancyLog.map((row) => ({
@@ -1025,20 +1073,26 @@ function ExecutiveDashboard() {
       })),
     );
     wsIssues["!cols"] = [
-      { wch: 24 },
-      { wch: 20 },
-      { wch: 14 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 28 },
-      { wch: 16 },
-      { wch: 45 },
-      { wch: 36 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 14 },
+      { wch: 24 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 20 }, { wch: 28 },
+      { wch: 16 }, { wch: 45 }, { wch: 36 }, { wch: 12 }, { wch: 16 }, { wch: 14 },
     ];
+    wsIssues["!freeze"] = { xSplit: 0, ySplit: 1 };
+    wsIssues["!views"] = [{ rightToLeft: true }];
+    if (wsIssues["!ref"]) {
+      wsIssues["!autofilter"] = { ref: wsIssues["!ref"] };
+      const range = XLSX.utils.decode_range(wsIssues["!ref"]);
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        wsIssues[XLSX.utils.encode_cell({ r: 0, c: col })]!.s = headerBlueStyle;
+      }
+      for (let row = 1; row <= range.e.r; row += 1) {
+        for (let col = range.s.c; col <= range.e.c; col += 1) {
+          const cell = wsIssues[XLSX.utils.encode_cell({ r: row, c: col })];
+          if (cell) cell.s = col === 7 || col === 8 ? cellLeft : cellCenter;
+        }
+      }
+    }
     XLSX.utils.book_append_sheet(wb, wsIssues, "سجل الملاحظات");
+    (wb as any).Workbook.Sheets.push({ name: "سجل الملاحظات", RTL: true });
 
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `Executive_Quality_Dashboard_${dateStr}.xlsx`);
@@ -1163,45 +1217,35 @@ function ExecutiveDashboard() {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("compliance")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">متوسط الامتثال العام</span>
-          <div className="mt-1 text-xl font-black text-primary">
-            {filteredData?.overallScore ?? 0}%
-          </div>
-        </div>
+          <div className="mt-1 text-xl font-black text-primary">{filteredData?.overallScore ?? 0}%</div>
+        </button>
 
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("visits")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">إجمالي الزيارات</span>
           <div className="mt-1 text-xl font-black">{filteredData?.totalAudits ?? 0}</div>
-        </div>
+        </button>
 
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("visits")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-emerald-500/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">فحوصات معتمدة</span>
-          <div className="mt-1 text-xl font-black text-emerald-600">
-            {filteredData?.submittedCount ?? 0}
-          </div>
-        </div>
+          <div className="mt-1 text-xl font-black text-emerald-600">{filteredData?.submittedCount ?? 0}</div>
+        </button>
 
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("visits")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-amber-500/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">قيد التنفيذ (مسودات)</span>
-          <div className="mt-1 text-xl font-black text-amber-600">
-            {filteredData?.draftsCount ?? 0}
-          </div>
-        </div>
+          <div className="mt-1 text-xl font-black text-amber-600">{filteredData?.draftsCount ?? 0}</div>
+        </button>
 
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("nonCompliance")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-indigo-500/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">حالات عدم مطابقة</span>
-          <div className="mt-1 text-xl font-black text-indigo-600">
-            {filteredData?.totalComments ?? 0}
-          </div>
-        </div>
+          <div className="mt-1 text-xl font-black text-indigo-600">{filteredData?.totalComments ?? 0}</div>
+        </button>
 
-        <div className="surface-card p-3 text-center rounded-xl border border-border">
+        <button type="button" onClick={() => setActiveMetric("critical")} className="surface-card p-3 text-center rounded-xl border border-border hover:border-destructive/50 hover:bg-muted/30 transition-colors">
           <span className="text-[11px] text-muted-foreground">مخالفات صريحة (حرجة)</span>
-          <div className="mt-1 text-xl font-black text-destructive">
-            {filteredData?.totalCritical ?? 0}
-          </div>
-        </div>
+          <div className="mt-1 text-xl font-black text-destructive">{filteredData?.totalCritical ?? 0}</div>
+        </button>
       </div>
 
       {isAdmin ? (
@@ -1564,6 +1608,49 @@ function ExecutiveDashboard() {
           </p>
         </div>
       )}
+
+      <Dialog open={!!activeMetric} onOpenChange={(open) => !open && setActiveMetric(null)}>
+        <DialogContent className="max-w-5xl max-h-[88vh] overflow-y-auto" dir="rtl">
+          <DialogHeader className="text-right border-b border-border pb-3">
+            <DialogTitle className="text-base font-bold flex items-center gap-2 text-primary">
+              <BarChart3 className="size-4" />
+              {activeMetric === "compliance" ? "تفاصيل متوسط الامتثال حسب البرنامج" :
+                activeMetric === "visits" ? "تفاصيل جميع الزيارات" :
+                activeMetric === "critical" ? "المخالفات الصريحة الحرجة" : "حالات عدم المطابقة"}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              التفاصيل محسوبة من نفس الفترة والفروع الظاهرة في الداشبورد.
+            </DialogDescription>
+          </DialogHeader>
+
+          {activeMetric === "compliance" && (
+            <div className="grid gap-3 sm:grid-cols-3 pt-3">
+              {[{ code: "FS", label: "Food Safety", sections: filteredData?.fsSections }, { code: "GHP", label: "GHP", sections: filteredData?.ghpSections }, { code: "FSMS", label: "FSMS", sections: filteredData?.fsmsSections }].map((program) => {
+                const sections = program.sections ?? [];
+                const score = sections.length ? Math.round(sections.reduce((sum, section) => sum + section.complianceRate, 0) / sections.length) : 0;
+                return <div key={program.code} className="rounded-xl border border-border bg-muted/20 p-4 text-center"><p className="text-xs font-bold">{program.label}</p><p className="mt-2 text-3xl font-black text-primary">{score}%</p><p className="mt-1 text-[11px] text-muted-foreground">متوسط {sections.length} قسم</p></div>;
+              })}
+            </div>
+          )}
+
+          {activeMetric === "visits" && (
+            <div className="space-y-2 pt-3">
+              {(filteredData?.audits ?? []).map((audit) => <div key={audit.id} className="flex items-center justify-between rounded-lg border border-border bg-card p-3 text-xs"><div><p className="font-bold">{audit.branchName}</p><p className="text-muted-foreground">{audit.audit_date || "غير محدد"} · {audit.typeName}</p></div><Badge variant={audit.status === "submitted" ? "default" : "outline"}>{audit.status === "submitted" ? "مكتمل" : "مسودة"}</Badge></div>)}
+            </div>
+          )}
+
+          {(activeMetric === "nonCompliance" || activeMetric === "critical") && (
+            <div className="space-y-3 pt-3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <Select value={issueBranchFilter} onValueChange={setIssueBranchFilter}><SelectTrigger className="text-xs"><SelectValue placeholder="الفرع" /></SelectTrigger><SelectContent dir="rtl"><SelectItem value="all">كل الفروع</SelectItem>{data?.branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name_ar}</SelectItem>)}</SelectContent></Select>
+                <Select value={issueProgramFilter} onValueChange={setIssueProgramFilter}><SelectTrigger className="text-xs"><SelectValue placeholder="البرنامج" /></SelectTrigger><SelectContent dir="rtl"><SelectItem value="all">كل البرامج</SelectItem><SelectItem value="FS">Food Safety</SelectItem><SelectItem value="GHP">GHP</SelectItem><SelectItem value="FSMS">FSMS</SelectItem></SelectContent></Select>
+                <Input type="month" value={issueMonthFilter} onChange={(event) => setIssueMonthFilter(event.target.value)} className="text-xs" />
+              </div>
+              <div className="space-y-2">{activeIssues.filter((issue) => activeMetric === "critical" ? issue.critical : true).map((issue, index) => <div key={`${issue.auditId}-${issue.itemId}-${index}`} className="rounded-lg border border-border bg-card p-3 text-xs"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-bold">{issue.questionText}</span><Badge variant={issue.critical ? "destructive" : "outline"}>{issue.score} / {issue.maxScore}</Badge></div><p className="mt-2 text-muted-foreground">{issue.comment}</p><div className="mt-2 grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-4"><span>الفرع: {issue.branchName}</span><span>القسم: {issue.sectionName}</span><span>الشهر: {issue.monthKey}</span><span>القسم {issue.sectionRate}% · الفرع {issue.branchRate}%</span></div></div>)}{activeIssues.length === 0 && <p className="py-8 text-center text-xs text-muted-foreground">لا توجد نتائج مطابقة للفلاتر.</p>}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!activeSectionId} onOpenChange={(open) => !open && setActiveSectionId(null)}>
         <DialogContent className="max-w-4xl max-h-[88vh] overflow-y-auto" dir="rtl">
