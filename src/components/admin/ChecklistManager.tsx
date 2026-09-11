@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -59,6 +59,16 @@ export function ChecklistManager() {
   };
 
   const selectedAuditType = types?.find((t) => t.id === typeId);
+
+  const sectionViewModels = useMemo(
+    () =>
+      (tree?.sections ?? []).map((section) => ({
+        section,
+        headers: (tree?.headers ?? []).filter((header) => header.section_id === section.id),
+        questions: (tree?.questions ?? []).filter((question) => question.section_id === section.id),
+      })),
+    [tree],
+  );
 
   const toggleAuditTypeActive = async (id: string, current: boolean) => {
     const { error } = await supabase.from("audit_types").update({ active: !current }).eq("id", id);
@@ -672,9 +682,7 @@ export function ChecklistManager() {
         </div>
       )}
 
-      {tree?.sections.map((section, sectionIndex) => {
-        const sectionHeaders = tree.headers.filter((header) => header.section_id === section.id);
-        const sectionQuestions = tree.questions.filter((question) => question.section_id === section.id);
+      {sectionViewModels.map(({ section, headers: sectionHeaders, questions: sectionQuestions }, sectionIndex) => {
         const isOpen = openSection === section.id;
 
         return (
