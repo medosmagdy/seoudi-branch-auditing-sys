@@ -1,5 +1,5 @@
 import type { ReportModel } from "@/lib/report-data";
-import { AlertTriangle, CheckCircle2, FileText, Image as ImageIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Image as ImageIcon, TrendingUp } from "lucide-react";
 
 export function ReportDocument({ model }: { model: ReportModel }) {
   const rawScore = Number(model?.result?.finalScore);
@@ -16,7 +16,8 @@ export function ReportDocument({ model }: { model: ReportModel }) {
       <div data-report-page className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs">
         {/* 1. ترويسة التقرير الرسمية */}
         <div data-report-block className="border-b-2 border-primary pb-4 mb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
+            <img src="/seoudi-logo.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-primary">تقرير عدم المطابقة والملاحظات (NCR Report)</h1>
               <p className="text-sm font-semibold text-muted-foreground mt-0.5">
@@ -83,7 +84,57 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </div>
         </div>
 
-        {/* 3. نسب امتثال الأقسام */}
+        {/* 3. اتجاه درجات الفرع شهريًا */}
+        {model.history.length > 0 && (
+          <div data-report-block className="mt-4 rounded-xl border border-border bg-white p-4">
+            <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
+              <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
+            </h3>
+            <div className="relative h-56 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/60 to-white px-3 py-3">
+              <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
+                {[100, 75, 50, 25, 0].map((value) => <div key={value} className="border-t border-dashed border-slate-300">{value}%</div>)}
+              </div>
+              <svg viewBox="0 0 1000 260" preserveAspectRatio="none" className="absolute inset-x-12 top-4 h-40 w-[calc(100%-6rem)]" role="img" aria-label="منحنى درجات الفرع الشهرية">
+                <polyline
+                  fill="none"
+                  stroke="#0d604d"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={model.history.map((entry, index) => {
+                    const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
+                    const y = 260 - (entry.score / 100) * 260;
+                    return `${x},${y}`;
+                  }).join(" ")}
+                />
+                {model.history.map((entry, index) => {
+                  const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
+                  const y = 260 - (entry.score / 100) * 260;
+                  return (
+                    <g key={entry.month}>
+                      <circle cx={x} cy={y} r="10" fill="white" stroke="#0d604d" strokeWidth="4" />
+                      <rect x={x - 34} y={Math.max(4, y - 48)} width="68" height="28" rx="8" fill="white" stroke="#b7d9ce" strokeWidth="2" />
+                      <text x={x} y={Math.max(23, y - 28)} textAnchor="middle" fontSize="22" fontWeight="700" fill="#0d604d">{entry.score}%</text>
+                    </g>
+                  );
+                })}
+              </svg>
+              <div className="absolute inset-x-12 bottom-3 flex justify-between gap-2 text-[9px] font-semibold text-slate-600" dir="ltr">
+                {model.history.map((entry) => <span key={entry.month}>{entry.month}</span>)}
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" dir="ltr">
+              {model.history.map((entry) => (
+                <div key={`score-${entry.month}`} className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-[10px]">
+                  <span className="font-semibold text-slate-600">{entry.month}</span>
+                  <span className="font-bold text-primary">{entry.score}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. نسب امتثال الأقسام */}
         {model.result?.sections && model.result.sections.length > 0 && (
           <div data-report-block className="rounded-xl border border-border p-4 bg-muted/20">
             <h3 className="text-xs font-bold text-primary mb-3 flex items-center gap-1.5">

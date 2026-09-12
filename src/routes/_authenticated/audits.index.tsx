@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
-import { FileSpreadsheet, PenLine, Trash2, CheckCircle2, Clock } from "lucide-react";
+import { FileDown, FileSpreadsheet, PenLine, Trash2, CheckCircle2, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { logAuditEdit } from "@/lib/generate-reports";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
+import { loadReportModel } from "@/lib/report-data";
+import { downloadElementAsPdf } from "@/lib/export-pdf";
+import { ReportDocument } from "@/components/report/ReportDocument";
 
 const searchSchema = z.object({
   status: z.enum(["all", "draft", "submitted"]).default("all"),
@@ -34,6 +37,7 @@ function AuditsList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
+  const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
 
   // 1. جلب المستخدم الحالي ودوره من جدول user_roles
   const { data: userProfile } = useQuery({
@@ -113,6 +117,35 @@ function AuditsList() {
     navigate({ to: "/audits/$id", params: { id: auditId } });
   };
 
+  const exportAuditPdf = async (auditId: string) => {
+    try {
+      setExportingPdfId(auditId);
+      const model = await loadReportModel(auditId);
+      const container = document.createElement("div");
+      container.style.position = "fixed";
+      container.style.left = "-100000px";
+      container.style.top = "0";
+      container.style.width = "900px";
+      container.style.background = "white";
+      document.body.appendChild(container);
+      const root = document.createElement("div");
+      container.appendChild(root);
+      const { createRoot } = await import("react-dom/client");
+      const reportRoot = createRoot(root);
+      reportRoot.render(<ReportDocument model={model} />);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await downloadElementAsPdf(root, `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`);
+      reportRoot.unmount();
+      container.remove();
+      toast.success("تم تحميل تقرير الـ PDF بنجاح");
+    } catch (error) {
+      console.error("PDF export error", error);
+      toast.error("تعذر تصدير تقرير الـ PDF");
+    } finally {
+      setExportingPdfId(null);
+    }
+  };
+
   const removeAudit = async (auditId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذا الفحص بالكامل؟")) return;
     const { error } = await supabase.from("audits").delete().eq("id", auditId);
@@ -174,6 +207,17 @@ function AuditsList() {
           className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 font-semibold"
         >
           <FileSpreadsheet className="size-4 ml-1 text-emerald-600" /> إكسيل (Excel)
+        </Button>
+
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void exportAuditPdf(audit.id)}
+          disabled={exportingPdfId === audit.id}
+          className="border-blue-300 font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+        >
+          <FileDown className="size-4 ml-1 text-blue-600" />
+          {exportingPdfId === audit.id ? "جاري التجهيز..." : "PDF"}
         </Button>
 
         <Button
