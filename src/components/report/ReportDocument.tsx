@@ -17,7 +17,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
         {/* 1. ترويسة التقرير الرسمية */}
         <div data-report-block className="border-b-2 border-primary pb-4 mb-6">
           <div className="flex items-center justify-between gap-4">
-            <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Asset%202-gV7JTVpJyKIphX518M8IG9Ne8YFSYwY.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
+            <img src="/seoudi-logo.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-primary">تقرير عدم المطابقة والملاحظات (NCR Report)</h1>
               <p className="text-sm font-semibold text-muted-foreground mt-0.5">
@@ -90,11 +90,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
               <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
             </h3>
-            <div className="relative h-44 w-full overflow-hidden rounded-lg border border-border/70 bg-slate-50 px-3 py-3">
+            <div className="relative h-56 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/60 to-white px-3 py-3">
               <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
                 {[100, 75, 50, 25, 0].map((value) => <div key={value} className="border-t border-dashed border-slate-300">{value}%</div>)}
               </div>
-              <svg viewBox="0 0 1000 260" preserveAspectRatio="none" className="absolute inset-x-3 top-3 h-32 w-[calc(100%-1.5rem)]" role="img" aria-label="منحنى درجات الفرع الشهرية">
+              <svg viewBox="0 0 1000 260" preserveAspectRatio="none" className="absolute inset-x-12 top-4 h-40 w-[calc(100%-6rem)]" role="img" aria-label="منحنى درجات الفرع الشهرية">
                 <polyline
                   fill="none"
                   stroke="#0d604d"
@@ -118,7 +118,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                   );
                 })}
               </svg>
-              <div className="absolute inset-x-3 bottom-2 flex justify-between gap-2 text-[9px] font-semibold text-muted-foreground" dir="ltr">
+              <div className="absolute inset-x-12 bottom-3 flex justify-between gap-2 text-[9px] font-semibold text-slate-600" dir="ltr">
                 {model.history.map((entry) => <span key={entry.month}>{entry.month}</span>)}
               </div>
             </div>

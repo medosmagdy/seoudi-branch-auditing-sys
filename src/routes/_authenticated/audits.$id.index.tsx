@@ -47,6 +47,15 @@ const SCORE_OPTIONS = [
   { value: 0, label: "0 — غير مطابق" },
 ];
 
+const LARGE_BRANCH_NAMES = new Set([
+  "العلمين", "مول العرب", "مراسي", "مكرم", "دريم", "واترواي", "مدينتي", "الشروق", "المخازن المركزية",
+  "شيراتون", "التجمع", "سيتي", "زايد", "ديستركت5", "هايد بارك",
+]);
+
+function getDisabledScore(branchName: string) {
+  return LARGE_BRANCH_NAMES.has(branchName) ? 1 : 2;
+}
+
 type AnswerState = { score: number | null; isNa: boolean; comment: string };
 
 function AuditRunner() {
@@ -126,10 +135,12 @@ function AuditRunner() {
 
   useEffect(() => {
     if (!data) return;
+    const branchName = (data.audit.branches as { name_ar?: string } | null)?.name_ar ?? "";
+    const disabledScore = getDisabledScore(branchName);
     const nextAnswers: Record<string, AnswerState> = {};
     data.savedAnswers.forEach((answer) => {
       nextAnswers[answer.question_id] = {
-        score: answer.score,
+        score: answer.score === disabledScore ? 4 : answer.score,
         isNa: answer.is_na,
         comment: answer.comment ?? "",
       };
@@ -259,8 +270,8 @@ function AuditRunner() {
   const isNaSection = !!sectionNa[section.id];
   const branch = data.audit.branches as { name_ar: string; code?: string | null } | null;
   const branchName = branch?.name_ar ?? "";
-  const branchSystem = branch?.code ?? "";
-  const disabledScore = branchSystem.includes("4-1-0") ? 2 : branchSystem.includes("4-2-0") ? 1 : null;
+  const branchSystem = LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0";
+  const disabledScore = getDisabledScore(branchName);
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
@@ -322,7 +333,7 @@ function AuditRunner() {
       queryClient.invalidateQueries({ queryKey: ["audit", id] });
       toast.success(`تم رفع ${files.length} صورة بنجاح`);
     } catch {
-      toast.error("تعذر رفع بعض الصور أو كلها");
+      toast.error("تعذر رفع بعض الصور أو كله��");
     }
   };
 
