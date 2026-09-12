@@ -17,9 +17,9 @@ import { downloadElementAsPdf } from "@/lib/export-pdf";
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
   head: () => ({
     meta: [
-      { title: "Audit Summary — SBAS" },
+      { title: "Audit Summary — SAS" },
       { name: "description", content: "Review section scores, manage general deductions and submit the audit." },
-      { property: "og:title", content: "Audit Summary — SBAS" },
+      { property: "og:title", content: "Audit Summary — SAS" },
       { property: "og:description", content: "Seoudi branch audit summary before submission." },
       { name: "robots", content: "noindex" },
     ],

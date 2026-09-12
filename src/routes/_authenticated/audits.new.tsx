@@ -14,7 +14,7 @@ import { logAuditEdit } from "@/lib/generate-reports";
 export const Route = createFileRoute("/_authenticated/audits/new")({
   head: () => ({
     meta: [
-      { title: "بدء فحص جديد — SBAS" },
+      { title: "بدء فحص جديد — SAS" },
       { name: "description", content: "Create a new branch audit." },
       { name: "robots", content: "noindex" },
     ],

@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
- * SBAS — Seoudi Branches Audit System design system.
+ * SAS — Seoudi Auditing System design system.
  * Brand palette sampled from the Seoudi brand asset.
  * All colors are oklch semantic tokens. Never hardcode colors in components.
  */

@@ -11,10 +11,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign In — SBAS" },
-      { name: "description", content: "Sign in to the Seoudi Branches Audit System to run food safety audits." },
-      { property: "og:title", content: "Sign In — SBAS" },
-      { property: "og:description", content: "Access the Seoudi Branches Audit System." },
+      { title: "Sign In — SAS" },
+      { name: "description", content: "Sign in to the Seoudi Auditing System to run food safety audits." },
+      { property: "og:title", content: "Sign In — SAS" },
+      { property: "og:description", content: "Access the Seoudi Auditing System." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -76,7 +76,7 @@ function AuthPage() {
           <span className="mx-auto grid size-14 place-items-center rounded-2xl brand-banner text-2xl font-bold">
             S
           </span>
-          <h1 className="mt-4 text-xl font-extrabold">Seoudi Branches Audit System</h1>
+          <h1 className="mt-4 text-xl font-extrabold">Seoudi Auditing System</h1>
           <p className="text-xs text-muted-foreground">{"\n"}</p>
         </div>
 

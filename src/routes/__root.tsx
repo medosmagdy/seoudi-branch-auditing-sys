@@ -75,7 +75,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Seoudi Branch Auditing System" },
+      { title: "Seoudi Auditing System" },
       {
         name: "description",
         content:
@@ -84,8 +84,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { property: "og:title", content: "Seoudi Branch Auditing System" },
-      { name: "twitter:title", content: "Seoudi Branch Auditing System" },
+      { property: "og:title", content: "Seoudi Auditing System" },
+      { name: "twitter:title", content: "Seoudi Auditing System" },
       { property: "og:description", content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports." },
       { name: "twitter:description", content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports." },
       { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/ZDLdlpwOw8fYXPBQUvHAY4B0pBf1/social-images/social-1786262140818-social-image.webp" },

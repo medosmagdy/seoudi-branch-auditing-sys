@@ -1,5 +1,5 @@
 /**
- * SBAS scoring engine
+ * SAS scoring engine
  * Section deduction applies strictly to the section.
  * General deduction applies directly to the final overall branch percentage.
  */
