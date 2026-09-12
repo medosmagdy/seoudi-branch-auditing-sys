@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FileSpreadsheet, Loader2, PenLine, Trash2 } from "lucide-react";
+import { FileDown, FileSpreadsheet, Loader2, PenLine, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { loadReportModel } from "@/lib/report-data";
 import { logAuditEdit } from "@/lib/generate-reports";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
+import { ReportDocument } from "@/components/report/ReportDocument";
+import { downloadElementAsPdf } from "@/lib/export-pdf";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
   head: () => ({
@@ -29,9 +31,11 @@ function SummaryPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const reportRef = useRef<HTMLDivElement>(null);
   const [reason, setReason] = useState("");
   const [percentage, setPercentage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const { data: model, isLoading } = useQuery({
     queryKey: ["audit-summary", id],
@@ -48,6 +52,19 @@ function SummaryPage() {
 
   const { result } = model;
   const isDraft = model.status === "draft";
+
+  const exportSummaryPdf = async () => {
+    if (!reportRef.current) return;
+    try {
+      setExportingPdf(true);
+      await downloadElementAsPdf(reportRef.current, `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`);
+      toast.success("تم تحميل تقرير الـ PDF بنجاح");
+    } catch {
+      toast.error("تعذر تصدير تقرير الـ PDF");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const addGeneralDeduction = async () => {
     const value = Number(percentage);
@@ -137,6 +154,10 @@ function SummaryPage() {
           </Badge>
 
           {/* زر تصدير الإكسيل المباشر */}
+          <Button size="sm" variant="outline" onClick={exportSummaryPdf} disabled={exportingPdf} className="gap-1.5 font-bold border-blue-300 text-blue-700">
+            {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} تحميل PDF
+          </Button>
+
           <Button
             size="sm"
             onClick={() => exportAuditToExcel(id)}
@@ -257,6 +278,10 @@ function SummaryPage() {
             إضافة خصم
           </Button>
         </div>
+      </div>
+
+      <div ref={reportRef} className="pointer-events-none absolute -left-[10000px] top-0 w-[900px] bg-white p-4 text-black">
+        <ReportDocument model={model} />
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2" dir="rtl">

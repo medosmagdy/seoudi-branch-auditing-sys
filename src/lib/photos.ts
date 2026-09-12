@@ -109,6 +109,14 @@ export async function uploadQuestionPhoto(auditId: string, questionId: string, f
   return photoRecord;
 }
 
+export async function uploadQuestionPhotos(auditId: string, questionId: string, files: File[]) {
+  const uploaded = [];
+  for (const file of files) {
+    uploaded.push(await uploadQuestionPhoto(auditId, questionId, file));
+  }
+  return uploaded;
+}
+
 export async function deletePhoto(photoId: string, storagePath: string) {
   try {
     const deleteCommand = new DeleteObjectCommand({
