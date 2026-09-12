@@ -1,5 +1,5 @@
 import type { ReportModel } from "@/lib/report-data";
-import { AlertTriangle, CheckCircle2, FileText, Image as ImageIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Image as ImageIcon, TrendingUp } from "lucide-react";
 
 export function ReportDocument({ model }: { model: ReportModel }) {
   const rawScore = Number(model?.result?.finalScore);
@@ -16,7 +16,8 @@ export function ReportDocument({ model }: { model: ReportModel }) {
       <div data-report-page className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs">
         {/* 1. ترويسة التقرير الرسمية */}
         <div data-report-block className="border-b-2 border-primary pb-4 mb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4">
+            <img src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/Asset%202-gV7JTVpJyKIphX518M8IG9Ne8YFSYwY.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
             <div>
               <h1 className="text-2xl font-black text-primary">تقرير عدم المطابقة والملاحظات (NCR Report)</h1>
               <p className="text-sm font-semibold text-muted-foreground mt-0.5">
@@ -83,7 +84,48 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </div>
         </div>
 
-        {/* 3. نسب امتثال الأقسام */}
+        {/* 3. اتجاه درجات الفرع شهريًا */}
+        {model.history.length > 0 && (
+          <div data-report-block className="mt-4 rounded-xl border border-border bg-white p-4">
+            <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
+              <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
+            </h3>
+            <div className="relative h-44 w-full overflow-hidden rounded-lg border border-border/70 bg-slate-50 px-3 py-3">
+              <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
+                {[100, 75, 50, 25, 0].map((value) => <div key={value} className="border-t border-dashed border-slate-300">{value}%</div>)}
+              </div>
+              <svg viewBox="0 0 1000 260" preserveAspectRatio="none" className="absolute inset-x-3 top-3 h-32 w-[calc(100%-1.5rem)]" role="img" aria-label="منحنى درجات الفرع الشهرية">
+                <polyline
+                  fill="none"
+                  stroke="#0d604d"
+                  strokeWidth="8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={model.history.map((entry, index) => {
+                    const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
+                    const y = 260 - (entry.score / 100) * 260;
+                    return `${x},${y}`;
+                  }).join(" ")}
+                />
+                {model.history.map((entry, index) => {
+                  const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
+                  const y = 260 - (entry.score / 100) * 260;
+                  return (
+                    <g key={entry.month}>
+                      <circle cx={x} cy={y} r="12" fill="#0d604d" />
+                      <text x={x} y={Math.max(20, y - 18)} textAnchor="middle" fontSize="24" fontWeight="700" fill="#0d604d">{entry.score}</text>
+                    </g>
+                  );
+                })}
+              </svg>
+              <div className="absolute inset-x-3 bottom-2 flex justify-between gap-2 text-[9px] font-semibold text-muted-foreground" dir="ltr">
+                {model.history.map((entry) => <span key={entry.month}>{entry.month}</span>)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. نسب امتثال الأقسام */}
         {model.result?.sections && model.result.sections.length > 0 && (
           <div data-report-block className="rounded-xl border border-border p-4 bg-muted/20">
             <h3 className="text-xs font-bold text-primary mb-3 flex items-center gap-1.5">

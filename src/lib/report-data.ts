@@ -60,6 +60,7 @@ export interface ReportModel {
   sections: ReportSection[];
   generalDeductions: { id: string; reasonText: string; percentage: number }[];
   result: AuditResult;
+  history: { month: string; score: number }[];
   ncrs: ReportNCR[];
   allPhotos: {
     photoId: string;
@@ -81,7 +82,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     .single();
   if (error) throw error;
 
-  const [sections, headers, questions, answers, statuses, sectionDeductions, generalDeductions, photos, auditor] =
+  const [sections, headers, questions, answers, statuses, sectionDeductions, generalDeductions, photos, auditor, branchAudits] =
     await Promise.all([
       supabase
         .from("sections")
@@ -100,6 +101,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
       supabase.from("photos").select("*").eq("audit_id", auditId),
       supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
+      supabase.from("audits").select("id, audit_date").eq("branch_id", audit.branch_id).eq("status", "submitted").order("audit_date", { ascending: true }),
     ]);
 
   const sectionRows = sections.data ?? [];
@@ -152,6 +154,23 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   }));
 
   const result = computeAudit(scoringSections, answerMap, generalRows);
+  const historyByMonth = new Map<string, number[]>();
+  for (const row of branchAudits.data ?? []) {
+    const month = String(row.audit_date ?? "").slice(0, 7);
+    if (!month) continue;
+    const auditResult = row.id === auditId ? result : null;
+    const score = auditResult ? Number(auditResult.finalPercentage) : null;
+    if (!Number.isFinite(score)) continue;
+    historyByMonth.set(month, [...(historyByMonth.get(month) ?? []), Math.max(0, Math.min(100, score))]);
+  }
+  const history = [...historyByMonth.entries()].map(([month, scores]) => ({
+    month,
+    score: Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length),
+  }));
+  if (!history.some((entry) => entry.month === audit.audit_date.slice(0, 7))) {
+    history.push({ month: audit.audit_date.slice(0, 7), score: Math.round(result.finalPercentage) });
+  }
+  history.sort((a, b) => a.month.localeCompare(b.month));
 
   const ncrs: ReportNCR[] = [];
   const allPhotos: ReportModel["allPhotos"] = [];
@@ -256,6 +275,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     sections: modelSections,
     generalDeductions: generalRows,
     result,
+    history,
     ncrs,
     allPhotos,
   };

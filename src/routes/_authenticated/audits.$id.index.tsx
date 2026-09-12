@@ -64,7 +64,7 @@ function AuditRunner() {
     queryFn: async () => {
       const { data: audit, error } = await supabase
         .from("audits")
-        .select("id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar), audit_types(name_ar, code)")
+        .select("id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code)")
         .eq("id", id)
         .single();
       if (error) throw error;
@@ -257,7 +257,10 @@ function AuditRunner() {
   const section = data.sections[Math.min(stepIndex, data.sections.length - 1)]!;
   const sectionQuestions = data.questions.filter((question) => question.section_id === section.id);
   const isNaSection = !!sectionNa[section.id];
-  const branchName = (data.audit.branches as { name_ar: string } | null)?.name_ar ?? "";
+  const branch = data.audit.branches as { name_ar: string; code?: string | null } | null;
+  const branchName = branch?.name_ar ?? "";
+  const branchSystem = branch?.code ?? "";
+  const disabledScore = branchSystem.includes("4-1-0") ? 2 : branchSystem.includes("4-2-0") ? 1 : null;
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
@@ -278,7 +281,7 @@ function AuditRunner() {
   };
 
   const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
-    if (readOnly) return;
+    if (readOnly || patch.score === disabledScore) return;
     setAnswers((previous) => {
       const current = previous[questionId] ?? { score: null, isNa: false, comment: "" };
       const next = { ...current, ...patch };
@@ -412,7 +415,10 @@ function AuditRunner() {
 
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
                   {SCORE_OPTIONS.filter((option) => option.value <= question.max_score).map((option) => {
-                    const isOptionDisabled = readOnly || (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
+                    const isOptionDisabled =
+                      readOnly ||
+                      option.value === disabledScore ||
+                      (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
 
                     return (
                       <Button
