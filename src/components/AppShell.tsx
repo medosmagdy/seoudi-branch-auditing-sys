@@ -44,8 +44,8 @@ export function AppShell({
               S
             </span>
             <span className="hidden text-sm font-semibold leading-tight sm:block">
-              Seoudi Branches Audit System
-              <span className="block text-[11px] font-normal opacity-80">SBAS</span>
+              Seoudi Auditing System
+              <span className="block text-[11px] font-normal opacity-80">SAS</span>
             </span>
           </Link>
 

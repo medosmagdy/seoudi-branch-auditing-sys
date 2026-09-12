@@ -16,7 +16,7 @@ import { downloadElementAsPdf } from "@/lib/export-pdf";
 export const Route = createFileRoute("/_authenticated/audits/$id/report")({
   head: () => ({
     meta: [
-      { title: "NCR Report — SBAS" },
+      { title: "NCR Report — SAS" },
       { name: "description", content: "Inspection report and NCR details." },
       { name: "robots", content: "noindex" },
     ],

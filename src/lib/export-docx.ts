@@ -89,7 +89,7 @@ export async function buildReportDocx(model: ReportModel): Promise<Blob> {
       alignment: AlignmentType.CENTER,
       spacing: { after: 200 },
       shading: { fill: BRAND, type: ShadingType.CLEAR },
-      children: [en("SEOUDI  ·  SBAS", { bold: true, size: 36, color: "FFFFFF" })],
+      children: [en("SEOUDI  ·  SAS", { bold: true, size: 36, color: "FFFFFF" })],
     }),
     enParagraph(model.auditTypeNameEn || "Audit Report", { bold: true, size: 40, center: true }),
     arParagraph(model.auditTypeName, { bold: true, size: 28 }),

@@ -65,9 +65,9 @@ const PROGRAM_LABELS = {
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "لوحة التحكم والتحليلات — SBAS" },
+      { title: "لوحة التحكم والتحليلات — SAS" },
       { name: "description", content: "Executive Food Safety Quality Dashboard." },
-      { property: "og:title", content: "لوحة التحكم والتحليلات — SBAS" },
+      { property: "og:title", content: "لوحة التحكم والتحليلات — SAS" },
       { name: "robots", content: "noindex" },
     ],
   }),

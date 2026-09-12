@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Seoudi Branch Auditing System" },
+      { title: "Seoudi Auditing System" },
       {
         name: "description",
         content:
           "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
       },
-      { property: "og:title", content: "Seoudi Branch Auditing System" },
+      { property: "og:title", content: "Seoudi Auditing System" },
       {
         property: "og:description",
         content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
@@ -48,8 +48,8 @@ function Landing() {
             S
           </span>
           <div className="text-sm font-semibold leading-tight">
-            Seoudi Branches Audit System
-            <span className="block text-[11px] font-normal opacity-80">SBAS</span>
+            Seoudi Auditing System
+            <span className="block text-[11px] font-normal opacity-80">SAS</span>
           </div>
           <div className="ml-auto">
             <Button asChild variant="secondary" size="sm">
