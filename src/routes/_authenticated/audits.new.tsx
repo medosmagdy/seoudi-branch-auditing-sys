@@ -190,7 +190,7 @@ function NewAuditPage() {
             {/* اختيار نوع التدقيق */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
-                <ClipboardCheck className="size-3.5 text-muted-foreground" /> ن��ع التدقيق *
+                <ClipboardCheck className="size-3.5 text-muted-foreground" /> نوع التدقيق
               </Label>
               <Select value={auditTypeId} onValueChange={setAuditTypeId} disabled={isLoading || submitting}>
                 <SelectTrigger className="text-xs">
