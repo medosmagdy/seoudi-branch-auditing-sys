@@ -39,15 +39,15 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-background" dir="rtl">
       <header className="brand-banner sticky top-0 z-30 shadow-[var(--shadow-card)]">
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <Link to="/dashboard" className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3 px-4 py-3" dir="ltr">
+          <Link to="/dashboard" className="flex items-center gap-2 text-left">
             <span className="grid size-9 place-items-center rounded-xl bg-secondary text-secondary-foreground font-bold">S</span>
             <span className="text-sm font-semibold leading-tight">
               Seoudi Auditing System
               <span className="block text-[11px] font-normal opacity-80">SAS</span>
             </span>
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" dir="rtl">
             <Link to="/audits" className={cn("rounded-lg px-3 py-2 text-sm transition-colors", pathname === "/audits" ? "bg-secondary text-secondary-foreground font-semibold" : "hover:bg-primary-soft/60")}>سجل الفحوصات</Link>
             {isAdmin && <Link to="/admin" className={cn("rounded-lg px-3 py-2 text-sm transition-colors", pathname.startsWith("/admin") ? "bg-secondary text-secondary-foreground font-semibold" : "hover:bg-primary-soft/60")}>الإدارة</Link>}
             <Button variant="ghost" size="sm" onClick={signOut} className="hover:bg-primary-soft/60" aria-label="تسجيل الخروج">
