@@ -106,7 +106,7 @@ function ExecutiveDashboard() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["dashboard-data-full"],
+    queryKey: ["dashboard-data-full", scope],
     queryFn: async () => {
       const [
         auditsRes,
@@ -1838,7 +1838,7 @@ function ExecutiveDashboard() {
               <TabsContent key={prog.key} value={prog.key} className="space-y-3 pt-2">
                 {prog.dataTree.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">
-                    لا توجد فحوصات معتمدة مسجلة لبرنامج {prog.title} في هذا الفرع.
+                    لا توجد فحوصات معتمدة مسجلة ��برنامج {prog.title} في هذا الفرع.
                   </p>
                 ) : (
                   prog.dataTree.map((mGroup) => {
