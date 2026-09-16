@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ClipboardList, LayoutDashboard, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { ClipboardList, LayoutDashboard, LogOut, Settings, ShieldCheck, Warehouse } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
@@ -8,8 +8,10 @@ import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/audits", label: "Audits", icon: ClipboardList },
+  { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
+  { to: "/dashboard", label: "المخازن", icon: Warehouse, search: { scope: "warehouses" } },
+  { to: "/audits", label: "سجل الفحوصات", icon: ClipboardList, search: { scope: "branches" } },
+  { to: "/audits", label: "سجل المخازن", icon: Warehouse, search: { scope: "warehouses" } },
 ] as const;
 
 export function AppShell({
@@ -54,6 +56,7 @@ export function AppShell({
               <Link
                 key={item.to}
                 to={item.to}
+                search={item.search}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm transition-colors",
                   pathname.startsWith(item.to)

@@ -1,5 +1,7 @@
 import { useState, useMemo } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { z } from "zod";
+import { matchesLocationScope, type LocationScope } from "@/lib/location-scope";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   ClipboardList,
@@ -62,7 +64,12 @@ const PROGRAM_LABELS = {
   FSMS: "مؤشرات أقسام أنظمة سلامة الغذاء — FSMS",
 } as const;
 
+const dashboardSearchSchema = z.object({
+  scope: z.enum(["branches", "warehouses"]).default("branches"),
+});
+
 export const Route = createFileRoute("/_authenticated/dashboard")({
+  validateSearch: dashboardSearchSchema,
   head: () => ({
     meta: [
       { title: "لوحة التحكم والتحليلات — SAS" },
@@ -76,6 +83,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
+  const { scope } = useSearch({ from: "/_authenticated/dashboard" });
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -131,7 +139,7 @@ function ExecutiveDashboard() {
         supabase.from("profiles").select("id, full_name, email"),
       ]);
 
-      const branches = branchesRes.data ?? [];
+      const branches = (branchesRes.data ?? []).filter((branch) => matchesLocationScope(branch, scope as LocationScope));
       const auditTypes = auditTypesRes.data ?? [];
       const profiles = profilesRes.data ?? [];
 
@@ -463,7 +471,7 @@ function ExecutiveDashboard() {
       branchesSummary,
       submittedAuditIds: allSubmittedAuditIds,
     };
-  }, [data, profile, isAdmin, startDate, endDate]);
+  }, [data, profile, isAdmin, startDate, endDate, scope]);
 
   const filteredRecentAudits = useMemo(() => {
     if (!filteredData) return [];

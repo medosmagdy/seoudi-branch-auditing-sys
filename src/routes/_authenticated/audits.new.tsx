@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, Calendar, ClipboardCheck, Loader2, Store, UserCheck, User } from "lucide-react";
+import { ArrowRight, Calendar, ClipboardCheck, Loader2, Store, UserCheck, User, Warehouse } from "lucide-react";
+import { matchesLocationScope, type LocationScope } from "@/lib/location-scope";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ function NewAuditPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Form State
+  const [locationScope, setLocationScope] = useState<LocationScope>("branches");
   const [branchId, setBranchId] = useState("");
   const [auditTypeId, setAuditTypeId] = useState("");
   const [auditDate, setAuditDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -152,6 +154,7 @@ function NewAuditPage() {
   };
 
   const isLoading = loadingBranches || loadingTypes;
+  const availableLocations = (branches ?? []).filter((location: any) => matchesLocationScope(location, locationScope));
 
   return (
     <AppShell title="بدء زيارة وفحص جديد" subtitle="قم بتحديد الفرع ونوع التدقيق والمفتش المسئول">
@@ -168,17 +171,22 @@ function NewAuditPage() {
           </div>
 
           <form onSubmit={handleCreateAudit} className="space-y-4">
-            {/* اختيار الفرع */}
+            <div className="flex gap-2 rounded-lg bg-muted p-1">
+              <Button type="button" variant={locationScope === "branches" ? "default" : "ghost"} className="flex-1" onClick={() => { setLocationScope("branches"); setBranchId(""); }}><Store className="size-4 ml-1" /> الفروع</Button>
+              <Button type="button" variant={locationScope === "warehouses" ? "default" : "ghost"} className="flex-1" onClick={() => { setLocationScope("warehouses"); setBranchId(""); }}><Warehouse className="size-4 ml-1" /> المخازن</Button>
+            </div>
+
+            {/* اختيار الموقع */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
-                <Store className="size-3.5 text-muted-foreground" /> الفرع *
+                {locationScope === "warehouses" ? <Warehouse className="size-3.5 text-muted-foreground" /> : <Store className="size-3.5 text-muted-foreground" />} {locationScope === "warehouses" ? "المخزن" : "الفرع"} *
               </Label>
               <Select value={branchId} onValueChange={setBranchId} disabled={isLoading || submitting}>
                 <SelectTrigger className="text-xs">
                   <SelectValue placeholder={loadingBranches ? "جاري تحميل الفروع…" : "اختر الفرع"} />
                 </SelectTrigger>
                 <SelectContent dir="rtl">
-                  {branches?.map((b: any) => (
+                  {availableLocations.map((b: any) => (
                     <SelectItem key={b.id} value={b.id} className="text-xs">
                       {b.name_ar || b.name}
                     </SelectItem>

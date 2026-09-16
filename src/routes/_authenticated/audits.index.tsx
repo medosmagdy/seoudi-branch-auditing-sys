@@ -1,5 +1,7 @@
-import { useRef, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMemo, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { matchesLocationScope, locationScopeLabel, type LocationScope } from "@/lib/location-scope";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -17,6 +19,8 @@ import { ReportDocument } from "@/components/report/ReportDocument";
 
 const searchSchema = z.object({
   status: z.enum(["all", "draft", "submitted"]).default("all"),
+  type: z.string().default("all"),
+  scope: z.enum(["branches", "warehouses"]).default("branches"),
 });
 
 export const Route = createFileRoute("/_authenticated/audits/")({
@@ -35,6 +39,7 @@ export const Route = createFileRoute("/_authenticated/audits/")({
 
 function AuditsList() {
   const navigate = useNavigate();
+  const { status, type, scope } = useSearch({ from: "/_authenticated/audits/" });
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
@@ -96,6 +101,7 @@ function AuditsList() {
         ...audit,
         branchName: branchMap.get(audit.branch_id) || "فرع غير محدد",
         typeName: typeMap.get(audit.audit_type_id) || "سلامة الغذاء",
+        typeId: audit.audit_type_id,
       }));
     },
     enabled: userProfile !== undefined,
@@ -157,12 +163,14 @@ function AuditsList() {
     queryClient.invalidateQueries({ queryKey: ["audits"] });
   };
 
-  const completedAudits = (audits || []).filter(
-    (a) => a.status === "submitted" || a.status === "approved"
-  );
-  const draftAudits = (audits || []).filter(
-    (a) => a.status === "draft" || a.status === "in_progress"
-  );
+  const scopedAudits = useMemo(() => (audits || []).filter((audit) => {
+    const branch = { name_ar: audit.branchName };
+    const statusMatches = status === "all" || (status === "submitted" ? audit.status === "submitted" || audit.status === "approved" : audit.status === "draft" || audit.status === "in_progress");
+    return matchesLocationScope(branch, scope as LocationScope) && statusMatches && (type === "all" ||         audit.typeId === type);
+  }), [audits, scope, status, type]);
+
+  const completedAudits = scopedAudits.filter((a) => a.status === "submitted" || a.status === "approved");
+  const draftAudits = scopedAudits.filter((a) => a.status === "draft" || a.status === "in_progress");
 
   const renderAuditCard = (audit: any, isDraft: boolean) => (
     <div key={audit.id} className="surface-card flex flex-wrap items-center gap-3 p-4">
@@ -246,6 +254,25 @@ function AuditsList() {
         </Button>
       }
     >
+      <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
+        <span className="text-sm font-semibold">تصفية {locationScopeLabel(scope as LocationScope)}:</span>
+        <Select value={scope} onValueChange={(value) => navigate({ to: "/audits", search: (prev) => ({ ...prev, scope: value as "branches" | "warehouses" }) })}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="الموقع" /></SelectTrigger>
+          <SelectContent><SelectItem value="branches">الفروع</SelectItem><SelectItem value="warehouses">المخازن</SelectItem></SelectContent>
+        </Select>
+        <Select value={type} onValueChange={(value) => navigate({ to: "/audits", search: (prev) => ({ ...prev, type: value }) })}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="نوع التدقيق" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل أنواع التدقيق</SelectItem>
+            {Array.from(new Map((audits || []).map((audit) => [audit.typeId, audit.typeName])).entries()).filter(([id]) => id).map(([id, name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={status} onValueChange={(value) => navigate({ to: "/audits", search: (prev) => ({ ...prev, status: value as "all" | "draft" | "submitted" }) })}>
+          <SelectTrigger className="w-40"><SelectValue placeholder="الحالة" /></SelectTrigger>
+          <SelectContent><SelectItem value="all">كل الحالات</SelectItem><SelectItem value="submitted">مكتمل</SelectItem><SelectItem value="draft">مسودة</SelectItem></SelectContent>
+        </Select>
+      </div>
+
       <Tabs
         value={activeTab}
         onValueChange={(val) => setActiveTab(val as "completed" | "drafts")}
