@@ -1114,27 +1114,6 @@ function ExecutiveDashboard() {
           ? "متابعة دقيقة لنسب الامتثال وملاحظات الفروع والأقسام بالشهور"
           : "الملخص العام ومؤشرات الأداء"
       }
-      action={
-        isAdmin && (
-          <div className="flex items-center gap-2 print:hidden" dir="rtl">
-            <Button
-              onClick={exportToExcel}
-              size="sm"
-              variant="outline"
-              className="h-8 gap-1.5 text-xs font-bold shadow-sm"
-            >
-              <FileSpreadsheet className="size-3.5 text-emerald-600" /> تصدير Excel
-            </Button>
-            <Button
-              onClick={() => window.print()}
-              size="sm"
-              className="h-8 gap-1.5 text-xs font-bold shadow-sm"
-            >
-              <Printer className="size-3.5" /> طباعة / PDF
-            </Button>
-          </div>
-        )
-      }
     >
       <div
         className="surface-card mb-5 p-3.5 rounded-xl border border-border flex flex-wrap items-center justify-between gap-3 print:hidden"
