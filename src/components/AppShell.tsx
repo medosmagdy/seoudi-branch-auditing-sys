@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LogOut, Settings, ShieldCheck, Warehouse } from "lucide-react";
+import { LayoutDashboard, LogOut, ShieldCheck, Warehouse } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
@@ -58,7 +58,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-65px)] flex-row-reverse">
+      <div className="flex min-h-[calc(100vh-65px)] flex-row">
         <aside className="w-64 shrink-0 border-l border-border bg-card px-3 py-5">
           <div className="mb-4 px-3 text-xs font-bold text-muted-foreground">القائمة الرئيسية</div>
           <nav className="flex flex-col gap-1">
@@ -69,7 +69,6 @@ export function AppShell({
                 <span>{item.label}</span>
               </Link>
             ))}
-            {isAdmin && <Link to="/admin" className={cn("flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors", pathname.startsWith("/admin") ? "bg-secondary text-secondary-foreground font-semibold" : "hover:bg-primary-soft/60")}><Settings className="size-4" /><span>الإدارة</span></Link>}
           </nav>
           <div className="mt-auto pt-8 px-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1"><ShieldCheck className="size-3.5" />{profile?.full_name || profile?.email} · {isAdmin ? "Administrator" : "Auditor"}</span>
