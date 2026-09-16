@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowRight, Calendar, ClipboardCheck, Loader2, Store, UserCheck, User, Warehouse } from "lucide-react";
-import { matchesLocationScope, type LocationScope } from "@/lib/location-scope";
+import { matchesAuditTypeScope, matchesLocationScope, type LocationScope } from "@/lib/location-scope";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -73,6 +73,8 @@ function NewAuditPage() {
       return data ?? [];
     },
   });
+
+  const scopedAuditTypes = (auditTypes ?? []).filter((type: any) => matchesAuditTypeScope(type, locationScope));
 
   const handleCreateAudit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,7 +207,7 @@ function NewAuditPage() {
                   <SelectValue placeholder={loadingTypes ? "جاري تحميل الأنواع…" : "اختر نوع التدقيق"} />
                 </SelectTrigger>
                 <SelectContent dir="rtl">
-                  {auditTypes?.map((t: any) => (
+                  {scopedAuditTypes.map((t: any) => (
                     <SelectItem key={t.id} value={t.id} className="text-xs">
                       {t.name_ar || t.name_en}
                     </SelectItem>

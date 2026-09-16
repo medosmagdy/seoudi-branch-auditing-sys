@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { ClipboardList, LayoutDashboard, LogOut, Settings, ShieldCheck, Warehouse } from "lucide-react";
+import { LayoutDashboard, LogOut, Settings, ShieldCheck, Warehouse } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
@@ -10,7 +10,6 @@ import type { ReactNode } from "react";
 const navItems = [
   { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
   { to: "/dashboard", label: "المخازن", icon: Warehouse, search: { scope: "warehouses" } },
-  { to: "/audits", label: "سجل الفحوصات", icon: ClipboardList, search: { scope: "branches" } },
 ] as const;
 
 export function AppShell({
@@ -48,10 +47,14 @@ export function AppShell({
               <span className="block text-[11px] font-normal opacity-80">SAS</span>
             </span>
           </Link>
-          <Button variant="ghost" size="sm" onClick={signOut} className="hover:bg-primary-soft/60" aria-label="تسجيل الخروج">
-            <LogOut className="size-4" />
-            <span className="hidden sm:inline">تسجيل الخروج</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link to="/audits" className={cn("rounded-lg px-3 py-2 text-sm transition-colors", pathname === "/audits" ? "bg-secondary text-secondary-foreground font-semibold" : "hover:bg-primary-soft/60")}>سجل الفحوصات</Link>
+            {isAdmin && <Link to="/admin" className={cn("rounded-lg px-3 py-2 text-sm transition-colors", pathname.startsWith("/admin") ? "bg-secondary text-secondary-foreground font-semibold" : "hover:bg-primary-soft/60")}>الإدارة</Link>}
+            <Button variant="ghost" size="sm" onClick={signOut} className="hover:bg-primary-soft/60" aria-label="تسجيل الخروج">
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">تسجيل الخروج</span>
+            </Button>
+          </div>
         </div>
       </header>
 

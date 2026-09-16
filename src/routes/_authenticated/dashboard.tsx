@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { z } from "zod";
-import { matchesLocationScope, type LocationScope } from "@/lib/location-scope";
+import { matchesAuditTypeScope, matchesLocationScope, type LocationScope } from "@/lib/location-scope";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -140,16 +140,17 @@ function ExecutiveDashboard() {
       ]);
 
       const branches = (branchesRes.data ?? []).filter((branch) => matchesLocationScope(branch, scope as LocationScope));
-      const auditTypes = auditTypesRes.data ?? [];
+      const auditTypes = (auditTypesRes.data ?? []).filter((type) => matchesAuditTypeScope(type, scope as LocationScope));
       const profiles = profilesRes.data ?? [];
 
       const branchMap = new Map(branches.map((b) => [b.id, b]));
       const typeMap = new Map(auditTypes.map((t) => [t.id, t]));
+      const scopedAuditTypeIds = new Set(auditTypes.map((type) => type.id));
       const profileMap = new Map(profiles.map((p) => [p.id, p.full_name || p.email || "—"]));
       const scopedBranchIds = new Set(branches.map((branch) => branch.id));
 
       const audits = (auditsRes.data ?? [])
-        .filter((audit) => audit.branch_id && scopedBranchIds.has(audit.branch_id))
+        .filter((audit) => audit.branch_id && scopedBranchIds.has(audit.branch_id) && scopedAuditTypeIds.has(audit.audit_type_id))
         .map((a) => ({
         ...a,
         branchName: branchMap.get(a.branch_id)?.name_ar || "فرع غير مسجل",
@@ -244,7 +245,7 @@ function ExecutiveDashboard() {
       }
     > = {};
 
-    data.sections.forEach((s) => {
+    data.sections.filter((s) => data.auditTypes.some((type) => type.id === s.audit_type_id)).forEach((s) => {
       const program = programFromAuditTypeId(s.audit_type_id);
       const key = `${program}__${s.id}`;
 
@@ -1249,7 +1250,7 @@ function ExecutiveDashboard() {
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-emerald-700">
                     <BarChart3 className="size-4" />
-                    مؤشرات أقسام سلامة الغذاء — Food Safety (المعتمدة فقط)
+                    مؤشرات أقسام سلامة الغذا�� — Food Safety (المعتمدة فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     اضغط على أي قسم لعرض نسب الشهور والفروع والملاحظات بالتفصيل
@@ -1838,7 +1839,7 @@ function ExecutiveDashboard() {
               <TabsContent key={prog.key} value={prog.key} className="space-y-3 pt-2">
                 {prog.dataTree.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">
-                    لا توجد فحوصات معتمدة مسجلة ��برنامج {prog.title} في هذا الفرع.
+                    لا توجد فحوصات معتمدة مس��لة ��برنامج {prog.title} في هذا الفرع.
                   </p>
                 ) : (
                   prog.dataTree.map((mGroup) => {

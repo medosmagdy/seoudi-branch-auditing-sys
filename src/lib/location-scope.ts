@@ -16,3 +16,12 @@ export function matchesLocationScope(
 export function locationScopeLabel(scope: LocationScope) {
   return scope === "warehouses" ? "المخازن" : "الفروع";
 }
+
+export function isWarehouseAuditType(type: { code?: string | null; name_ar?: string | null; name_en?: string | null }) {
+  const value = [type.code, type.name_ar, type.name_en].filter(Boolean).join(" ").toLowerCase();
+  return /\(\s*wh\s*\)|\bwh\b|warehouse|مخازن|مخزن/.test(value);
+}
+
+export function matchesAuditTypeScope(type: { code?: string | null; name_ar?: string | null; name_en?: string | null }, scope: LocationScope) {
+  return scope === "warehouses" ? isWarehouseAuditType(type) : !isWarehouseAuditType(type);
+}
