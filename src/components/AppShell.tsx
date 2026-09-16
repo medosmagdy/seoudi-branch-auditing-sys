@@ -27,7 +27,8 @@ export function AppShell({
   const { profile, isAdmin } = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const { pathname, search } = useRouterState({ select: (state) => state.location });
+  const currentScope = search.scope === "warehouses" ? "warehouses" : "branches";
 
   const signOut = async () => {
     await queryClient.cancelQueries();

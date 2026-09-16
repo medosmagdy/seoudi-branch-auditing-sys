@@ -146,8 +146,11 @@ function ExecutiveDashboard() {
       const branchMap = new Map(branches.map((b) => [b.id, b]));
       const typeMap = new Map(auditTypes.map((t) => [t.id, t]));
       const profileMap = new Map(profiles.map((p) => [p.id, p.full_name || p.email || "—"]));
+      const scopedBranchIds = new Set(branches.map((branch) => branch.id));
 
-      const audits = (auditsRes.data ?? []).map((a) => ({
+      const audits = (auditsRes.data ?? [])
+        .filter((audit) => audit.branch_id && scopedBranchIds.has(audit.branch_id))
+        .map((a) => ({
         ...a,
         branchName: branchMap.get(a.branch_id)?.name_ar || "فرع غير مسجل",
         branchCode: branchMap.get(a.branch_id)?.code || "—",
@@ -397,8 +400,8 @@ function ExecutiveDashboard() {
       ),
     );
 
-    const fsmsBranchScores = data.branches
-      .filter((b) => isAdmin || allowedBranchIds.has(b.id))
+      const fsmsBranchScores = data.branches
+        .filter((b) => isAdmin || allowedBranchIds.has(b.id))
       .map((b) => {
         const branchFsmsAudits = allSubmittedAudits.filter(
           (a) => a.branch_id === b.id && a.audit_type_id === FSMS_TYPE_ID,
@@ -1429,7 +1432,7 @@ function ExecutiveDashboard() {
               <div>
                 <h3 className="text-sm font-bold flex items-center gap-1.5">
                   <Store className="size-4 text-primary" />
-                  متابعة نشاط الفروع (اضغط لعرض البرامج والملاحظات بالشهور)
+                    {scope === "warehouses" ? "متابعة نشاط المخازن المركزية (اضغط لعرض البرامج والملاحظات بالشهور)" : "متابعة نشاط الفروع (اضغط لعرض البرامج والملاحظات بالشهور)"}
                 </h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   تقسيم برامج الفحص والنسب والملاحظات
@@ -1437,7 +1440,7 @@ function ExecutiveDashboard() {
               </div>
               <div className="w-48 print:hidden">
                 <Input
-                  placeholder="بحث عن فرع..."
+                    placeholder={scope === "warehouses" ? "بحث عن مخزن مركزي..." : "بحث عن فرع..."}
                   className="h-7 text-xs"
                   value={branchSearch}
                   onChange={(e) => setBranchSearch(e.target.value)}
