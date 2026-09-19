@@ -1,10 +1,7 @@
 import { useState, useMemo } from "react";
 import { z } from "zod";
-import {
-  matchesAuditTypeScope,
-  matchesLocationScope,
-  type LocationScope,
-} from "@/lib/location-scope";
+import { type LocationScope } from "@/lib/location-scope";
+import { fetchDashboardData } from "@/lib/dashboard/data";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -27,7 +24,6 @@ import {
   ShieldAlert,
   FileText,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/hooks/useSession";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +45,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { AuditAnswerRow } from "@/lib/dashboard/types";
 import {
   DASHBOARD_PROGRAM_IDS,
   auditMonthKey,
@@ -114,78 +109,7 @@ function ExecutiveDashboard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-data-full", scope],
-    queryFn: async () => {
-      const [
-        auditsRes,
-        branchesRes,
-        sectionsRes,
-        questionsRes,
-        answersRes,
-        auditTypesRes,
-        profilesRes,
-      ] = await Promise.all([
-        supabase.from("audits").select("*").order("audit_date", { ascending: false }),
-        supabase.from("branches").select("*").order("name_ar"),
-        supabase.from("sections").select("*").order("order_index"),
-        supabase.from("questions").select("*"),
-        (async () => {
-          const pageSize = 1000;
-          const rows: AuditAnswerRow[] = [];
-          for (let from = 0; ; from += pageSize) {
-            const { data: page, error } = await supabase
-              .from("audit_answers")
-              .select("*")
-              .range(from, from + pageSize - 1);
-            if (error) throw error;
-            rows.push(...(page ?? []));
-            if (!page || page.length < pageSize) break;
-          }
-          return { data: rows, error: null };
-        })(),
-        supabase.from("audit_types").select("*"),
-        supabase.from("profiles").select("id, full_name, email"),
-      ]);
-
-      const branches = (branchesRes.data ?? []).filter((branch) =>
-        matchesLocationScope(branch, scope as LocationScope),
-      );
-      const auditTypes = (auditTypesRes.data ?? []).filter((type) =>
-        matchesAuditTypeScope(type, scope as LocationScope),
-      );
-      const profiles = profilesRes.data ?? [];
-
-      const branchMap = new Map(branches.map((b) => [b.id, b]));
-      const typeMap = new Map(auditTypes.map((t) => [t.id, t]));
-      const scopedAuditTypeIds = new Set(auditTypes.map((type) => type.id));
-      const profileMap = new Map(profiles.map((p) => [p.id, p.full_name || p.email || "—"]));
-      const scopedBranchIds = new Set(branches.map((branch) => branch.id));
-
-      const audits = (auditsRes.data ?? [])
-        .filter(
-          (audit) =>
-            audit.branch_id &&
-            scopedBranchIds.has(audit.branch_id) &&
-            scopedAuditTypeIds.has(audit.audit_type_id),
-        )
-        .map((a) => ({
-          ...a,
-          branchName: branchMap.get(a.branch_id)?.name_ar || "فرع غير مسجل",
-          branchCode: branchMap.get(a.branch_id)?.code || "—",
-          typeName: typeMap.get(a.audit_type_id)?.name_ar || "سلامة الغذاء",
-          typeCode: typeMap.get(a.audit_type_id)?.code || "FS",
-          auditorName: profileMap.get(a.auditor_id) || "—",
-        }));
-
-      return {
-        audits,
-        branches,
-        sections: sectionsRes.data ?? [],
-        questions: questionsRes.data ?? [],
-        answers: answersRes.data ?? [],
-        auditTypes,
-        profiles,
-      };
-    },
+    queryFn: () => fetchDashboardData(scope as LocationScope),
   });
 
   const filteredData = useMemo(() => {
