@@ -15,7 +15,7 @@ export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; i
   const currentScope = search.scope === "warehouses" ? "warehouses" : "branches";
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-l border-border bg-card px-3 py-5">
+    <aside className="flex w-full shrink-0 flex-col border-b border-border bg-card px-3 py-4 md:w-64 md:border-b-0 md:border-l md:py-5">
       <div className="mb-4 px-3 text-xs font-bold text-muted-foreground">القائمة الرئيسية</div>
       <nav className="flex flex-col gap-1" aria-label="القائمة الرئيسية">
         {navItems.map((item) => (

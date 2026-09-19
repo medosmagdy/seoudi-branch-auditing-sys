@@ -25,6 +25,18 @@ export async function fetchDashboardData(scope: LocationScope) {
     supabase.from("profiles").select("id, full_name, email"),
   ]);
 
+  const responses = [
+    auditsRes,
+    branchesRes,
+    sectionsRes,
+    questionsRes,
+    answersRes,
+    auditTypesRes,
+    profilesRes,
+  ];
+  const failedResponse = responses.find((response) => response.error);
+  if (failedResponse?.error) throw failedResponse.error;
+
   const branches = (branchesRes.data ?? []).filter((branch) => matchesLocationScope(branch, scope));
   const auditTypes = (auditTypesRes.data ?? []).filter((type) =>
     matchesAuditTypeScope(type, scope),

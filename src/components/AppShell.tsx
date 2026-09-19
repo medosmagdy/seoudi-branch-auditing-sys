@@ -83,7 +83,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-65px)] flex-row">
+      <div className="flex min-h-[calc(100vh-65px)] flex-col md:flex-row">
         <AppNavigation profile={profile} isAdmin={isAdmin} />
 
         <div className="min-w-0 flex-1">
