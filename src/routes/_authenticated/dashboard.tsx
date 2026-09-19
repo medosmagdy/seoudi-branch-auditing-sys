@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import type { AuditAnswerRow } from "@/lib/dashboard/types";
 import {
   DASHBOARD_PROGRAM_IDS,
   auditMonthKey,
@@ -129,7 +130,7 @@ function ExecutiveDashboard() {
         supabase.from("questions").select("*"),
         (async () => {
           const pageSize = 1000;
-          const rows: any[] = [];
+          const rows: AuditAnswerRow[] = [];
           for (let from = 0; ; from += pageSize) {
             const { data: page, error } = await supabase
               .from("audit_answers")
@@ -783,7 +784,7 @@ function ExecutiveDashboard() {
       const q = questionMap.get(ans.question_id);
       if (!q) return;
       const sec = sectionMap.get(q.section_id);
-      let secName = (sec?.name_ar || "عام").replace(/^قسم\s+/i, "").trim();
+      const secName = (sec?.name_ar || "عام").replace(/^قسم\s+/i, "").trim();
 
       if (!auditScoresMap[ans.audit_id]) {
         auditScoresMap[ans.audit_id] = { earned: 0, possible: 0, secScores: {} };
