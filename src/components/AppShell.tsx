@@ -1,16 +1,12 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, LogOut, ShieldCheck, Warehouse } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AppNavigation } from "@/components/AppNavigation";
 import type { ReactNode } from "react";
-
-const navItems = [
-  { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
-  { to: "/dashboard", label: "المخازن", icon: Warehouse, search: { scope: "warehouses" } },
-] as const;
 
 export function AppShell({
   children,
@@ -26,11 +22,7 @@ export function AppShell({
   const { profile, isAdmin } = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { pathname, search } = useRouterState({ select: (state) => state.location });
-  const currentScope = search.scope === "warehouses" ? "warehouses" : "branches";
-
-  const isActiveNavItem = (item: (typeof navItems)[number]) =>
-    pathname === item.to && item.search.scope === currentScope;
+  const { pathname } = useRouterState({ select: (state) => state.location });
 
   const signOut = async () => {
     await queryClient.cancelQueries();
@@ -92,33 +84,7 @@ export function AppShell({
       </header>
 
       <div className="flex min-h-[calc(100vh-65px)] flex-row">
-        <aside className="w-64 shrink-0 border-l border-border bg-card px-3 py-5">
-          <div className="mb-4 px-3 text-xs font-bold text-muted-foreground">القائمة الرئيسية</div>
-          <nav className="flex flex-col gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={`${item.to}-${item.label}`}
-                to={item.to}
-                search={item.search}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors",
-                  isActiveNavItem(item)
-                    ? "bg-secondary text-secondary-foreground font-semibold"
-                    : "hover:bg-primary-soft/60",
-                )}
-              >
-                <item.icon className="size-4" />
-                <span>{item.label}</span>
-              </Link>
-            ))}
-          </nav>
-          <div className="mt-auto pt-8 px-3 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <ShieldCheck className="size-3.5" />
-              {profile?.full_name || profile?.email} · {isAdmin ? "Administrator" : "Auditor"}
-            </span>
-          </div>
-        </aside>
+        <AppNavigation profile={profile} isAdmin={isAdmin} />
 
         <div className="min-w-0 flex-1">
           {(title || action) && (
