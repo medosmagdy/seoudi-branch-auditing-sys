@@ -2,14 +2,33 @@ import { useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowRight, Calendar, ClipboardCheck, Loader2, Store, UserCheck, User, Warehouse } from "lucide-react";
-import { matchesAuditTypeScope, matchesLocationScope, type LocationScope } from "@/lib/location-scope";
+import {
+  ArrowRight,
+  Calendar,
+  ClipboardCheck,
+  Loader2,
+  Store,
+  UserCheck,
+  User,
+  Warehouse,
+} from "lucide-react";
+import {
+  matchesAuditTypeScope,
+  matchesLocationScope,
+  type LocationScope,
+} from "@/lib/location-scope";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { logAuditEdit } from "@/lib/generate-reports";
 
 export const Route = createFileRoute("/_authenticated/audits/new")({
@@ -35,7 +54,6 @@ function NewAuditPage() {
   const [auditorName, setAuditorName] = useState("");
   const [branchManager, setBranchManager] = useState("");
 
-
   // جلب بيانات المستخدم المسجل تلقائياً ووضع اسمه كـ Default
   useEffect(() => {
     async function loadUserProfile() {
@@ -47,7 +65,11 @@ function NewAuditPage() {
           .eq("id", authData.user.id)
           .maybeSingle();
 
-        const name = profile?.full_name || authData.user.user_metadata?.full_name || authData.user.email?.split("@")[0] || "";
+        const name =
+          profile?.full_name ||
+          authData.user.user_metadata?.full_name ||
+          authData.user.email?.split("@")[0] ||
+          "";
         setAuditorName(name);
       }
     }
@@ -68,13 +90,19 @@ function NewAuditPage() {
   const { data: auditTypes, isLoading: loadingTypes } = useQuery({
     queryKey: ["audit-types-select"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("audit_types").select("*").eq("active", true).order("name_ar");
+      const { data, error } = await supabase
+        .from("audit_types")
+        .select("*")
+        .eq("active", true)
+        .order("name_ar");
       if (error) throw error;
       return data ?? [];
     },
   });
 
-  const scopedAuditTypes = (auditTypes ?? []).filter((type: any) => matchesAuditTypeScope(type, locationScope));
+  const scopedAuditTypes = (auditTypes ?? []).filter((type: any) =>
+    matchesAuditTypeScope(type, locationScope),
+  );
 
   const handleCreateAudit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,12 +146,20 @@ function NewAuditPage() {
       }
 
       // محاولة الإدخال الأساسية
-      let res = await supabase.from("audits").insert(insertPayload as never).select("id").single();
+      let res = await supabase
+        .from("audits")
+        .insert(insertPayload as never)
+        .select("id")
+        .single();
 
       // لو الجدول فيه حقل اسمه auditor_name ومطلوب
       if (res.error && res.error.message.includes("auditor_name")) {
         insertPayload.auditor_name = auditorName.trim();
-        res = await supabase.from("audits").insert(insertPayload as never).select("id").single();
+        res = await supabase
+          .from("audits")
+          .insert(insertPayload as never)
+          .select("id")
+          .single();
       }
 
       if (res.error) {
@@ -143,7 +179,11 @@ function NewAuditPage() {
           .eq("id", currentUserId);
       }
 
-      await logAuditEdit(newAuditId, "created", `تم إنشاء مسودة فحص جديدة بواسطة: ${auditorName.trim()}`);
+      await logAuditEdit(
+        newAuditId,
+        "created",
+        `تم إنشاء مسودة فحص جديدة بواسطة: ${auditorName.trim()}`,
+      );
       toast.success("تم بدء الفحص بنجاح!");
 
       navigate({ to: "/audits/$id", params: { id: newAuditId } });
@@ -156,7 +196,9 @@ function NewAuditPage() {
   };
 
   const isLoading = loadingBranches || loadingTypes;
-  const availableLocations = (branches ?? []).filter((location: any) => matchesLocationScope(location, locationScope));
+  const availableLocations = (branches ?? []).filter((location: any) =>
+    matchesLocationScope(location, locationScope),
+  );
 
   return (
     <AppShell title="بدء زيارة وفحص جديد" subtitle="قم بتحديد الفرع ونوع التدقيق والمفتش المسئول">
@@ -174,18 +216,49 @@ function NewAuditPage() {
 
           <form onSubmit={handleCreateAudit} className="space-y-4">
             <div className="flex gap-2 rounded-lg bg-muted p-1">
-              <Button type="button" variant={locationScope === "branches" ? "default" : "ghost"} className="flex-1" onClick={() => { setLocationScope("branches"); setBranchId(""); }}><Store className="size-4 ml-1" /> الفروع</Button>
-              <Button type="button" variant={locationScope === "warehouses" ? "default" : "ghost"} className="flex-1" onClick={() => { setLocationScope("warehouses"); setBranchId(""); }}><Warehouse className="size-4 ml-1" /> المخازن</Button>
+              <Button
+                type="button"
+                variant={locationScope === "branches" ? "default" : "ghost"}
+                className="flex-1"
+                onClick={() => {
+                  setLocationScope("branches");
+                  setBranchId("");
+                }}
+              >
+                <Store className="size-4 ml-1" /> الفروع
+              </Button>
+              <Button
+                type="button"
+                variant={locationScope === "warehouses" ? "default" : "ghost"}
+                className="flex-1"
+                onClick={() => {
+                  setLocationScope("warehouses");
+                  setBranchId("");
+                }}
+              >
+                <Warehouse className="size-4 ml-1" /> المخازن
+              </Button>
             </div>
 
             {/* اختيار الموقع */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
-                {locationScope === "warehouses" ? <Warehouse className="size-3.5 text-muted-foreground" /> : <Store className="size-3.5 text-muted-foreground" />} {locationScope === "warehouses" ? "المخزن" : "الفرع"} *
+                {locationScope === "warehouses" ? (
+                  <Warehouse className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <Store className="size-3.5 text-muted-foreground" />
+                )}{" "}
+                {locationScope === "warehouses" ? "المخزن" : "الفرع"} *
               </Label>
-              <Select value={branchId} onValueChange={setBranchId} disabled={isLoading || submitting}>
+              <Select
+                value={branchId}
+                onValueChange={setBranchId}
+                disabled={isLoading || submitting}
+              >
                 <SelectTrigger className="text-xs">
-                  <SelectValue placeholder={loadingBranches ? "جاري تحميل الفروع…" : "اختر الفرع"} />
+                  <SelectValue
+                    placeholder={loadingBranches ? "جاري تحميل الفروع…" : "اختر الفرع"}
+                  />
                 </SelectTrigger>
                 <SelectContent dir="rtl">
                   {availableLocations.map((b: any) => (
@@ -202,9 +275,15 @@ function NewAuditPage() {
               <Label className="text-xs font-semibold flex items-center gap-1.5">
                 <ClipboardCheck className="size-3.5 text-muted-foreground" /> نوع التدقيق
               </Label>
-              <Select value={auditTypeId} onValueChange={setAuditTypeId} disabled={isLoading || submitting}>
+              <Select
+                value={auditTypeId}
+                onValueChange={setAuditTypeId}
+                disabled={isLoading || submitting}
+              >
                 <SelectTrigger className="text-xs">
-                  <SelectValue placeholder={loadingTypes ? "جاري تحميل الأنواع…" : "اختر نوع التدقيق"} />
+                  <SelectValue
+                    placeholder={loadingTypes ? "جاري تحميل الأنواع…" : "اختر نوع التدقيق"}
+                  />
                 </SelectTrigger>
                 <SelectContent dir="rtl">
                   {scopedAuditTypes.map((t: any) => (
@@ -247,7 +326,8 @@ function NewAuditPage() {
             {/* اسم مدير الفرع */}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold flex items-center gap-1.5">
-                <User className="size-3.5 text-muted-foreground" /> اسم مدير الفرع (أو القائم بالإدارة)
+                <User className="size-3.5 text-muted-foreground" /> اسم مدير الفرع (أو القائم
+                بالإدارة)
               </Label>
               <Input
                 placeholder="أدخل اسم مدير الفرع..."
