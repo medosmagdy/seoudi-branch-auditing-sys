@@ -146,9 +146,7 @@ function AuditRunner() {
     () => /fsms/i.test(auditType?.name_ar || "") || /fsms/i.test(auditType?.code || ""),
     [auditType],
   );
-  const scoreOptions = isFsmsAudit
-    ? SCORE_OPTIONS.filter((option) => option.value !== 2)
-    : SCORE_OPTIONS;
+  const scoreOptions = SCORE_OPTIONS;
 
   useEffect(() => {
     if (search.section !== undefined && search.section !== stepIndex) {
@@ -315,7 +313,7 @@ function AuditRunner() {
   const branch = data.audit.branches as { name_ar: string; code?: string | null } | null;
   const branchName = branch?.name_ar ?? "";
   const branchSystem = isFsmsAudit
-    ? "4-1-0"
+    ? "4-2-0"
     : LARGE_BRANCH_NAMES.has(branchName)
       ? "4-2-0"
       : "4-1-0";
