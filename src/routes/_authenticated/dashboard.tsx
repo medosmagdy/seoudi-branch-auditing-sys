@@ -1245,7 +1245,7 @@ function ExecutiveDashboard() {
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-emerald-700">
                     <BarChart3 className="size-4" />
-                    مؤشرات أقسام سلامة الغذا�� — Food Safety (المعتمدة فقط)
+                    مؤشرات أقسام سلامة الغذاء
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     اضغط على أي قسم لعرض نسب الشهور والفروع والملاحظات بالتفصيل
