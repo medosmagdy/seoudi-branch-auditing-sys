@@ -87,7 +87,7 @@ function AuditRunner() {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code)",
+          "id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -137,7 +137,11 @@ function AuditRunner() {
     },
   });
 
-  const auditType = data?.audit?.audit_types as { name_ar?: string; code?: string } | null;
+  const auditType = data?.audit?.audit_types as {
+    name_ar?: string;
+    code?: string;
+    scoring_system?: "4-1-0" | "4-2-0";
+  } | null;
   const isGhpAudit = useMemo(
     () => /ghp/i.test(auditType?.name_ar || "") || /ghp/i.test(auditType?.code || ""),
     [auditType],
@@ -174,11 +178,15 @@ function AuditRunner() {
   useEffect(() => {
     if (!data) return;
     const branchName = (data.audit.branches as { name_ar?: string } | null)?.name_ar ?? "";
-    const disabledScore = getDisabledScore(branchName);
+    const auditTypeName =
+      (data.audit.audit_types as { name_ar?: string; code?: string } | null) ?? {};
+    const isFsms =
+      /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
+    const disabledScore = isFsms ? null : getDisabledScore(branchName);
     const nextAnswers: Record<string, AnswerState> = {};
     data.savedAnswers.forEach((answer) => {
       nextAnswers[answer.question_id] = {
-        score: answer.score === disabledScore ? 4 : answer.score,
+        score: disabledScore !== null && answer.score === disabledScore ? 4 : answer.score,
         isNa: answer.is_na,
         comment: answer.comment ?? "",
       };
@@ -314,9 +322,7 @@ function AuditRunner() {
   const branchName = branch?.name_ar ?? "";
   const branchSystem = isFsmsAudit
     ? "4-2-0"
-    : LARGE_BRANCH_NAMES.has(branchName)
-      ? "4-2-0"
-      : "4-1-0";
+    : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
   const disabledScore = getDisabledScore(branchName);
   const readOnly = data.audit.status === "submitted";
 
@@ -338,7 +344,7 @@ function AuditRunner() {
   };
 
   const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
-    if (readOnly || patch.score === disabledScore) return;
+    if (readOnly || (disabledScore !== null && patch.score === disabledScore)) return;
     setAnswers((previous) => {
       const current = previous[questionId] ?? { score: null, isNa: false, comment: "" };
       const next = { ...current, ...patch };
@@ -509,7 +515,7 @@ function AuditRunner() {
                     .map((option) => {
                       const isOptionDisabled =
                         readOnly ||
-                        option.value === disabledScore ||
+                        (disabledScore !== null && option.value === disabledScore) ||
                         (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
 
                       return (

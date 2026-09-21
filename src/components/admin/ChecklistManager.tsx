@@ -36,6 +36,7 @@ export function ChecklistManager() {
   const [replaceExisting, setReplaceExisting] = useState(true);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeCode, setNewTypeCode] = useState("");
+  const [newScoringSystem, setNewScoringSystem] = useState<"4-1-0" | "4-2-0">("4-1-0");
   const [newSection, setNewSection] = useState("");
   const [newSectionIsDelivery, setNewSectionIsDelivery] = useState(false);
   const [newHeader, setNewHeader] = useState<Record<string, string>>({});
@@ -207,7 +208,8 @@ export function ChecklistManager() {
         name_ar: newTypeName.trim().slice(0, 120),
         name_en: newTypeName.trim().slice(0, 120),
         code: newTypeCode.trim().slice(0, 40),
-      })
+        scoring_system: newScoringSystem,
+      } as never)
       .select("id")
       .single();
     if (error || !created) {
@@ -216,6 +218,7 @@ export function ChecklistManager() {
     }
     setNewTypeName("");
     setNewTypeCode("");
+    setNewScoringSystem("4-1-0");
     setTypeId(created.id);
     toast.success("تمت إضافة نوع التدقيق");
     refresh();
@@ -818,6 +821,21 @@ export function ChecklistManager() {
               onChange={(event) => setNewTypeCode(event.target.value)}
               placeholder="GHP"
             />
+          </div>
+          <div className="w-36 space-y-1.5">
+            <Label htmlFor="tscoring">نظام التقييم</Label>
+            <Select
+              value={newScoringSystem}
+              onValueChange={(value) => setNewScoringSystem(value as "4-1-0" | "4-2-0")}
+            >
+              <SelectTrigger id="tscoring">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="4-1-0">4-1-0</SelectItem>
+                <SelectItem value="4-2-0">4-2-0</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <Button onClick={addAuditType} className="gap-1.5">
             <Plus className="size-4" /> إضافة نوع
