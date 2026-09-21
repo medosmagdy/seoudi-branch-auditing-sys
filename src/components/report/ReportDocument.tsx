@@ -1,9 +1,17 @@
 import type { ReportModel } from "@/lib/report-data";
-import { AlertTriangle, CheckCircle2, FileText, Image as ImageIcon, TrendingUp } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Image as ImageIcon,
+  TrendingUp,
+} from "lucide-react";
 
 export function ReportDocument({ model }: { model: ReportModel }) {
   const rawScore = Number(model?.result?.finalScore);
-  const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, Math.round(rawScore))) : 0;
+  const finalPercentage = Number.isFinite(rawScore)
+    ? Math.max(0, Math.min(100, Math.round(rawScore)))
+    : 0;
   const isPassed = finalPercentage >= 85;
 
   const totalDeductions = Number.isFinite(Number(model?.result?.totalDeductions))
@@ -13,15 +21,21 @@ export function ReportDocument({ model }: { model: ReportModel }) {
   return (
     <div className="mx-auto w-full max-w-4xl bg-white text-foreground print:p-0" dir="rtl">
       {/* ================= الصفحة الأولى: الملخص ونسب الامتثال ================= */}
-      <div data-report-page className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs">
+      <div
+        data-report-page
+        className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs"
+      >
         {/* 1. ترويسة التقرير الرسمية */}
         <div data-report-block className="border-b-2 border-primary pb-4 mb-6">
           <div className="flex items-center justify-between gap-4">
-            <img src="/seoudi-logo.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
+            <img src="/saudi-logo.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
             <div>
-              <h1 className="text-2xl font-black text-primary">تقرير عدم المطابقة والملاحظات (NCR Report)</h1>
+              <h1 className="text-2xl font-black text-primary">
+                تقرير عدم المطابقة والملاحظات (NCR Report)
+              </h1>
               <p className="text-sm font-semibold text-muted-foreground mt-0.5">
-                {model.auditTypeName || "فحص سلامة الغذاء"} • كود التفتيش: {model.auditId.slice(0, 8)}
+                {model.auditTypeName || "فحص سلامة الغذاء"} • كود التفتيش:{" "}
+                {model.auditId.slice(0, 8)}
               </p>
             </div>
             <div className="text-left" dir="ltr">
@@ -55,11 +69,18 @@ export function ReportDocument({ model }: { model: ReportModel }) {
         {/* 2. ملخص النتيجة والتقييم النهائي */}
         <div data-report-block className="mb-6 grid gap-3 sm:grid-cols-3">
           <div
-            className={`rounded-xl border p-4 text-center ${isPassed ? "border-emerald-500/40 bg-emerald-50/50" : "border-destructive/40 bg-destructive/5"
-              }`}
+            className={`rounded-xl border p-4 text-center ${
+              isPassed
+                ? "border-emerald-500/40 bg-emerald-50/50"
+                : "border-destructive/40 bg-destructive/5"
+            }`}
           >
-            <span className="text-xs font-bold text-muted-foreground">النتيجة النهائية المعتمدة</span>
-            <div className={`mt-1 text-3xl font-black ${isPassed ? "text-emerald-600" : "text-destructive"}`}>
+            <span className="text-xs font-bold text-muted-foreground">
+              النتيجة النهائية المعتمدة
+            </span>
+            <div
+              className={`mt-1 text-3xl font-black ${isPassed ? "text-emerald-600" : "text-destructive"}`}
+            >
               {finalPercentage}%
             </div>
             <span className="text-[11px] font-semibold block mt-1">
@@ -68,18 +89,22 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <span className="text-xs font-bold text-muted-foreground">حالات عدم المطابقة (NCRs)</span>
+            <span className="text-xs font-bold text-muted-foreground">
+              حالات عدم المطابقة (NCRs)
+            </span>
             <div className="mt-1 text-3xl font-black text-destructive">
               {model.ncrs?.length ?? 0}
             </div>
-            <span className="text-[11px] text-muted-foreground block mt-1">بنود تم خصم درجات منها</span>
+            <span className="text-[11px] text-muted-foreground block mt-1">
+              بنود تم خصم درجات منها
+            </span>
           </div>
 
           <div className="rounded-xl border border-border bg-card p-4 text-center">
-            <span className="text-xs font-bold text-muted-foreground">إجمالي الخصومات الإضافية</span>
-            <div className="mt-1 text-3xl font-black text-amber-600">
-              {totalDeductions}%
-            </div>
+            <span className="text-xs font-bold text-muted-foreground">
+              إجمالي الخصومات الإضافية
+            </span>
+            <div className="mt-1 text-3xl font-black text-amber-600">{totalDeductions}%</div>
             <span className="text-[11px] text-muted-foreground block mt-1">خصومات عامة وأقسام</span>
           </div>
         </div>
@@ -92,40 +117,82 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             </h3>
             <div className="relative h-56 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/60 to-white px-3 py-3">
               <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
-                {[100, 75, 50, 25, 0].map((value) => <div key={value} className="border-t border-dashed border-slate-300">{value}%</div>)}
+                {[100, 75, 50, 25, 0].map((value) => (
+                  <div key={value} className="border-t border-dashed border-slate-300">
+                    {value}%
+                  </div>
+                ))}
               </div>
-              <svg viewBox="0 0 1000 260" preserveAspectRatio="none" className="absolute inset-x-12 top-4 h-40 w-[calc(100%-6rem)]" role="img" aria-label="منحنى درجات الفرع الشهرية">
+              <svg
+                viewBox="0 0 1000 260"
+                preserveAspectRatio="none"
+                className="absolute inset-x-12 top-4 h-40 w-[calc(100%-6rem)]"
+                role="img"
+                aria-label="منحنى درجات الفرع الشهرية"
+              >
                 <polyline
                   fill="none"
                   stroke="#0d604d"
                   strokeWidth="4"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  points={model.history.map((entry, index) => {
-                    const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
-                    const y = 260 - (entry.score / 100) * 260;
-                    return `${x},${y}`;
-                  }).join(" ")}
+                  points={model.history
+                    .map((entry, index) => {
+                      const x =
+                        model.history.length === 1
+                          ? 500
+                          : (index / (model.history.length - 1)) * 1000;
+                      const y = 260 - (entry.score / 100) * 260;
+                      return `${x},${y}`;
+                    })
+                    .join(" ")}
                 />
                 {model.history.map((entry, index) => {
-                  const x = model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
+                  const x =
+                    model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
                   const y = 260 - (entry.score / 100) * 260;
                   return (
                     <g key={entry.month}>
                       <circle cx={x} cy={y} r="10" fill="white" stroke="#0d604d" strokeWidth="4" />
-                      <rect x={x - 34} y={Math.max(4, y - 48)} width="68" height="28" rx="8" fill="white" stroke="#b7d9ce" strokeWidth="2" />
-                      <text x={x} y={Math.max(23, y - 28)} textAnchor="middle" fontSize="22" fontWeight="700" fill="#0d604d">{entry.score}%</text>
+                      <rect
+                        x={x - 34}
+                        y={Math.max(4, y - 48)}
+                        width="68"
+                        height="28"
+                        rx="8"
+                        fill="white"
+                        stroke="#b7d9ce"
+                        strokeWidth="2"
+                      />
+                      <text
+                        x={x}
+                        y={Math.max(23, y - 28)}
+                        textAnchor="middle"
+                        fontSize="22"
+                        fontWeight="700"
+                        fill="#0d604d"
+                      >
+                        {entry.score}%
+                      </text>
                     </g>
                   );
                 })}
               </svg>
-              <div className="absolute inset-x-12 bottom-3 flex justify-between gap-2 text-[9px] font-semibold text-slate-600" dir="ltr">
-                {model.history.map((entry) => <span key={entry.month}>{entry.month}</span>)}
+              <div
+                className="absolute inset-x-12 bottom-3 flex justify-between gap-2 text-[9px] font-semibold text-slate-600"
+                dir="ltr"
+              >
+                {model.history.map((entry) => (
+                  <span key={entry.month}>{entry.month}</span>
+                ))}
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" dir="ltr">
               {model.history.map((entry) => (
-                <div key={`score-${entry.month}`} className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-[10px]">
+                <div
+                  key={`score-${entry.month}`}
+                  className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-[10px]"
+                >
                   <span className="font-semibold text-slate-600">{entry.month}</span>
                   <span className="font-bold text-primary">{entry.score}%</span>
                 </div>
@@ -152,10 +219,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                   >
                     <span className="font-semibold">{sec.nameAr}</span>
                     <span
-                      className={`font-bold font-mono px-1.5 py-0.5 rounded text-[11px] ${cleanRate >= 85
+                      className={`font-bold font-mono px-1.5 py-0.5 rounded text-[11px] ${
+                        cleanRate >= 85
                           ? "bg-emerald-100 text-emerald-800"
                           : "bg-destructive/10 text-destructive"
-                        }`}
+                      }`}
                     >
                       {cleanRate}%
                     </span>
@@ -168,17 +236,28 @@ export function ReportDocument({ model }: { model: ReportModel }) {
       </div>
 
       {/* ================= الصفحة الثانية: تفاصيل بنود عدم المطابقة (بدون صور) ================= */}
-      <div data-report-page className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs space-y-4">
-        <div data-report-block className="border-b border-border pb-2 flex justify-between items-center">
+      <div
+        data-report-page
+        className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs space-y-4"
+      >
+        <div
+          data-report-block
+          className="border-b border-border pb-2 flex justify-between items-center"
+        >
           <h2 className="text-base font-bold text-destructive flex items-center gap-2">
             <AlertTriangle className="size-5" />
             تفاصيل بنود عدم المطابقة والخصومات ({model.ncrs?.length ?? 0} بند)
           </h2>
-          <span className="text-xs text-muted-foreground">البنود المخصومة والملاحظات المسجلة فقط</span>
+          <span className="text-xs text-muted-foreground">
+            البنود المخصومة والملاحظات المسجلة فقط
+          </span>
         </div>
 
         {!model.ncrs || model.ncrs.length === 0 ? (
-          <div data-report-block className="rounded-xl border border-emerald-300 bg-emerald-50 p-6 text-center text-emerald-900">
+          <div
+            data-report-block
+            className="rounded-xl border border-emerald-300 bg-emerald-50 p-6 text-center text-emerald-900"
+          >
             <CheckCircle2 className="size-8 text-emerald-600 mx-auto mb-2" />
             <p className="font-bold">لا توجد أي حالات عدم مطابقة أو بنود مخصومة في هذا الفحص.</p>
           </div>
@@ -225,8 +304,14 @@ export function ReportDocument({ model }: { model: ReportModel }) {
 
       {/* ================= الصفحة الثالثة: ملحق الصور التوثيقية الشامل والتوقيعات ================= */}
       {model.allPhotos && model.allPhotos.length > 0 && (
-        <div data-report-page className="bg-white p-6 rounded-2xl border border-border shadow-xs space-y-4">
-          <div data-report-block className="flex items-center justify-between border-b border-border pb-2">
+        <div
+          data-report-page
+          className="bg-white p-6 rounded-2xl border border-border shadow-xs space-y-4"
+        >
+          <div
+            data-report-block
+            className="flex items-center justify-between border-b border-border pb-2"
+          >
             <h2 className="text-base font-black text-foreground flex items-center gap-2">
               <ImageIcon className="size-5 text-primary" />
               ملحق توثيق الصور والملاحظات الميدانية (إجمالي {model.allPhotos.length} صورة)
@@ -253,7 +338,9 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                     <span className="font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded text-[10px]">
                       {item.itemId}
                     </span>
-                    <span className="font-bold text-foreground text-[11px]">{item.sectionName}</span>
+                    <span className="font-bold text-foreground text-[11px]">
+                      {item.sectionName}
+                    </span>
                   </div>
                   <p className="text-muted-foreground text-[11px] line-clamp-2">
                     {item.questionText}
@@ -270,7 +357,10 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </div>
 
           {/* التوقيعات الرسمية */}
-          <div data-report-block className="mt-8 pt-4 border-t border-border grid grid-cols-2 gap-6 text-xs text-muted-foreground">
+          <div
+            data-report-block
+            className="mt-8 pt-4 border-t border-border grid grid-cols-2 gap-6 text-xs text-muted-foreground"
+          >
             <div>
               <span className="block font-bold text-foreground">توقيع مفتش الجودة:</span>
               <p className="mt-4 border-b border-dashed border-border/80 w-48 pb-1">
@@ -289,7 +379,10 @@ export function ReportDocument({ model }: { model: ReportModel }) {
 
       {/* التوقيعات في حال عدم وجود صور */}
       {(!model.allPhotos || model.allPhotos.length === 0) && (
-        <div data-report-block className="bg-white p-6 rounded-2xl border border-border shadow-xs mt-4">
+        <div
+          data-report-block
+          className="bg-white p-6 rounded-2xl border border-border shadow-xs mt-4"
+        >
           <div className="grid grid-cols-2 gap-6 text-xs text-muted-foreground">
             <div>
               <span className="block font-bold text-foreground">توقيع مفتش الجودة:</span>

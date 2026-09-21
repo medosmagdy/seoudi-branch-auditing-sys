@@ -59,7 +59,7 @@ import {
 const { FS: FS_TYPE_ID, GHP: GHP_TYPE_ID, FSMS: FSMS_TYPE_ID } = DASHBOARD_PROGRAM_IDS;
 
 const PROGRAM_LABELS = {
-  FS: "مؤشرات أقسام سلامة الغذاء — Food Safety",
+  FS: "مؤشرات أقسام سلامة الغذاء",
   GHP: "مؤشرات أقسام النظافة والممارسات الصحية — GHP",
   FSMS: "مؤشرات أقسام أنظمة سلامة الغذاء — FSMS",
 } as const;
@@ -72,7 +72,7 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   validateSearch: dashboardSearchSchema,
   head: () => ({
     meta: [
-      { title: "لوحة التحكم والتحليلات — SAS" },
+      { title: "Bird Eye — SAS" },
       { name: "description", content: "Executive Food Safety Quality Dashboard." },
       { property: "og:title", content: "لوحة التحكم والتحليلات — SAS" },
       { name: "robots", content: "noindex" },
