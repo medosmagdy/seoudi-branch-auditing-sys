@@ -147,7 +147,10 @@ function AuditRunner() {
     [auditType],
   );
   const isFsmsAudit = useMemo(
-    () => /fsms/i.test(auditType?.name_ar || "") || /fsms/i.test(auditType?.code || ""),
+    () =>
+      auditType?.scoring_system === "4-2-0" ||
+      /fsms/i.test(auditType?.name_ar || "") ||
+      /fsms/i.test(auditType?.code || ""),
     [auditType],
   );
   const scoreOptions = SCORE_OPTIONS;
@@ -323,7 +326,7 @@ function AuditRunner() {
   const branchSystem = isFsmsAudit
     ? "4-2-0"
     : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
-  const disabledScore = getDisabledScore(branchName);
+  const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
