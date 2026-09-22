@@ -119,75 +119,37 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
             </h3>
             <div className="relative h-64 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/70 via-white to-white px-3 py-3">
-              <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
+              <div className="absolute inset-x-3 top-3 bottom-10 flex flex-col justify-between text-[9px] text-muted-foreground">
                 {[100, 75, 50, 25, 0].map((value) => (
                   <div key={value} className="border-t border-dashed border-slate-300">
                     {value}%
                   </div>
                 ))}
               </div>
-              <svg
-                viewBox="0 0 1000 260"
-                preserveAspectRatio="none"
-                className="absolute inset-x-12 top-4 h-48 w-[calc(100%-6rem)]"
-                role="img"
-                aria-label="منحنى درجات الفرع الشهرية"
-              >
-                <polyline
-                  fill="none"
-                  stroke="#0d604d"
-                  strokeWidth="4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points={model.history
-                    .map((entry, index) => {
-                      const x =
-                        model.history.length === 1
-                          ? 500
-                          : (index / (model.history.length - 1)) * 1000;
-                      const y = 260 - (entry.score / 100) * 260;
-                      return `${x},${y}`;
-                    })
-                    .join(" ")}
-                />
-                {model.history.map((entry, index) => {
-                  const x =
-                    model.history.length === 1 ? 500 : (index / (model.history.length - 1)) * 1000;
-                  const y = 260 - (entry.score / 100) * 260;
-                  return (
-                    <g key={entry.month}>
-                      <circle cx={x} cy={y} r="10" fill="white" stroke="#0d604d" strokeWidth="4" />
-                      <rect
-                        x={x - 34}
-                        y={Math.max(4, y - 48)}
-                        width="68"
-                        height="28"
-                        rx="8"
-                        fill="white"
-                        stroke="#b7d9ce"
-                        strokeWidth="2"
-                      />
-                      <text
-                        x={x}
-                        y={Math.max(23, y - 28)}
-                        textAnchor="middle"
-                        fontSize="22"
-                        fontWeight="700"
-                        fill="#0d604d"
-                      >
-                        {formatPercentage(entry.score)}%
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
               <div
-                className="absolute inset-x-12 bottom-3 flex justify-between gap-2 text-[9px] font-semibold text-slate-600"
+                className="absolute inset-x-12 top-4 bottom-9 flex items-end justify-around gap-3"
                 dir="ltr"
               >
-                {model.history.map((entry) => (
-                  <span key={entry.month}>{entry.month}</span>
-                ))}
+                {model.history.map((entry) => {
+                  const height = Math.max(4, Math.min(100, entry.score));
+                  const isCurrent = entry.month === model.auditDate.slice(0, 7);
+                  return (
+                    <div
+                      key={entry.month}
+                      className="flex h-full min-w-12 flex-1 flex-col items-center justify-end gap-1"
+                    >
+                      <span className="rounded-md border border-emerald-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                        {formatPercentage(entry.score)}%
+                      </span>
+                      <div
+                        className={`w-full max-w-16 rounded-t-md ${isCurrent ? "bg-primary" : "bg-emerald-300"}`}
+                        style={{ height: `${height}%` }}
+                        title={`${entry.month}: ${formatPercentage(entry.score)}%`}
+                      />
+                      <span className="text-[9px] font-semibold text-slate-600">{entry.month}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" dir="ltr">
@@ -197,7 +159,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                   className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-[10px]"
                 >
                   <span className="font-semibold text-slate-600">{entry.month}</span>
-                  <span className="font-bold text-primary">{entry.score}%</span>
+                  <span className="font-bold text-primary">{formatPercentage(entry.score)}%</span>
                 </div>
               ))}
             </div>

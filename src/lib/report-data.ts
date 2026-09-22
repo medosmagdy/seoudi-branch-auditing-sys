@@ -82,41 +82,62 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     .single();
   if (error) throw error;
 
-  const [sections, headers, questions, answers, statuses, sectionDeductions, generalDeductions, photos, auditor, branchAudits] =
-    await Promise.all([
-      supabase
-        .from("sections")
-        .select("*")
-        .eq("audit_type_id", audit.audit_type_id)
-        .order("order_index"),
-      supabase.from("headers").select("*").order("order_index"),
-      supabase
-        .from("questions")
-        .select("*")
-        .eq("audit_type_id", audit.audit_type_id)
-        .order("item_order"),
-      supabase.from("audit_answers").select("*").eq("audit_id", auditId),
-      supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
-      supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
-      supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
-      supabase.from("photos").select("*").eq("audit_id", auditId),
-      supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
-      supabase.from("audits").select("id, audit_date").eq("branch_id", audit.branch_id).eq("status", "submitted").order("audit_date", { ascending: true }),
-    ]);
+  const [
+    sections,
+    headers,
+    questions,
+    answers,
+    statuses,
+    sectionDeductions,
+    generalDeductions,
+    photos,
+    auditor,
+    branchAudits,
+  ] = await Promise.all([
+    supabase
+      .from("sections")
+      .select("*")
+      .eq("audit_type_id", audit.audit_type_id)
+      .order("order_index"),
+    supabase.from("headers").select("*").order("order_index"),
+    supabase
+      .from("questions")
+      .select("*")
+      .eq("audit_type_id", audit.audit_type_id)
+      .order("item_order"),
+    supabase.from("audit_answers").select("*").eq("audit_id", auditId),
+    supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
+    supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
+    supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
+    supabase.from("photos").select("*").eq("audit_id", auditId),
+    supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
+    supabase
+      .from("audits")
+      .select("id, audit_date")
+      .eq("branch_id", audit.branch_id)
+      .eq("status", "submitted")
+      .order("audit_date", { ascending: true }),
+  ]);
 
   const sectionRows = sections.data ?? [];
   const headerRows = headers.data ?? [];
   const questionRows = questions.data ?? [];
   const answerRows = answers.data ?? [];
   const photoRows = photos.data ?? [];
-  const naSections = new Set((statuses.data ?? []).filter((row) => row.is_na).map((row) => row.section_id));
+  const naSections = new Set(
+    (statuses.data ?? []).filter((row) => row.is_na).map((row) => row.section_id),
+  );
 
   const urls = await signedPhotoUrls(photoRows.map((photo) => photo.storage_path));
 
   // 1. خريطة الإجابات المسجلة
   const rawAnswerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
   answerRows.forEach((row) => {
-    rawAnswerMap[row.question_id] = { score: row.score, isNa: row.is_na, comment: row.comment ?? "" };
+    rawAnswerMap[row.question_id] = {
+      score: row.score,
+      isNa: row.is_na,
+      comment: row.comment ?? "",
+    };
   });
 
   // 2. دمج الإجابات مع القيمة الافتراضية (4 أو max_score) إذا لم يتم الإجابة عليها
@@ -144,7 +165,10 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       .map((question) => ({ id: question.id, maxScore: question.max_score ?? 4 })),
     deductions: (sectionDeductions.data ?? [])
       .filter((deduction) => deduction.section_id === section.id)
-      .map((deduction) => ({ reasonText: deduction.reason_text, percentage: Number(deduction.percentage) })),
+      .map((deduction) => ({
+        reasonText: deduction.reason_text,
+        percentage: Number(deduction.percentage),
+      })),
   }));
 
   const generalRows = (generalDeductions.data ?? []).map((row) => ({
@@ -156,35 +180,84 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   const result = computeAudit(scoringSections, answerMap, generalRows);
   const historyByMonth = new Map<string, number[]>();
   const historicalAudits = (branchAudits.data ?? []).filter((row) => row.id !== auditId);
-  const historicalScores = await Promise.all(historicalAudits.map(async (row) => {
-    const [historicalAnswers, historicalStatuses, historicalSectionDeductions, historicalGeneralDeductions] = await Promise.all([
-      supabase.from("audit_answers").select("question_id, score, is_na, comment").eq("audit_id", row.id),
-      supabase.from("audit_section_status").select("section_id, is_na").eq("audit_id", row.id),
-      supabase.from("audit_section_deductions").select("section_id, percentage").eq("audit_id", row.id),
-      supabase.from("audit_general_deductions").select("percentage").eq("audit_id", row.id),
-    ]);
-    const historicalNa = new Set((historicalStatuses.data ?? []).filter((status) => status.is_na).map((status) => status.section_id));
-    const historicalAnswersMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
-    for (const answer of historicalAnswers.data ?? []) historicalAnswersMap[answer.question_id] = { score: answer.score, isNa: answer.is_na, comment: answer.comment ?? "" };
-    const historicalSections: ScoringSection[] = sectionRows.map((section) => ({
-      id: section.id, nameAr: section.name_ar, nameEn: section.name_en, isDelivery: section.is_delivery,
-      isNa: historicalNa.has(section.id),
-      questions: questionRows.filter((question) => question.section_id === section.id).map((question) => ({ id: question.id, maxScore: question.max_score ?? 4 })),
-      deductions: (historicalSectionDeductions.data ?? []).filter((deduction) => deduction.section_id === section.id).map((deduction) => ({ reasonText: "", percentage: Number(deduction.percentage) })),
+  const historicalScores = await Promise.all(
+    historicalAudits.map(async (row) => {
+      const [
+        historicalAnswers,
+        historicalStatuses,
+        historicalSectionDeductions,
+        historicalGeneralDeductions,
+      ] = await Promise.all([
+        supabase
+          .from("audit_answers")
+          .select("question_id, score, is_na, comment")
+          .eq("audit_id", row.id),
+        supabase.from("audit_section_status").select("section_id, is_na").eq("audit_id", row.id),
+        supabase
+          .from("audit_section_deductions")
+          .select("section_id, percentage")
+          .eq("audit_id", row.id),
+        supabase.from("audit_general_deductions").select("percentage").eq("audit_id", row.id),
+      ]);
+      const historicalNa = new Set(
+        (historicalStatuses.data ?? [])
+          .filter((status) => status.is_na)
+          .map((status) => status.section_id),
+      );
+      const historicalAnswersMap: Record<
+        string,
+        { score: number | null; isNa: boolean; comment: string }
+      > = {};
+      for (const answer of historicalAnswers.data ?? [])
+        historicalAnswersMap[answer.question_id] = {
+          score: answer.score,
+          isNa: answer.is_na,
+          comment: answer.comment ?? "",
+        };
+      const historicalSections: ScoringSection[] = sectionRows.map((section) => ({
+        id: section.id,
+        nameAr: section.name_ar,
+        nameEn: section.name_en,
+        isDelivery: section.is_delivery,
+        isNa: historicalNa.has(section.id),
+        questions: questionRows
+          .filter((question) => question.section_id === section.id)
+          .map((question) => ({ id: question.id, maxScore: question.max_score ?? 4 })),
+        deductions: (historicalSectionDeductions.data ?? [])
+          .filter((deduction) => deduction.section_id === section.id)
+          .map((deduction) => ({ reasonText: "", percentage: Number(deduction.percentage) })),
+      }));
+      const historicalResult = computeAudit(
+        historicalSections,
+        historicalAnswersMap,
+        (historicalGeneralDeductions.data ?? []).map((deduction) => ({
+          reasonText: "",
+          percentage: Number(deduction.percentage),
+        })),
+      );
+      return {
+        month: String(row.audit_date ?? "").slice(0, 7),
+        score: Number(historicalResult.finalPercentage),
+      };
+    }),
+  );
+  for (const entry of historicalScores) {
+    if (entry.month && Number.isFinite(entry.score)) {
+      historyByMonth.set(entry.month, [
+        ...(historyByMonth.get(entry.month) ?? []),
+        Math.max(0, Math.min(100, entry.score)),
+      ]);
+    }
+  }
+  const currentMonth = audit.audit_date.slice(0, 7);
+  const currentScore = Math.max(0, Math.min(100, Number(result.finalPercentage)));
+  const history = [...historyByMonth.entries()]
+    .filter(([month]) => month !== currentMonth)
+    .map(([month, scores]) => ({
+      month,
+      score: Number((scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(2)),
     }));
-    const historicalResult = computeAudit(historicalSections, historicalAnswersMap, (historicalGeneralDeductions.data ?? []).map((deduction) => ({ reasonText: "", percentage: Number(deduction.percentage) })));
-    return { month: String(row.audit_date ?? "").slice(0, 7), score: Number(historicalResult.finalPercentage) };
-  }));
-  for (const entry of [...historicalScores, { month: audit.audit_date.slice(0, 7), score: Number(result.finalPercentage) }]) {
-    if (entry.month && Number.isFinite(entry.score)) historyByMonth.set(entry.month, [...(historyByMonth.get(entry.month) ?? []), Math.max(0, Math.min(100, entry.score))]);
-  }
-  const history = [...historyByMonth.entries()].map(([month, scores]) => ({
-    month,
-    score: Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length),
-  }));
-  if (!history.some((entry) => entry.month === audit.audit_date.slice(0, 7))) {
-    history.push({ month: audit.audit_date.slice(0, 7), score: Math.round(result.finalPercentage) });
-  }
+  history.push({ month: currentMonth, score: currentScore });
   history.sort((a, b) => a.month.localeCompare(b.month));
 
   const ncrs: ReportNCR[] = [];
@@ -202,7 +275,9 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     const groups: ReportHeaderGroup[] = groupIds
       .map((groupId) => {
         const header = headerRows.find((row) => row.id === groupId);
-        const groupQuestions = sectionQuestions.filter((question) => question.header_id === groupId);
+        const groupQuestions = sectionQuestions.filter(
+          (question) => question.header_id === groupId,
+        );
 
         return {
           id: groupId,
@@ -210,7 +285,8 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
           questions: groupQuestions.map((question) => {
             const answer = answerMap[question.id];
             const max = question.max_score ?? 4;
-            const earned = answer?.score !== undefined && answer?.score !== null ? answer.score : max;
+            const earned =
+              answer?.score !== undefined && answer?.score !== null ? answer.score : max;
             const isNa = answer?.isNa ?? false;
             const comment = answer?.comment ?? "";
 
