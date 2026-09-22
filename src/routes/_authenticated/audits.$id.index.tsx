@@ -45,11 +45,24 @@ const SCORE_OPTIONS = [
   { value: 2, label: "2 — جزئي" },
   { value: 1, label: "1 — ضعيف" },
   { value: 0, label: "0 — غير مطابق" },
-];
+] as const;
 
 const LARGE_BRANCH_NAMES = new Set([
-  "العلمين", "مول العرب", "مراسي", "مكرم", "دريم", "واترواي", "مدينتي", "الشروق", "المخازن المركزية",
-  "شيراتون", "التجمع", "سيتي", "زايد", "ديستركت5", "هايد بارك",
+  "العلمين",
+  "مول العرب",
+  "مراسي",
+  "مكرم",
+  "دريم",
+  "واترواي",
+  "مدينتي",
+  "الشروق",
+  "المخازن المركزية",
+  "شيراتون",
+  "التجمع",
+  "سيتي",
+  "زايد",
+  "ديستركت5",
+  "هايد بارك",
 ]);
 
 function getDisabledScore(branchName: string) {
@@ -73,22 +86,42 @@ function AuditRunner() {
     queryFn: async () => {
       const { data: audit, error } = await supabase
         .from("audits")
-        .select("id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code)")
+        .select(
+          "id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+        )
         .eq("id", id)
         .single();
       if (error) throw error;
 
-      const [sections, headers, questions, savedAnswers, statuses, sectionDeductions, generalDeductions, photos] =
-        await Promise.all([
-          supabase.from("sections").select("*").eq("audit_type_id", audit.audit_type_id).eq("active", true).order("order_index"),
-          supabase.from("headers").select("*").order("order_index"),
-          supabase.from("questions").select("*").eq("audit_type_id", audit.audit_type_id).eq("active", true).order("item_order"),
-          supabase.from("audit_answers").select("*").eq("audit_id", id),
-          supabase.from("audit_section_status").select("*").eq("audit_id", id),
-          supabase.from("audit_section_deductions").select("*").eq("audit_id", id),
-          supabase.from("audit_general_deductions").select("*").eq("audit_id", id),
-          supabase.from("photos").select("*").eq("audit_id", id),
-        ]);
+      const [
+        sections,
+        headers,
+        questions,
+        savedAnswers,
+        statuses,
+        sectionDeductions,
+        generalDeductions,
+        photos,
+      ] = await Promise.all([
+        supabase
+          .from("sections")
+          .select("*")
+          .eq("audit_type_id", audit.audit_type_id)
+          .eq("active", true)
+          .order("order_index"),
+        supabase.from("headers").select("*").order("order_index"),
+        supabase
+          .from("questions")
+          .select("*")
+          .eq("audit_type_id", audit.audit_type_id)
+          .eq("active", true)
+          .order("item_order"),
+        supabase.from("audit_answers").select("*").eq("audit_id", id),
+        supabase.from("audit_section_status").select("*").eq("audit_id", id),
+        supabase.from("audit_section_deductions").select("*").eq("audit_id", id),
+        supabase.from("audit_general_deductions").select("*").eq("audit_id", id),
+        supabase.from("photos").select("*").eq("audit_id", id),
+      ]);
 
       return {
         audit,
@@ -104,11 +137,23 @@ function AuditRunner() {
     },
   });
 
-  const isGhpAudit = useMemo(() => {
-    const typeName = (data?.audit?.audit_types as { name_ar?: string; code?: string } | null)?.name_ar || "";
-    const typeCode = (data?.audit?.audit_types as { name_ar?: string; code?: string } | null)?.code || "";
-    return /ghp/i.test(typeName) || /ghp/i.test(typeCode);
-  }, [data]);
+  const auditType = data?.audit?.audit_types as {
+    name_ar?: string;
+    code?: string;
+    scoring_system?: "4-1-0" | "4-2-0";
+  } | null;
+  const isGhpAudit = useMemo(
+    () => /ghp/i.test(auditType?.name_ar || "") || /ghp/i.test(auditType?.code || ""),
+    [auditType],
+  );
+  const isFsmsAudit = useMemo(
+    () =>
+      auditType?.scoring_system === "4-2-0" ||
+      /fsms/i.test(auditType?.name_ar || "") ||
+      /fsms/i.test(auditType?.code || ""),
+    [auditType],
+  );
+  const scoreOptions = SCORE_OPTIONS;
 
   useEffect(() => {
     if (search.section !== undefined && search.section !== stepIndex) {
@@ -136,11 +181,15 @@ function AuditRunner() {
   useEffect(() => {
     if (!data) return;
     const branchName = (data.audit.branches as { name_ar?: string } | null)?.name_ar ?? "";
-    const disabledScore = getDisabledScore(branchName);
+    const auditTypeName =
+      (data.audit.audit_types as { name_ar?: string; code?: string } | null) ?? {};
+    const isFsms =
+      /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
+    const disabledScore = isFsms ? null : getDisabledScore(branchName);
     const nextAnswers: Record<string, AnswerState> = {};
     data.savedAnswers.forEach((answer) => {
       nextAnswers[answer.question_id] = {
-        score: answer.score === disabledScore ? 4 : answer.score,
+        score: disabledScore !== null && answer.score === disabledScore ? 4 : answer.score,
         isNa: answer.is_na,
         comment: answer.comment ?? "",
       };
@@ -185,7 +234,10 @@ function AuditRunner() {
         .map((question) => ({ id: question.id, maxScore: question.max_score })),
       deductions: data.sectionDeductions
         .filter((deduction) => deduction.section_id === section.id)
-        .map((deduction) => ({ reasonText: deduction.reason_text, percentage: Number(deduction.percentage) })),
+        .map((deduction) => ({
+          reasonText: deduction.reason_text,
+          percentage: Number(deduction.percentage),
+        })),
     }));
   }, [data, sectionNa]);
 
@@ -259,7 +311,8 @@ function AuditRunner() {
     return (
       <AppShell title="Run Audit" subtitle="No checklist available">
         <div className="surface-card p-8 text-center text-sm text-muted-foreground">
-          لم يتم استيراد أو إعداد قائمة تفتيش لهذا التدقيق بعد. اذهب إلى الإدارة واستورد ملف الفحص أولاً.
+          لم يتم استيراد أو إعداد قائمة تفتيش لهذا التدقيق بعد. اذهب إلى الإدارة واستورد ملف الفحص
+          أولاً.
         </div>
       </AppShell>
     );
@@ -270,8 +323,10 @@ function AuditRunner() {
   const isNaSection = !!sectionNa[section.id];
   const branch = data.audit.branches as { name_ar: string; code?: string | null } | null;
   const branchName = branch?.name_ar ?? "";
-  const branchSystem = LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0";
-  const disabledScore = getDisabledScore(branchName);
+  const branchSystem = isFsmsAudit
+    ? "4-2-0"
+    : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
+  const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
@@ -292,7 +347,7 @@ function AuditRunner() {
   };
 
   const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
-    if (readOnly || patch.score === disabledScore) return;
+    if (readOnly || (disabledScore !== null && patch.score === disabledScore)) return;
     setAnswers((previous) => {
       const current = previous[questionId] ?? { score: null, isNa: false, comment: "" };
       const next = { ...current, ...patch };
@@ -306,14 +361,20 @@ function AuditRunner() {
     setSectionNa((previous) => ({ ...previous, [section.id]: value }));
     const { error } = await supabase
       .from("audit_section_status")
-      .upsert({ audit_id: id, section_id: section.id, is_na: value }, { onConflict: "audit_id,section_id" });
+      .upsert(
+        { audit_id: id, section_id: section.id, is_na: value },
+        { onConflict: "audit_id,section_id" },
+      );
     if (error) toast.error("تعذر تحديث حالة القسم");
   };
 
   const addSectionDeduction = async (reason: string, percentage: number) => {
-    const { error } = await supabase
-      .from("audit_section_deductions")
-      .insert({ audit_id: id, section_id: section.id, reason_text: reason.slice(0, 300), percentage });
+    const { error } = await supabase.from("audit_section_deductions").insert({
+      audit_id: id,
+      section_id: section.id,
+      reason_text: reason.slice(0, 300),
+      percentage,
+    });
     if (error) {
       toast.error("تعذر إضافة الخصم");
       return;
@@ -337,7 +398,9 @@ function AuditRunner() {
     }
   };
 
-  const currentDeductions = data.sectionDeductions.filter((deduction) => deduction.section_id === section.id);
+  const currentDeductions = data.sectionDeductions.filter(
+    (deduction) => deduction.section_id === section.id,
+  );
   const sectionResult = result.sections.find((entry) => entry.sectionId === section.id);
 
   return (
@@ -347,7 +410,11 @@ function AuditRunner() {
       action={
         <div className="flex items-center gap-2">
           <Badge variant={readOnly ? "default" : "outline"}>{readOnly ? "معتمد" : "مسودة"}</Badge>
-          <Button variant="outline" size="sm" onClick={() => navigate({ to: "/audits/$id/summary", params: { id } })}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate({ to: "/audits/$id/summary", params: { id } })}
+          >
             الملخص
           </Button>
         </div>
@@ -380,19 +447,30 @@ function AuditRunner() {
         <div className="text-right">
           <h2 className="text-lg font-bold">{section.name_ar}</h2>
           {section.is_delivery && (
-            <span className="text-xs text-muted-foreground">قسم التوصيل — يتم تقييمه بشكل منفصل</span>
+            <span className="text-xs text-muted-foreground">
+              قسم التوصيل — يتم تقييمه بشكل منفصل
+            </span>
           )}
         </div>
         <div className="mr-auto flex items-center gap-2 text-sm">
           <Label htmlFor="section-na">القسم غير منطبق (N/A)</Label>
-          <Switch id="section-na" checked={isNaSection} onCheckedChange={toggleSectionNa} disabled={readOnly} />
+          <Switch
+            id="section-na"
+            checked={isNaSection}
+            onCheckedChange={toggleSectionNa}
+            disabled={readOnly}
+          />
         </div>
       </div>
 
       {!isNaSection && (
         <div className="space-y-4 pb-20">
           {sectionQuestions.map((question) => {
-            const answer = answers[question.id] ?? { score: question.max_score ?? 4, isNa: false, comment: "" };
+            const answer = answers[question.id] ?? {
+              score: question.max_score ?? 4,
+              isNa: false,
+              comment: "",
+            };
             const header = data.headers.find((entry) => entry.id === question.header_id);
             const needsPhoto =
               question.requires_photo_if_below_max &&
@@ -401,49 +479,67 @@ function AuditRunner() {
               answer.score < question.max_score;
             const questionPhotos = photosByQuestion[question.id] ?? [];
 
-            const isHabitItem = question.text_ar.includes("عادات خاطئة") || question.text_ar.includes("العادات الخاطئة") || question.item_id.includes("HABIT");
+            const isHabitItem =
+              question.text_ar.includes("عادات خاطئة") ||
+              question.text_ar.includes("العادات الخاطئة") ||
+              question.item_id.includes("HABIT");
             const allowComments = !isGhpAudit || isHabitItem;
 
             const isCcpOrOprp =
               section.name_ar.includes("CCP") ||
               section.name_ar.includes("OPRP") ||
               section.name_ar.includes("نقاط التحكم الحرجة") ||
-              (header?.label_ar && (
-                header.label_ar.includes("CCP") ||
-                header.label_ar.includes("OPRP") ||
-                header.label_ar.includes("نقاط التحكم الحرجة")
-              ));
+              (header?.label_ar &&
+                (header.label_ar.includes("CCP") ||
+                  header.label_ar.includes("OPRP") ||
+                  header.label_ar.includes("نقاط التحكم الحرجة")));
 
             return (
-              <div key={question.id} id={`q-${question.id}`} className="surface-card p-4 transition-all duration-300">
+              <div
+                key={question.id}
+                id={`q-${question.id}`}
+                className="surface-card p-4 transition-all duration-300"
+              >
                 <div dir="rtl" className="text-right">
-                  {header && <div className="text-xs font-semibold text-primary">{header.label_ar}</div>}
+                  {header && (
+                    <div className="text-xs font-semibold text-primary">{header.label_ar}</div>
+                  )}
                   <div className="mt-1 text-[11px] text-muted-foreground font-mono" dir="ltr">
                     {question.item_id}
                   </div>
-                  <p className="text-sm font-semibold leading-relaxed text-foreground">{question.text_ar}</p>
+                  <p className="text-sm font-semibold leading-relaxed text-foreground">
+                    {question.text_ar}
+                  </p>
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
-                  {SCORE_OPTIONS.filter((option) => option.value <= question.max_score).map((option) => {
-                    const isOptionDisabled =
-                      readOnly ||
-                      option.value === disabledScore ||
-                      (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
+                  {scoreOptions
+                    .filter((option) => option.value <= question.max_score)
+                    .map((option) => {
+                      const isOptionDisabled =
+                        readOnly ||
+                        (disabledScore !== null && option.value === disabledScore) ||
+                        (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
 
-                    return (
-                      <Button
-                        key={option.value}
-                        size="sm"
-                        variant={!answer.isNa && answer.score === option.value ? "default" : "outline"}
-                        disabled={isOptionDisabled}
-                        onClick={() => updateAnswer(question.id, { score: option.value, isNa: false })}
-                        className={isOptionDisabled && !readOnly ? "opacity-30 cursor-not-allowed" : ""}
-                      >
-                        {option.label}
-                      </Button>
-                    );
-                  })}
+                      return (
+                        <Button
+                          key={option.value}
+                          size="sm"
+                          variant={
+                            !answer.isNa && answer.score === option.value ? "default" : "outline"
+                          }
+                          disabled={isOptionDisabled}
+                          onClick={() =>
+                            updateAnswer(question.id, { score: option.value, isNa: false })
+                          }
+                          className={
+                            isOptionDisabled && !readOnly ? "opacity-30 cursor-not-allowed" : ""
+                          }
+                        >
+                          {option.label}
+                        </Button>
+                      );
+                    })}
                   <Button
                     size="sm"
                     variant={answer.isNa ? "secondary" : "outline"}
@@ -457,7 +553,11 @@ function AuditRunner() {
                 {allowComments && (
                   <Textarea
                     className="mt-3 text-xs"
-                    placeholder={isHabitItem ? "سجل تفاصيل الملاحظة أو السلوك غير الصحيح هنا..." : "أدخل ملاحظات البند إن وجدت..."}
+                    placeholder={
+                      isHabitItem
+                        ? "سجل تفاصيل الملاحظة أو السلوك غير الصحيح هنا..."
+                        : "أدخل ملاحظات البند إن وجدت..."
+                    }
                     maxLength={1000}
                     dir="rtl"
                     value={answer.comment}
@@ -499,7 +599,9 @@ function AuditRunner() {
                     </div>
                   )}
                   {needsPhoto && questionPhotos.length === 0 && (
-                    <span className="text-xs text-destructive">إرفاق صورة مطلوب في حال تقليل الدرجة عن الحد الأقصى</span>
+                    <span className="text-xs text-destructive">
+                      إرفاق صورة مطلوب في حال تقليل الدرجة عن الحد الأقصى
+                    </span>
                   )}
                 </div>
 
@@ -507,7 +609,10 @@ function AuditRunner() {
                   <div className="mt-3 border-t border-border/50 pt-3">
                     <div className="flex flex-wrap gap-2">
                       {questionPhotos.map((photo) => (
-                        <div key={photo.id} className="relative rounded-lg border border-border p-1 bg-muted/20">
+                        <div
+                          key={photo.id}
+                          className="relative rounded-lg border border-border p-1 bg-muted/20"
+                        >
                           <img
                             src={photoUrls?.[photo.storage_path]}
                             alt="Audit evidence"
@@ -544,7 +649,11 @@ function AuditRunner() {
       )}
 
       <div className="mt-6 flex items-center gap-2 mb-20">
-        <Button variant="outline" disabled={stepIndex === 0} onClick={() => changeStep(stepIndex - 1)}>
+        <Button
+          variant="outline"
+          disabled={stepIndex === 0}
+          onClick={() => changeStep(stepIndex - 1)}
+        >
           <ChevronLeft className="size-4 ml-1" /> السابق
         </Button>
         {stepIndex < data.sections.length - 1 ? (
@@ -561,15 +670,22 @@ function AuditRunner() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t border-border shadow-lg px-3 py-2 sm:px-4 sm:py-2.5">
-        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3" dir="rtl">
+        <div
+          className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-3"
+          dir="rtl"
+        >
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="flex items-center gap-1.5 text-primary font-bold">
               <Award className="size-4 text-emerald-600" />
               <span className="text-[11px] sm:text-xs">المجموع الكلي:</span>
             </div>
             <div className="flex items-baseline gap-1 font-mono">
-              <span className="text-base sm:text-lg font-black text-foreground">{liveStats.earned}</span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground">/ {liveStats.max}</span>
+              <span className="text-base sm:text-lg font-black text-foreground">
+                {liveStats.earned}
+              </span>
+              <span className="text-[10px] sm:text-xs text-muted-foreground">
+                / {liveStats.max}
+              </span>
             </div>
             <Badge
               variant={Number(liveStats.pct) >= 85 ? "default" : "destructive"}
@@ -587,10 +703,11 @@ function AuditRunner() {
                 <span className="text-[10px] text-muted-foreground">/{sectionResult.max}</span>
               </div>
               <span
-                className={`font-mono font-bold px-1 py-0.2 rounded text-[10px] sm:text-[11px] ${Number(sectionResult.percentage) >= 85
-                  ? "bg-emerald-100 text-emerald-800"
-                  : "bg-destructive/10 text-destructive"
-                  }`}
+                className={`font-mono font-bold px-1 py-0.2 rounded text-[10px] sm:text-[11px] ${
+                  Number(sectionResult.percentage) >= 85
+                    ? "bg-emerald-100 text-emerald-800"
+                    : "bg-destructive/10 text-destructive"
+                }`}
               >
                 {Math.round(Number(sectionResult.percentage) || 0)}%
               </span>
@@ -621,7 +738,10 @@ function SectionDeductions({
       <h3 className="text-sm font-bold">خصومات داخلية على هذا القسم</h3>
       <div className="mt-3 space-y-2">
         {deductions.map((deduction) => (
-          <div key={deduction.id} className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+          <div
+            key={deduction.id}
+            className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm"
+          >
             <span>{deduction.reason_text}</span>
             <strong className="mr-auto font-mono text-destructive">-{deduction.percentage}%</strong>
             {!readOnly && (

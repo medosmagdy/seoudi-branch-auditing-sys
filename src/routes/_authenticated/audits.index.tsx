@@ -1,5 +1,13 @@
-import { useRef, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMemo, useRef, useState } from "react";
+import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { matchesLocationScope, locationScopeLabel, type LocationScope } from "@/lib/location-scope";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -17,6 +25,8 @@ import { ReportDocument } from "@/components/report/ReportDocument";
 
 const searchSchema = z.object({
   status: z.enum(["all", "draft", "submitted"]).default("all"),
+  type: z.string().default("all"),
+  scope: z.enum(["branches", "warehouses"]).default("branches"),
 });
 
 export const Route = createFileRoute("/_authenticated/audits/")({
@@ -24,7 +34,10 @@ export const Route = createFileRoute("/_authenticated/audits/")({
   head: () => ({
     meta: [
       { title: "Audits — SAS" },
-      { name: "description", content: "Food safety audit history: drafts in progress and completed audits." },
+      {
+        name: "description",
+        content: "Food safety audit history: drafts in progress and completed audits.",
+      },
       { property: "og:title", content: "Audits — SAS" },
       { property: "og:description", content: "Seoudi branch audit records." },
       { name: "robots", content: "noindex" },
@@ -35,9 +48,12 @@ export const Route = createFileRoute("/_authenticated/audits/")({
 
 function AuditsList() {
   const navigate = useNavigate();
+  const { status, type, scope } = useSearch({ from: "/_authenticated/audits/" });
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
+  const [monthFrom, setMonthFrom] = useState("");
+  const [monthTo, setMonthTo] = useState("");
 
   // 1. جلب المستخدم الحالي ودوره من جدول user_roles
   const { data: userProfile } = useQuery({
@@ -65,7 +81,10 @@ function AuditsList() {
   const { data: audits, isLoading } = useQuery({
     queryKey: ["audits", userProfile?.user?.id, userProfile?.isAdmin],
     queryFn: async () => {
-      let auditsQuery = supabase.from("audits").select("*").order("audit_date", { ascending: false });
+      let auditsQuery = supabase
+        .from("audits")
+        .select("*")
+        .order("audit_date", { ascending: false });
 
       // لو مراجع فقط، نحصر النتائج على فحوصاته
       if (userProfile && !userProfile.isAdmin && userProfile.user?.id) {
@@ -84,10 +103,13 @@ function AuditsList() {
       }
 
       const branchMap = new Map(
-        (branchesRes.data || []).map((b: any) => [b.id, b.name_ar || b.name || "فرع غير محدد"])
+        (branchesRes.data || []).map((b: any) => [b.id, b.name_ar || b.name || "فرع غير محدد"]),
       );
       const typeMap = new Map(
-        (typesRes.data || []).map((t: any) => [t.id, t.name_ar || t.name || t.name_en || "سلامة الغذاء"])
+        (typesRes.data || []).map((t: any) => [
+          t.id,
+          t.name_ar || t.name || t.name_en || "سلامة الغذاء",
+        ]),
       );
 
       const raw = auditsRes.data || [];
@@ -96,6 +118,7 @@ function AuditsList() {
         ...audit,
         branchName: branchMap.get(audit.branch_id) || "فرع غير محدد",
         typeName: typeMap.get(audit.audit_type_id) || "سلامة الغذاء",
+        typeId: audit.audit_type_id,
       }));
     },
     enabled: userProfile !== undefined,
@@ -105,7 +128,11 @@ function AuditsList() {
     const nextVersion = (version ?? 1) + 1;
     const { error } = await supabase
       .from("audits")
-      .update({ status: "draft", version: nextVersion, edited_at: new Date().toISOString() } as never)
+      .update({
+        status: "draft",
+        version: nextVersion,
+        edited_at: new Date().toISOString(),
+      } as never)
       .eq("id", auditId);
 
     if (error) {
@@ -134,7 +161,10 @@ function AuditsList() {
       const reportRoot = createRoot(root);
       reportRoot.render(<ReportDocument model={model} />);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      await downloadElementAsPdf(root, `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`);
+      await downloadElementAsPdf(
+        root,
+        `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`,
+      );
       reportRoot.unmount();
       container.remove();
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
@@ -157,11 +187,31 @@ function AuditsList() {
     queryClient.invalidateQueries({ queryKey: ["audits"] });
   };
 
-  const completedAudits = (audits || []).filter(
-    (a) => a.status === "submitted" || a.status === "approved"
+  const scopedAudits = useMemo(
+    () =>
+      (audits || []).filter((audit) => {
+        const branch = { name_ar: audit.branchName };
+        const statusMatches =
+          status === "all" ||
+          (status === "submitted"
+            ? audit.status === "submitted" || audit.status === "approved"
+            : audit.status === "draft" || audit.status === "in_progress");
+        return (
+          matchesLocationScope(branch, scope as LocationScope) &&
+          statusMatches &&
+          (type === "all" || audit.typeId === type) &&
+          (!monthFrom || audit.audit_date?.slice(0, 7) >= monthFrom) &&
+          (!monthTo || audit.audit_date?.slice(0, 7) <= monthTo)
+        );
+      }),
+    [audits, scope, status, type, monthFrom, monthTo],
   );
-  const draftAudits = (audits || []).filter(
-    (a) => a.status === "draft" || a.status === "in_progress"
+
+  const completedAudits = scopedAudits.filter(
+    (a) => a.status === "submitted" || a.status === "approved",
+  );
+  const draftAudits = scopedAudits.filter(
+    (a) => a.status === "draft" || a.status === "in_progress",
   );
 
   const renderAuditCard = (audit: any, isDraft: boolean) => (
@@ -246,12 +296,98 @@ function AuditsList() {
         </Button>
       }
     >
+      <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
+        <span className="text-sm font-semibold">
+          تصفية {locationScopeLabel(scope as LocationScope)}:
+        </span>
+        <Select
+          value={scope}
+          onValueChange={(value) =>
+            navigate({
+              to: "/audits",
+              search: (prev) => ({ ...prev, scope: value as "branches" | "warehouses" }),
+            })
+          }
+        >
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="الموقع" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="branches">الفروع</SelectItem>
+            <SelectItem value="warehouses">المخازن</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select
+          value={type}
+          onValueChange={(value) =>
+            navigate({ to: "/audits", search: (prev) => ({ ...prev, type: value }) })
+          }
+        >
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="نوع التدقيق" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل أنواع التدقيق</SelectItem>
+            {Array.from(
+              new Map((audits || []).map((audit) => [audit.typeId, audit.typeName])).entries(),
+            )
+              .filter(([id]) => id)
+              .map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">من شهر</span>
+          <input
+            type="month"
+            value={monthFrom}
+            onChange={(event) => setMonthFrom(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="من شهر"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">إلى شهر</span>
+          <input
+            type="month"
+            value={monthTo}
+            onChange={(event) => setMonthTo(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="إلى شهر"
+          />
+        </label>
+        <Select
+          value={status}
+          onValueChange={(value) =>
+            navigate({
+              to: "/audits",
+              search: (prev) => ({ ...prev, status: value as "all" | "draft" | "submitted" }),
+            })
+          }
+        >
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="الحالة" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل الحالات</SelectItem>
+            <SelectItem value="submitted">مكتمل</SelectItem>
+            <SelectItem value="draft">مسودة</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
       <Tabs
         value={activeTab}
         onValueChange={(val) => setActiveTab(val as "completed" | "drafts")}
         className="w-full space-y-4"
       >
-        <TabsList className="grid w-full grid-cols-2 max-w-md h-11 p-1 bg-muted rounded-lg" dir="rtl">
+        <TabsList
+          className="grid w-full grid-cols-2 max-w-md h-11 p-1 bg-muted rounded-lg"
+          dir="rtl"
+        >
           <TabsTrigger
             value="completed"
             className="gap-2 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm"

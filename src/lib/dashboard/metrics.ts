@@ -13,7 +13,16 @@ export function programFromAuditTypeId(auditTypeId: string | null | undefined): 
 }
 
 export function compliancePercentage(earned: number, possible: number): number {
-  return possible > 0 ? Math.round((earned / possible) * 100) : 100;
+  return possible > 0 ? Number(((earned / possible) * 100).toFixed(2)) : 100;
+}
+
+export function formatPercentage(value: number | null | undefined): string {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "0";
+  return numericValue
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
 }
 
 export function cleanSectionName(name: string | null | undefined): string {
