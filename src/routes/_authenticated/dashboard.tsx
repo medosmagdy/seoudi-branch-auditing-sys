@@ -89,9 +89,6 @@ function ExecutiveDashboard() {
   const [endDate, setEndDate] = useState<string>("");
   const [branchSearch, setBranchSearch] = useState("");
 
-  const [recentBranchFilter, setRecentBranchFilter] = useState<string>("all");
-  const [recentMonthFilter, setRecentMonthFilter] = useState<string>("");
-
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [activeMetric, setActiveMetric] = useState<
@@ -419,19 +416,6 @@ function ExecutiveDashboard() {
       submittedAuditIds: allSubmittedAuditIds,
     };
   }, [data, profile, isAdmin, startDate, endDate, scope]);
-
-  const filteredRecentAudits = useMemo(() => {
-    if (!filteredData) return [];
-    return filteredData.audits.filter((audit) => {
-      if (recentBranchFilter !== "all" && audit.branch_id !== recentBranchFilter) {
-        return false;
-      }
-      if (recentMonthFilter && !audit.audit_date?.startsWith(recentMonthFilter)) {
-        return false;
-      }
-      return true;
-    });
-  }, [filteredData, recentBranchFilter, recentMonthFilter]);
 
   const activeSection = useMemo(() => {
     if (!activeSectionId || !filteredData) return null;
@@ -769,7 +753,7 @@ function ExecutiveDashboard() {
         .filter((section: any) => section.audit_type_id === typeId)
         .forEach((section: any) => {
           bySection[section.id] = {
-            name: (section.name_ar || "قسم غير مسمى").replace(/^قسم\\s+/i, "").trim(),
+            name: (section.name_ar || "قسم غير مسمى").replace(/^قس����\\s+/i, "").trim(),
             earned: 0,
             possible: 0,
           };
@@ -1486,103 +1470,6 @@ function ExecutiveDashboard() {
               ))}
             </div>
           </div>
-
-          <div className="surface-card mt-6 p-4 rounded-xl border border-border">
-            <div className="mb-3 border-b border-border pb-2.5 space-y-2" dir="rtl">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold flex items-center gap-1.5">
-                  <Calendar className="size-4 text-primary" />
-                  سجل الفحوصات المسجلة
-                </h3>
-                <Button asChild variant="ghost" size="sm" className="print:hidden h-7 text-xs px-2">
-                  <Link to="/audits">عرض الكل</Link>
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 print:hidden">
-                <Select value={recentBranchFilter} onValueChange={setRecentBranchFilter}>
-                  <SelectTrigger className="h-7 text-xs">
-                    <SelectValue placeholder="اختر الفرع" />
-                  </SelectTrigger>
-                  <SelectContent dir="rtl">
-                    <SelectItem value="all">جميع الفروع</SelectItem>
-                    {data?.branches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name_ar}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    type="month"
-                    className="h-7 text-xs flex-1"
-                    value={recentMonthFilter}
-                    onChange={(e) => setRecentMonthFilter(e.target.value)}
-                  />
-                  {(recentBranchFilter !== "all" || recentMonthFilter) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setRecentBranchFilter("all");
-                        setRecentMonthFilter("");
-                      }}
-                      className="h-7 px-2 text-xs text-destructive"
-                      title="مسح الفلاتر"
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-              {filteredRecentAudits.length === 0 ? (
-                <p className="text-xs text-muted-foreground text-center py-6">
-                  لا توجد فحوصات مسجلة.
-                </p>
-              ) : (
-                filteredRecentAudits.map((audit: any) => (
-                  <div
-                    key={audit.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-card hover:bg-muted/20 transition-colors text-xs"
-                    dir="rtl"
-                  >
-                    <div>
-                      <span className="font-bold block">{audit.branchName}</span>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {audit.audit_date}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Badge
-                        variant={audit.status === "submitted" ? "default" : "outline"}
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        {audit.status === "submitted" ? "مكتمل" : "مسودة"}
-                      </Badge>
-                      <Button
-                        asChild
-                        size="sm"
-                        variant="ghost"
-                        className="print:hidden h-6 text-xs px-2"
-                      >
-                        <Link
-                          to={audit.status === "submitted" ? "/audits/$id/report" : "/audits/$id"}
-                          params={{ id: audit.id }}
-                        >
-                          عرض
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
         </>
       ) : (
         <div
@@ -1604,7 +1491,7 @@ function ExecutiveDashboard() {
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-primary">
               <BarChart3 className="size-4" />
               {activeMetric === "compliance"
-                ? "تفاصيل متوسط الامتثال حسب البرنامج"
+                ? "تفاصيل متوسط الامتثال حسب البر��امج"
                 : activeMetric === "visits"
                   ? "تفاصيل جميع الزيارات"
                   : activeMetric === "critical"

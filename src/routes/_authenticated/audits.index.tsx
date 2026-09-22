@@ -52,6 +52,8 @@ function AuditsList() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
+  const [monthFrom, setMonthFrom] = useState("");
+  const [monthTo, setMonthTo] = useState("");
 
   // 1. جلب المستخدم الحالي ودوره من جدول user_roles
   const { data: userProfile } = useQuery({
@@ -197,10 +199,12 @@ function AuditsList() {
         return (
           matchesLocationScope(branch, scope as LocationScope) &&
           statusMatches &&
-          (type === "all" || audit.typeId === type)
+          (type === "all" || audit.typeId === type) &&
+          (!monthFrom || audit.audit_date?.slice(0, 7) >= monthFrom) &&
+          (!monthTo || audit.audit_date?.slice(0, 7) <= monthTo)
         );
       }),
-    [audits, scope, status, type],
+    [audits, scope, status, type, monthFrom, monthTo],
   );
 
   const completedAudits = scopedAudits.filter(
@@ -335,6 +339,26 @@ function AuditsList() {
               ))}
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">من شهر</span>
+          <input
+            type="month"
+            value={monthFrom}
+            onChange={(event) => setMonthFrom(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="من شهر"
+          />
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">إلى شهر</span>
+          <input
+            type="month"
+            value={monthTo}
+            onChange={(event) => setMonthTo(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+            aria-label="إلى شهر"
+          />
+        </label>
         <Select
           value={status}
           onValueChange={(value) =>
