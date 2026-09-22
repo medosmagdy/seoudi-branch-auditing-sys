@@ -1,4 +1,5 @@
 import type { ReportModel } from "@/lib/report-data";
+import { formatPercentage } from "@/lib/dashboard/metrics";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,9 +10,7 @@ import {
 
 export function ReportDocument({ model }: { model: ReportModel }) {
   const rawScore = Number(model?.result?.finalScore);
-  const finalPercentage = Number.isFinite(rawScore)
-    ? Math.max(0, Math.min(100, Math.round(rawScore)))
-    : 0;
+  const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
   const isPassed = finalPercentage >= 85;
 
   const totalDeductions = Number.isFinite(Number(model?.result?.totalDeductions))
@@ -85,7 +84,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             <div
               className={`mt-1 text-3xl font-black ${isPassed ? "text-emerald-600" : "text-destructive"}`}
             >
-              {finalPercentage}%
+              {formatPercentage(finalPercentage)}%
             </div>
             <span className="text-[11px] font-semibold block mt-1">
               {isPassed ? "مطابق لمعايير الجودة" : "يحتاج إلى إجراءات تصحيحية فورية"}
@@ -119,7 +118,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
               <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
             </h3>
-            <div className="relative h-56 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/60 to-white px-3 py-3">
+            <div className="relative h-64 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/70 via-white to-white px-3 py-3">
               <div className="absolute inset-x-3 top-3 bottom-8 flex flex-col justify-between text-[9px] text-muted-foreground">
                 {[100, 75, 50, 25, 0].map((value) => (
                   <div key={value} className="border-t border-dashed border-slate-300">
@@ -130,7 +129,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               <svg
                 viewBox="0 0 1000 260"
                 preserveAspectRatio="none"
-                className="absolute inset-x-12 top-4 h-40 w-[calc(100%-6rem)]"
+                className="absolute inset-x-12 top-4 h-48 w-[calc(100%-6rem)]"
                 role="img"
                 aria-label="منحنى درجات الفرع الشهرية"
               >
@@ -176,7 +175,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                         fontWeight="700"
                         fill="#0d604d"
                       >
-                        {entry.score}%
+                        {formatPercentage(entry.score)}%
                       </text>
                     </g>
                   );
@@ -214,7 +213,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
               {model.result.sections.map((sec) => {
                 const secRate = Number(sec.percentage);
-                const cleanRate = Number.isFinite(secRate) ? Math.round(secRate) : 0;
+                const cleanRate = Number.isFinite(secRate) ? secRate : 0;
 
                 return (
                   <div

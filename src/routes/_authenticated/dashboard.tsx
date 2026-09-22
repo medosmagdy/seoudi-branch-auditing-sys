@@ -397,7 +397,8 @@ function ExecutiveDashboard() {
 
     const totalEarned = Object.values(sectionDataMap).reduce((a, c) => a + c.earned, 0);
     const totalPossible = Object.values(sectionDataMap).reduce((a, c) => a + c.possible, 0);
-    const overallScore = totalPossible > 0 ? Math.round((totalEarned / totalPossible) * 100) : 100;
+    const overallScore =
+      totalPossible > 0 ? Number(((totalEarned / totalPossible) * 100).toFixed(2)) : 100;
 
     return {
       audits: filteredAudits,
@@ -792,7 +793,7 @@ function ExecutiveDashboard() {
 
       return Object.values(bySection).map((row) => ({
         ...row,
-        percentage: row.possible > 0 ? Math.round((row.earned / row.possible) * 100) : 0,
+        percentage: row.possible > 0 ? Number(((row.earned / row.possible) * 100).toFixed(2)) : 0,
       }));
     };
 
@@ -906,7 +907,7 @@ function ExecutiveDashboard() {
             ([name]) => name.includes(secTarget) || secTarget.includes(name),
           );
           if (sData && sData[1].possible > 0) {
-            const sPct = Math.round((sData[1].earned / sData[1].possible) * 100);
+            const sPct = Number(((sData[1].earned / sData[1].possible) * 100).toFixed(2));
             rowValues.push({
               v: `${sPct}%`,
               s: {
