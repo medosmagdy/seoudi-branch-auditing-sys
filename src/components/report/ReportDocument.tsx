@@ -23,22 +23,26 @@ export function ReportDocument({ model }: { model: ReportModel }) {
       {/* ================= الصفحة الأولى: الملخص ونسب الامتثال ================= */}
       <div
         data-report-page
-        className="bg-white p-6 mb-8 rounded-2xl border border-border shadow-xs"
+        className="mb-8 rounded-2xl border border-border bg-white p-6 shadow-xs"
       >
         {/* 1. ترويسة التقرير الرسمية */}
         <div data-report-block className="border-b-2 border-primary pb-4 mb-6">
-          <div className="flex items-center justify-between gap-4">
-            <img src="/saudi-logo.png" alt="شعار سعودي" className="h-20 w-auto object-contain" />
-            <div>
-              <h1 className="text-2xl font-black text-primary">
+          <div className="flex items-start justify-between gap-3">
+            <img
+              src="/saudi-logo.png"
+              alt="شعار سعودي"
+              className="h-20 w-24 shrink-0 object-contain object-right"
+            />
+            <div className="min-w-0 flex-1 px-1 text-center">
+              <h1 className="text-xl font-black leading-tight text-primary sm:text-2xl">
                 تقرير عدم المطابقة والملاحظات (NCR Report)
               </h1>
-              <p className="text-sm font-semibold text-muted-foreground mt-0.5">
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-muted-foreground sm:text-sm">
                 {model.auditTypeName || "فحص سلامة الغذاء"} • كود التفتيش:{" "}
                 {model.auditId.slice(0, 8)}
               </p>
             </div>
-            <div className="text-left" dir="ltr">
+            <div className="w-10 shrink-0 text-left" dir="ltr">
               <span className="inline-block rounded-md bg-primary/10 px-3 py-1 font-mono text-xs font-bold text-primary">
                 v{model.version}
               </span>
