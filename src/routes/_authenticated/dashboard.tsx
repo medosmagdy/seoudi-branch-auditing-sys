@@ -1080,19 +1080,22 @@ function ExecutiveDashboard() {
           <span className="text-xs font-bold">فلترة الفترة الزمنية:</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={branchFilter} onValueChange={setBranchFilter}>
-            <SelectTrigger className="h-7 w-44 text-xs">
-              <SelectValue placeholder="كل الفروع" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="all">كل الفروع</SelectItem>
-              {data?.branches.map((branch) => (
-                <SelectItem key={branch.id} value={branch.id}>
-                  {branch.name_ar}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-muted-foreground">الفرع:</span>
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="h-7 w-44 text-xs">
+                <SelectValue placeholder="كل الفروع" />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="all">كل الفروع</SelectItem>
+                {data?.branches.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name_ar}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">من:</span>
             <Input

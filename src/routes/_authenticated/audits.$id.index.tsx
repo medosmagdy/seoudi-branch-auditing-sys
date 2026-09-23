@@ -140,7 +140,7 @@ function AuditRunner() {
   const auditType = data?.audit?.audit_types as {
     name_ar?: string;
     code?: string;
-    scoring_system?: "4-1-0" | "4-2-0";
+    scoring_system?: "4-1-0" | "4-2-0" | "4-2-1-0";
   } | null;
   const isGhpAudit = useMemo(
     () => /ghp/i.test(auditType?.name_ar || "") || /ghp/i.test(auditType?.code || ""),
@@ -185,11 +185,10 @@ function AuditRunner() {
       (data.audit.audit_types as { name_ar?: string; code?: string } | null) ?? {};
     const isFsms =
       /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
-    const disabledScore = isFsms ? null : getDisabledScore(branchName);
     const nextAnswers: Record<string, AnswerState> = {};
     data.savedAnswers.forEach((answer) => {
       nextAnswers[answer.question_id] = {
-        score: disabledScore !== null && answer.score === disabledScore ? 4 : answer.score,
+        score: answer.score,
         isNa: answer.is_na,
         comment: answer.comment ?? "",
       };
@@ -513,10 +512,8 @@ function AuditRunner() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
-                  {scoreOptions
-                    .filter((option) => option.value <= question.max_score)
-                    .map((option) => {
-  const isOptionDisabled = readOnly;
+                  {scoreOptions.map((option) => {
+                    const isOptionDisabled = readOnly;
 
                       return (
                         <Button
@@ -536,7 +533,7 @@ function AuditRunner() {
                           {option.label}
                         </Button>
                       );
-                    })}
+                  })}
                   <Button
                     size="sm"
                     variant={answer.isNa ? "secondary" : "outline"}

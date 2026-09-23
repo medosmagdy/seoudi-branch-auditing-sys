@@ -36,7 +36,7 @@ export function ChecklistManager() {
   const [replaceExisting, setReplaceExisting] = useState(true);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeCode, setNewTypeCode] = useState("");
-  const [newScoringSystem, setNewScoringSystem] = useState<"4-1-0" | "4-2-0">("4-1-0");
+  const [newScoringSystem, setNewScoringSystem] = useState<"4-1-0" | "4-2-0" | "4-2-1-0">("4-2-1-0");
   const [newSection, setNewSection] = useState("");
   const [newSectionIsDelivery, setNewSectionIsDelivery] = useState(false);
   const [newHeader, setNewHeader] = useState<Record<string, string>>({});
@@ -826,7 +826,9 @@ export function ChecklistManager() {
             <Label htmlFor="tscoring">نظام التقييم</Label>
             <Select
               value={newScoringSystem}
-              onValueChange={(value) => setNewScoringSystem(value as "4-1-0" | "4-2-0")}
+              onValueChange={(value) =>
+                setNewScoringSystem(value as "4-1-0" | "4-2-0" | "4-2-1-0")
+              }
             >
               <SelectTrigger id="tscoring">
                 <SelectValue />
@@ -834,6 +836,7 @@ export function ChecklistManager() {
               <SelectContent>
                 <SelectItem value="4-1-0">4-1-0</SelectItem>
                 <SelectItem value="4-2-0">4-2-0</SelectItem>
+                <SelectItem value="4-2-1-0">4-2-1-0 (كل الدرجات)</SelectItem>
               </SelectContent>
             </Select>
           </div>
