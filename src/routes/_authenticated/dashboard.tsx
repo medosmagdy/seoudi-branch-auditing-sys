@@ -54,7 +54,7 @@ import {
   formatAuditComment,
   maxQuestionScore,
   numericScore,
-  programFromAuditTypeId,
+  programFromAuditType,
 } from "@/lib/dashboard/metrics";
 
 const { FS: FS_TYPE_ID, GHP: GHP_TYPE_ID, FSMS: FSMS_TYPE_ID } = DASHBOARD_PROGRAM_IDS;
@@ -189,7 +189,7 @@ function ExecutiveDashboard() {
     data.sections
       .filter((s) => data.auditTypes.some((type) => type.id === s.audit_type_id))
       .forEach((s) => {
-        const program = programFromAuditTypeId(s.audit_type_id);
+        const program = programFromAuditType(data.auditTypes.find((type) => type.id === s.audit_type_id));
         const key = `${program}__${s.id}`;
 
         sectionDataMap[key] = {
@@ -220,12 +220,9 @@ function ExecutiveDashboard() {
       const sec = sectionMap.get(q.section_id);
       if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
-      const program =
-        sec.audit_type_id === GHP_TYPE_ID
-          ? "GHP"
-          : sec.audit_type_id === FSMS_TYPE_ID
-            ? "FSMS"
-            : "FS";
+      const program = programFromAuditType(
+        data.auditTypes.find((type) => type.id === sec.audit_type_id),
+      );
       const key = `${program}__${sec.id}`;
 
       const secEntry = sectionDataMap[key];
@@ -347,9 +344,11 @@ function ExecutiveDashboard() {
     const fsmsBranchScores = data.branches
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
       .map((b) => {
-        const branchFsmsAudits = allSubmittedAudits.filter(
-          (a) => a.branch_id === b.id && a.audit_type_id === FSMS_TYPE_ID,
-        );
+    const branchFsmsAudits = allSubmittedAudits.filter(
+      (a) =>
+        a.branch_id === b.id &&
+        programFromAuditType(data.auditTypes.find((type) => type.id === a.audit_type_id)) === "FSMS",
+    );
         const latestAudit = branchFsmsAudits[0];
         return {
           branchId: b.id,
@@ -453,7 +452,7 @@ function ExecutiveDashboard() {
     const questionMap = new Map(data.questions.map((q) => [q.id, q]));
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
-    const buildTreeForProgram = (targetSectionTypeId: string) => {
+    const buildTreeForProgram = (targetProgram: "FS" | "GHP" | "FSMS") => {
       const monthsMap: Record<
         string,
         {
@@ -485,7 +484,10 @@ function ExecutiveDashboard() {
         const sec = sectionMap.get(q.section_id);
         if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
-        if (sec.audit_type_id !== targetSectionTypeId) return;
+        const sectionProgram = programFromAuditType(
+          data.auditTypes.find((type) => type.id === sec.audit_type_id),
+        );
+        if (sectionProgram !== targetProgram) return;
 
         const cleanSecName = cleanSectionName(sec.name_ar);
         const monthKey = auditMonthKey(audit.audit_date);
@@ -552,9 +554,9 @@ function ExecutiveDashboard() {
     };
 
     return {
-      foodSafety: buildTreeForProgram(FS_TYPE_ID),
-      ghp: buildTreeForProgram(GHP_TYPE_ID),
-      fsms: buildTreeForProgram(FSMS_TYPE_ID),
+      foodSafety: buildTreeForProgram("FS"),
+      ghp: buildTreeForProgram("GHP"),
+      fsms: buildTreeForProgram("FSMS"),
     };
   }, [activeBranch, filteredData, data]);
 
