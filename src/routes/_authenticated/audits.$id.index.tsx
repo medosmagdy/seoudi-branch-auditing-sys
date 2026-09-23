@@ -148,7 +148,6 @@ function AuditRunner() {
   );
   const isFsmsAudit = useMemo(
     () =>
-      auditType?.scoring_system === "4-2-0" ||
       /fsms/i.test(auditType?.name_ar || "") ||
       /fsms/i.test(auditType?.code || ""),
     [auditType],
@@ -325,7 +324,7 @@ function AuditRunner() {
   const branchSystem = isFsmsAudit
     ? "4-2-0"
     : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
-  const disabledScore = null;
+  const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
@@ -513,7 +512,8 @@ function AuditRunner() {
 
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
                   {scoreOptions.map((option) => {
-                    const isOptionDisabled = readOnly;
+                    const isOptionDisabled =
+                      readOnly || (disabledScore !== null && option.value === disabledScore);
 
                       return (
                         <Button
