@@ -12,6 +12,28 @@ export function programFromAuditTypeId(auditTypeId: string | null | undefined): 
   return "FS";
 }
 
+export function programFromAuditType(type: {
+  id?: string | null;
+  code?: string | null;
+  name_ar?: string | null;
+  name_en?: string | null;
+} | null | undefined): DashboardProgram {
+  if (!type) return "FS";
+
+  const value = [type.code, type.name_en, type.name_ar]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (type.id === DASHBOARD_PROGRAM_IDS.GHP || /\bghp\b/.test(value) || value.includes("النظافة")) {
+    return "GHP";
+  }
+  if (type.id === DASHBOARD_PROGRAM_IDS.FSMS || /\bfsms\b/.test(value) || value.includes("أنظمة")) {
+    return "FSMS";
+  }
+  return "FS";
+}
+
 export function compliancePercentage(earned: number, possible: number): number {
   return possible > 0 ? Number(((earned / possible) * 100).toFixed(2)) : 100;
 }

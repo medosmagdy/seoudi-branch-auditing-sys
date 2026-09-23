@@ -54,6 +54,7 @@ function AuditsList() {
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
   const [monthFrom, setMonthFrom] = useState("");
   const [monthTo, setMonthTo] = useState("");
+  const [branchFilter, setBranchFilter] = useState("all");
 
   // 1. جلب المستخدم الحالي ودوره من جدول user_roles
   const { data: userProfile } = useQuery({
@@ -200,11 +201,12 @@ function AuditsList() {
           matchesLocationScope(branch, scope as LocationScope) &&
           statusMatches &&
           (type === "all" || audit.typeId === type) &&
+          (branchFilter === "all" || audit.branch_id === branchFilter) &&
           (!monthFrom || audit.audit_date?.slice(0, 7) >= monthFrom) &&
           (!monthTo || audit.audit_date?.slice(0, 7) <= monthTo)
         );
       }),
-    [audits, scope, status, type, monthFrom, monthTo],
+    [audits, scope, status, type, branchFilter, monthFrom, monthTo],
   );
 
   const completedAudits = scopedAudits.filter(
@@ -330,6 +332,23 @@ function AuditsList() {
             <SelectItem value="all">كل أنواع التدقيق</SelectItem>
             {Array.from(
               new Map((audits || []).map((audit) => [audit.typeId, audit.typeName])).entries(),
+            )
+              .filter(([id]) => id)
+              .map(([id, name]) => (
+                <SelectItem key={id} value={id}>
+                  {name}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
+        <Select value={branchFilter} onValueChange={setBranchFilter}>
+          <SelectTrigger className="w-44">
+            <SelectValue placeholder="اسم الفرع" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">كل الفروع</SelectItem>
+            {Array.from(
+              new Map((audits || []).map((audit) => [audit.branch_id, audit.branchName])).entries(),
             )
               .filter(([id]) => id)
               .map(([id, name]) => (

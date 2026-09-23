@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { z } from "zod";
 import { type LocationScope } from "@/lib/location-scope";
 import { fetchDashboardData } from "@/lib/dashboard/data";
+import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -53,7 +54,7 @@ import {
   formatAuditComment,
   maxQuestionScore,
   numericScore,
-  programFromAuditTypeId,
+  programFromAuditType,
 } from "@/lib/dashboard/metrics";
 
 const { FS: FS_TYPE_ID, GHP: GHP_TYPE_ID, FSMS: FSMS_TYPE_ID } = DASHBOARD_PROGRAM_IDS;
@@ -87,6 +88,7 @@ function ExecutiveDashboard() {
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [branchSearch, setBranchSearch] = useState("");
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -118,6 +120,7 @@ function ExecutiveDashboard() {
     });
 
     const filteredAudits = userScopedAudits.filter((a) => {
+      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
       if (!a.audit_date) return true;
       if (startDate && a.audit_date < startDate) return false;
       if (endDate && a.audit_date > endDate) return false;
@@ -129,6 +132,7 @@ function ExecutiveDashboard() {
     const allowedBranchIds = new Set(filteredAudits.map((a) => a.branch_id));
 
     const allScopedAudits = data.audits.filter((a) => {
+      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
       if (!a.audit_date) return true;
       if (startDate && a.audit_date < startDate) return false;
       if (endDate && a.audit_date > endDate) return false;
@@ -185,7 +189,7 @@ function ExecutiveDashboard() {
     data.sections
       .filter((s) => data.auditTypes.some((type) => type.id === s.audit_type_id))
       .forEach((s) => {
-        const program = programFromAuditTypeId(s.audit_type_id);
+        const program = programFromAuditType(data.auditTypes.find((type) => type.id === s.audit_type_id));
         const key = `${program}__${s.id}`;
 
         sectionDataMap[key] = {
@@ -216,12 +220,9 @@ function ExecutiveDashboard() {
       const sec = sectionMap.get(q.section_id);
       if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
-      const program =
-        sec.audit_type_id === GHP_TYPE_ID
-          ? "GHP"
-          : sec.audit_type_id === FSMS_TYPE_ID
-            ? "FSMS"
-            : "FS";
+      const program = programFromAuditType(
+        data.auditTypes.find((type) => type.id === sec.audit_type_id),
+      );
       const key = `${program}__${sec.id}`;
 
       const secEntry = sectionDataMap[key];
@@ -343,9 +344,11 @@ function ExecutiveDashboard() {
     const fsmsBranchScores = data.branches
       .filter((b) => isAdmin || allowedBranchIds.has(b.id))
       .map((b) => {
-        const branchFsmsAudits = allSubmittedAudits.filter(
-          (a) => a.branch_id === b.id && a.audit_type_id === FSMS_TYPE_ID,
-        );
+    const branchFsmsAudits = allSubmittedAudits.filter(
+      (a) =>
+        a.branch_id === b.id &&
+        programFromAuditType(data.auditTypes.find((type) => type.id === a.audit_type_id)) === "FSMS",
+    );
         const latestAudit = branchFsmsAudits[0];
         return {
           branchId: b.id,
@@ -415,7 +418,7 @@ function ExecutiveDashboard() {
       branchesSummary,
       submittedAuditIds: allSubmittedAuditIds,
     };
-  }, [data, profile, isAdmin, startDate, endDate, scope]);
+  }, [data, profile, isAdmin, startDate, endDate, branchFilter, scope]);
 
   const activeSection = useMemo(() => {
     if (!activeSectionId || !filteredData) return null;
@@ -449,7 +452,7 @@ function ExecutiveDashboard() {
     const questionMap = new Map(data.questions.map((q) => [q.id, q]));
     const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
 
-    const buildTreeForProgram = (targetSectionTypeId: string) => {
+    const buildTreeForProgram = (targetProgram: "FS" | "GHP" | "FSMS") => {
       const monthsMap: Record<
         string,
         {
@@ -481,7 +484,10 @@ function ExecutiveDashboard() {
         const sec = sectionMap.get(q.section_id);
         if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
 
-        if (sec.audit_type_id !== targetSectionTypeId) return;
+        const sectionProgram = programFromAuditType(
+          data.auditTypes.find((type) => type.id === sec.audit_type_id),
+        );
+        if (sectionProgram !== targetProgram) return;
 
         const cleanSecName = cleanSectionName(sec.name_ar);
         const monthKey = auditMonthKey(audit.audit_date);
@@ -548,9 +554,9 @@ function ExecutiveDashboard() {
     };
 
     return {
-      foodSafety: buildTreeForProgram(FS_TYPE_ID),
-      ghp: buildTreeForProgram(GHP_TYPE_ID),
-      fsms: buildTreeForProgram(FSMS_TYPE_ID),
+      foodSafety: buildTreeForProgram("FS"),
+      ghp: buildTreeForProgram("GHP"),
+      fsms: buildTreeForProgram("FSMS"),
     };
   }, [activeBranch, filteredData, data]);
 
@@ -1075,6 +1081,22 @@ function ExecutiveDashboard() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs">
+            <span className="font-semibold text-muted-foreground">الفرع:</span>
+            <Select value={branchFilter} onValueChange={setBranchFilter}>
+              <SelectTrigger className="h-7 w-44 text-xs">
+                <SelectValue placeholder="كل الفروع" />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value="all">كل الفروع</SelectItem>
+                {data?.branches.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name_ar}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">من:</span>
             <Input
               type="date"
@@ -1108,7 +1130,7 @@ function ExecutiveDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-3 print:hidden">
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
         <Button
           asChild
           size="sm"
@@ -1135,6 +1157,17 @@ function ExecutiveDashboard() {
               {filteredData?.draftsCount ?? 0}
             </Badge>
           </Link>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={exportToExcel}
+          className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
+        >
+          <span className="font-bold flex items-center gap-1.5 text-xs">
+            <FileSpreadsheet className="size-4 text-emerald-600" /> تصدير Excel
+          </span>
+          <span className="text-[11px] text-muted-foreground">تحميل</span>
         </Button>
         <Button
           asChild
