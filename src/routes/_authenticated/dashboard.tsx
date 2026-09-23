@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { z } from "zod";
 import { type LocationScope } from "@/lib/location-scope";
 import { fetchDashboardData } from "@/lib/dashboard/data";
+import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -87,6 +88,7 @@ function ExecutiveDashboard() {
 
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [branchSearch, setBranchSearch] = useState("");
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -118,6 +120,7 @@ function ExecutiveDashboard() {
     });
 
     const filteredAudits = userScopedAudits.filter((a) => {
+      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
       if (!a.audit_date) return true;
       if (startDate && a.audit_date < startDate) return false;
       if (endDate && a.audit_date > endDate) return false;
@@ -129,6 +132,7 @@ function ExecutiveDashboard() {
     const allowedBranchIds = new Set(filteredAudits.map((a) => a.branch_id));
 
     const allScopedAudits = data.audits.filter((a) => {
+      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
       if (!a.audit_date) return true;
       if (startDate && a.audit_date < startDate) return false;
       if (endDate && a.audit_date > endDate) return false;
@@ -415,7 +419,7 @@ function ExecutiveDashboard() {
       branchesSummary,
       submittedAuditIds: allSubmittedAuditIds,
     };
-  }, [data, profile, isAdmin, startDate, endDate, scope]);
+  }, [data, profile, isAdmin, startDate, endDate, branchFilter, scope]);
 
   const activeSection = useMemo(() => {
     if (!activeSectionId || !filteredData) return null;
@@ -1074,6 +1078,19 @@ function ExecutiveDashboard() {
           <span className="text-xs font-bold">فلترة الفترة الزمنية:</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Select value={branchFilter} onValueChange={setBranchFilter}>
+            <SelectTrigger className="h-7 w-44 text-xs">
+              <SelectValue placeholder="كل الفروع" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              <SelectItem value="all">كل الفروع</SelectItem>
+              {data?.branches.map((branch) => (
+                <SelectItem key={branch.id} value={branch.id}>
+                  {branch.name_ar}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="flex items-center gap-1.5 text-xs">
             <span className="text-muted-foreground">من:</span>
             <Input
@@ -1108,7 +1125,7 @@ function ExecutiveDashboard() {
         </div>
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-3 print:hidden">
+      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
         <Button
           asChild
           size="sm"
@@ -1135,6 +1152,17 @@ function ExecutiveDashboard() {
               {filteredData?.draftsCount ?? 0}
             </Badge>
           </Link>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={exportToExcel}
+          className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
+        >
+          <span className="font-bold flex items-center gap-1.5 text-xs">
+            <FileSpreadsheet className="size-4 text-emerald-600" /> تصدير Excel
+          </span>
+          <span className="text-[11px] text-muted-foreground">تحميل</span>
         </Button>
         <Button
           asChild

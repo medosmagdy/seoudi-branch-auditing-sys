@@ -326,7 +326,7 @@ function AuditRunner() {
   const branchSystem = isFsmsAudit
     ? "4-2-0"
     : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
-  const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
+  const disabledScore = null;
   const readOnly = data.audit.status === "submitted";
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
@@ -342,12 +342,12 @@ function AuditRunner() {
         },
         { onConflict: "audit_id,question_id" },
       );
-      if (error) toast.error("تعذر حفظ الإجابة");
+      if (error) toast.error("تعذر حفظ الإجا��ة");
     }, 400);
   };
 
   const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
-    if (readOnly || (disabledScore !== null && patch.score === disabledScore)) return;
+    if (readOnly) return;
     setAnswers((previous) => {
       const current = previous[questionId] ?? { score: null, isNa: false, comment: "" };
       const next = { ...current, ...patch };
@@ -516,10 +516,7 @@ function AuditRunner() {
                   {scoreOptions
                     .filter((option) => option.value <= question.max_score)
                     .map((option) => {
-                      const isOptionDisabled =
-                        readOnly ||
-                        (disabledScore !== null && option.value === disabledScore) ||
-                        (Boolean(isCcpOrOprp) && option.value !== 4 && option.value !== 0);
+  const isOptionDisabled = readOnly;
 
                       return (
                         <Button
