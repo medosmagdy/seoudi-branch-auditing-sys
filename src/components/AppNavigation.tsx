@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { LayoutDashboard, ShieldCheck, Warehouse } from "lucide-react";
+import { ClipboardCheck, LayoutDashboard, ShieldCheck, Warehouse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { useSession } from "@/hooks/useSession";
 
 type SessionProfile = ReturnType<typeof useSession>["profile"];
 
 const navItems = [
+  { to: "/slaughtering", label: "المجازر", icon: ClipboardCheck, search: {} },
   { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
   { to: "/dashboard", label: "المخازن", icon: Warehouse, search: { scope: "warehouses" } },
 ] as const;
@@ -25,7 +26,7 @@ export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; i
             search={item.search}
             className={cn(
               "flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors",
-              pathname === item.to && item.search.scope === currentScope
+              pathname === item.to && ("scope" in item.search ? item.search.scope === currentScope : true)
                 ? "bg-secondary text-secondary-foreground font-semibold"
                 : "hover:bg-primary-soft/60",
             )}

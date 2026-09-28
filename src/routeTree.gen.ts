@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedSlaughteringRouteImport } from './routes/_authenticated/slaughtering'
 import { Route as AuthenticatedAuditsIndexRouteImport } from './routes/_authenticated/audits.index'
 import { Route as AuthenticatedAuditsIdRouteImport } from './routes/_authenticated/audits.$id'
 import { Route as AuthenticatedAuditsNewRouteImport } from './routes/_authenticated/audits.new'
@@ -45,6 +46,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSlaughteringRoute =
+  AuthenticatedSlaughteringRouteImport.update({
+    id: '/slaughtering',
+    path: '/slaughtering',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAuditsIndexRoute =
   AuthenticatedAuditsIndexRouteImport.update({
     id: '/audits/',
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/audits/$id': typeof AuthenticatedAuditsIdRouteWithChildren
   '/audits/new': typeof AuthenticatedAuditsNewRoute
   '/audits/': typeof AuthenticatedAuditsIndexRoute
@@ -97,6 +105,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/audits/new': typeof AuthenticatedAuditsNewRoute
   '/audits': typeof AuthenticatedAuditsIndexRoute
   '/audits/$id/report': typeof AuthenticatedAuditsIdReportRoute
@@ -110,6 +119,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/_authenticated/audits/$id': typeof AuthenticatedAuditsIdRouteWithChildren
   '/_authenticated/audits/new': typeof AuthenticatedAuditsNewRoute
   '/_authenticated/audits/': typeof AuthenticatedAuditsIndexRoute
@@ -124,6 +134,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/dashboard'
+    | '/slaughtering'
     | '/audits/$id'
     | '/audits/new'
     | '/audits/'
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/admin'
     | '/dashboard'
+    | '/slaughtering'
     | '/audits/new'
     | '/audits'
     | '/audits/$id/report'
@@ -148,6 +160,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
+    | '/_authenticated/slaughtering'
     | '/_authenticated/audits/$id'
     | '/_authenticated/audits/new'
     | '/_authenticated/audits/'
@@ -197,6 +210,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/slaughtering': {
+      id: '/_authenticated/slaughtering'
+      path: '/slaughtering'
+      fullPath: '/slaughtering'
+      preLoaderRoute: typeof AuthenticatedSlaughteringRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/audits/': {
@@ -264,6 +284,7 @@ const AuthenticatedAuditsIdRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedSlaughteringRoute: typeof AuthenticatedSlaughteringRoute
   AuthenticatedAuditsIdRoute: typeof AuthenticatedAuditsIdRouteWithChildren
   AuthenticatedAuditsNewRoute: typeof AuthenticatedAuditsNewRoute
   AuthenticatedAuditsIndexRoute: typeof AuthenticatedAuditsIndexRoute
@@ -272,6 +293,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedSlaughteringRoute: AuthenticatedSlaughteringRoute,
   AuthenticatedAuditsIdRoute: AuthenticatedAuditsIdRouteWithChildren,
   AuthenticatedAuditsNewRoute: AuthenticatedAuditsNewRoute,
   AuthenticatedAuditsIndexRoute: AuthenticatedAuditsIndexRoute,
