@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { CalendarDays, ClipboardCheck, Download, Plus, Search, Scale, XCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
@@ -113,10 +113,69 @@ function MetricCard({ title, value, detail, icon: Icon }: { title: string; value
 }
 
 function DailyReportForm({ reportDate, setReportDate, notify }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void }) {
-  const [number, setNumber] = useState("0");
-  const [received, setReceived] = useState("0");
-  const rejected = Math.max(0, Number(number) - Number(received));
-  return <div className="space-y-5"><Card><CardHeader><CardTitle>بيانات الذبح اليومية</CardTitle><p className="text-sm text-muted-foreground">مطابقة لحقول Evaluation في النموذج المعتمد</p></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"><div className="space-y-2"><Label>التاريخ</Label><Input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} /></div><div className="space-y-2"><Label>المزرعة</Label><Input placeholder="اسم المزرعة" /></div><div className="space-y-2"><Label>المجزر</Label><Input placeholder="اسم المجزر" /></div><div className="space-y-2"><Label>نوع الحيوان</Label><Select defaultValue="Bulls"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>العدد</Label><Input type="number" min="0" value={number} onChange={(event) => setNumber(event.target.value)} /></div><div className="space-y-2"><Label>المستلم</Label><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></div></CardContent></Card><Card><CardHeader><CardTitle>ملخص الاستلام</CardTitle></CardHeader><CardContent><div className="grid gap-4 sm:grid-cols-3"><div className="rounded-xl bg-muted/40 p-4"><p className="text-sm text-muted-foreground">المرفوض</p><p className="mt-1 text-2xl font-bold text-destructive">{rejected}</p></div><div className="rounded-xl bg-muted/40 p-4"><p className="text-sm text-muted-foreground">نسبة الاستثناء</p><p className="mt-1 text-2xl font-bold">{number === "0" ? 0 : Math.round((rejected / Number(number)) * 100)}%</p></div><div className="rounded-xl bg-muted/40 p-4"><p className="text-sm text-muted-foreground">حالة التقرير</p><p className="mt-1 text-2xl font-bold">مسودة</p></div></div><Separator className="my-5" /><Button onClick={() => notify("تم حفظ التقرير كمسودة مبدئية") }><ClipboardCheck className="ml-2 size-4" /> حفظ التقرير</Button></CardContent></Card><Card><CardHeader><CardTitle>تقييم جودة اللحوم</CardTitle></CardHeader><CardContent className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label>وزن المزرعة</Label><Input type="number" placeholder="0" /></div><div className="space-y-2"><Label>وزن الذبيحة</Label><Input type="number" placeholder="0" /></div><div className="space-y-2"><Label>درجة AM</Label><Input type="number" min="0" max="100" placeholder="0" /></div><div className="space-y-2"><Label>درجة PM</Label><Input type="number" min="0" max="100" placeholder="0" /></div></CardContent></Card></div>;
+  const [farm, setFarm] = useState("");
+  const [slaughterhouse, setSlaughterhouse] = useState("");
+  const [animalType, setAnimalType] = useState(animalTypes[0]);
+  const [number, setNumber] = useState("");
+  const [received, setReceived] = useState("");
+  const [carcassWeight, setCarcassWeight] = useState("");
+  const [amScore, setAmScore] = useState("");
+  const [pmScore, setPmScore] = useState("");
+  const [reason, setReason] = useState("");
+  const rejected = Math.max(0, Number(number || 0) - Number(received || 0));
+  const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
+
+  const saveDraft = () => {
+    if (!reportDate || !farm || !slaughterhouse || !number || !received) {
+      notify("أكمل التاريخ والمزرعة والمجزر والعدد والمستلم أولًا");
+      return;
+    }
+    if (Number(received) > Number(number)) {
+      notify("عدد المستلم لا يمكن أن يتجاوز العدد الكلي");
+      return;
+    }
+    notify("تم تجهيز التقرير كمسودة. سيتم ربط الحفظ بقاعدة البيانات بعد تفعيل مخطط Supabase");
+  };
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <CardHeader>
+          <CardTitle>بيانات الذبح اليومية</CardTitle>
+          <p className="text-sm text-muted-foreground">مطابقة لحقول Evaluation في النموذج المعتمد</p>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="التاريخ"><Input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} /></Field>
+          <Field label="المزرعة"><Input placeholder="اسم المزرعة" value={farm} onChange={(event) => setFarm(event.target.value)} /></Field>
+          <Field label="المجزر"><Input placeholder="اسم المجزر" value={slaughterhouse} onChange={(event) => setSlaughterhouse(event.target.value)} /></Field>
+          <Field label="نوع الحيوان"><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></Field>
+          <Field label="العدد"><Input type="number" min="0" value={number} onChange={(event) => setNumber(event.target.value)} /></Field>
+          <Field label="المستلم"><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></Field>
+          <Field label="وزن الذبائح بالكيلو"><Input type="number" min="0" value={carcassWeight} onChange={(event) => setCarcassWeight(event.target.value)} /></Field>
+          <Field label="سبب الرفض الرئيسي"><Select value={reason} onValueChange={setReason}><SelectTrigger><SelectValue placeholder="اختر السبب" /></SelectTrigger><SelectContent>{rejectionReasons.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></Field>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>التقييم الصحي</CardTitle><p className="text-sm text-muted-foreground">درجات AM وPM المستخدمة في التقرير الأصلي</p></CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Ante-mortem (AM)"><Input type="number" min="0" max="100" value={amScore} onChange={(event) => setAmScore(event.target.value)} /></Field>
+          <Field label="Post-mortem (PM)"><Input type="number" min="0" max="100" value={pmScore} onChange={(event) => setPmScore(event.target.value)} /></Field>
+          <div className="rounded-xl bg-primary/10 p-4"><p className="text-sm text-muted-foreground">Meat Score</p><p className="mt-1 text-2xl font-bold text-primary">{meatScore}%</p></div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>ملخص الاستلام</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3"><Summary label="المرفوض" value={rejected} danger /><Summary label="نسبة الاستثناء" value={`${number ? Math.round((rejected / Number(number)) * 100) : 0}%`} /><Summary label="حالة التقرير" value="مسودة" /></div>
+          <Separator className="my-5" />
+          <Button onClick={saveDraft}><ClipboardCheck className="ml-2 size-4" /> حفظ كمسودة</Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
+
+function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="space-y-2"><Label>{label}</Label>{children}</div>; }
+function Summary({ label, value, danger = false }: { label: string; value: string | number; danger?: boolean }) { return <div className="rounded-xl bg-muted/40 p-4"><p className="text-sm text-muted-foreground">{label}</p><p className={danger ? "mt-1 text-2xl font-bold text-destructive" : "mt-1 text-2xl font-bold"}>{value}</p></div>; }
 
 export default SlaughteringPage;
