@@ -67,6 +67,7 @@ function SlaughteringPage() {
     amScore: number | null;
     pmScore: number | null;
     rejectionReason: string;
+    photos: File[];
   }) => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) {
@@ -94,6 +95,21 @@ function SlaughteringPage() {
     if (error) {
       notify(`تعذر حفظ التقرير: ${error.message}`);
       return false;
+    }
+    if (draft.photos.length) {
+      const uploads = await Promise.all(draft.photos.map(async (file) => {
+        const path = `slaughter/${data.id}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+        const upload = await supabase.storage.from("audit-reports").upload(path, file, { contentType: file.type, upsert: false });
+        return upload.error ? { error: upload.error } : { path, fileName: file.name };
+      }));
+      const failed = uploads.find((item) => item.error);
+      if (failed?.error) {
+        notify("تم حفظ التقرير لكن تعذر رفع بعض الصور");
+      } else {
+        await (supabase as any).from("slaughter_report_photos").insert(
+          uploads.map((item) => ({ report_id: data.id, storage_path: item.path, file_name: item.fileName, created_by: userData.user.id })),
+        );
+      }
     }
     setSavedReports((current) => [{
       id: data.id,
@@ -172,7 +188,7 @@ function MetricCard({ title, value, detail, icon: Icon }: { title: string; value
   return <Card><CardContent className="p-5"><div className="flex items-start justify-between"><div><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 text-2xl font-bold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><div className="rounded-xl bg-primary/10 p-3 text-primary"><Icon className="size-5" /></div></div></CardContent></Card>;
 }
 
-function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string }) => Promise<boolean> }) {
+function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string; photos: File[] }) => Promise<boolean> }) {
   const [farm, setFarm] = useState("");
   const [slaughterhouse, setSlaughterhouse] = useState("");
   const [animalType, setAnimalType] = useState(animalTypes[0]);
@@ -182,7 +198,7 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
   const [amScore, setAmScore] = useState("");
   const [pmScore, setPmScore] = useState("");
   const [reason, setReason] = useState("");
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<File[]>([]);
   const rejected = Math.max(0, Number(number || 0) - Number(received || 0));
   const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
 
@@ -207,6 +223,7 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
       amScore: amScore ? Number(amScore) : null,
       pmScore: pmScore ? Number(pmScore) : null,
       rejectionReason: reason,
+      photos,
     });
   };
 
@@ -236,10 +253,10 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
             <span>إضافة صور</span>
             <input type="file" accept="image/*" multiple className="sr-only" onChange={(event) => {
               const files = Array.from(event.target.files ?? []).slice(0, 8);
-              setPhotos(files.map((file) => URL.createObjectURL(file)));
-            }} />
-          </label>
-          {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((src, index) => <img key={src} src={src} alt={`صورة مرفقة ${index + 1}`} className="aspect-square rounded-lg border object-cover" />)}</div>}
+              setPhotos(files);
+            }}
+          /></label>
+          {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((file, index) => <img key={`${file.name}-${index}`} src={URL.createObjectURL(file)} alt={`صورة مرفقة ${index + 1}`} className="aspect-square rounded-lg border object-cover" />)}</div>}
         </CardContent>
       </Card>
       <Card>
