@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -46,12 +47,71 @@ function SlaughteringPage() {
   const [month, setMonth] = useState("2026-09");
   const [reportDate, setReportDate] = useState("2026-09-14");
   const [message, setMessage] = useState("");
+  const [savedReports, setSavedReports] = useState<Report[]>(reports);
 
-  const filteredReports = useMemo(() => reports.filter((report) => {
+  const filteredReports = useMemo(() => savedReports.filter((report) => {
     const matchesQuery = [report.farm, report.slaughterhouse, report.animalType].join(" ").toLowerCase().includes(query.toLowerCase());
     const matchesType = animalType === "all" || report.animalType === animalType;
     return matchesQuery && matchesType && report.date.startsWith(month);
-  }), [animalType, month, query]);
+  }), [animalType, month, query, savedReports]);
+
+  const saveReport = async (draft: {
+    date: string;
+    farm: string;
+    slaughterhouse: string;
+    animalType: string;
+    number: number;
+    received: number;
+    carcassWeight: number;
+    meatScore: number;
+    amScore: number | null;
+    pmScore: number | null;
+    rejectionReason: string;
+  }) => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
+      notify("يجب تسجيل الدخول قبل حفظ التقرير");
+      return false;
+    }
+    const { data, error } = await (supabase as any)
+      .from("slaughter_reports")
+      .insert({
+        report_date: draft.date,
+        farm_name: draft.farm,
+        slaughterhouse_name: draft.slaughterhouse,
+        animal_type: draft.animalType,
+        total_count: draft.number,
+        received_count: draft.received,
+        carcass_weight: draft.carcassWeight,
+        am_score: draft.amScore,
+        pm_score: draft.pmScore,
+        rejection_reason: draft.rejectionReason || null,
+        status: "draft",
+        created_by: userData.user.id,
+      })
+      .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, status")
+      .single();
+    if (error) {
+      notify(`تعذر حفظ التقرير: ${error.message}`);
+      return false;
+    }
+    setSavedReports((current) => [{
+      id: data.id,
+      date: data.report_date,
+      farm: data.farm_name,
+      slaughterhouse: data.slaughterhouse_name,
+      animalType: data.animal_type,
+      number: data.total_count,
+      received: data.received_count,
+      rejected: data.rejected_count,
+      carcassWeight: Number(data.carcass_weight),
+      meatScore: Number(data.meat_score ?? draft.meatScore),
+      status: "مسودة",
+    }, ...current]);
+    notify("تم حفظ التقرير كمسودة بنجاح");
+    setActiveTab("reports");
+    return true;
+  };
 
   const totalNumber = filteredReports.reduce((sum, report) => sum + report.number, 0);
   const totalReceived = filteredReports.reduce((sum, report) => sum + report.received, 0);
@@ -99,10 +159,10 @@ function SlaughteringPage() {
 
         <TabsContent value="reports" className="space-y-4">
           <Card><CardContent className="flex flex-col gap-3 p-4 md:flex-row"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pr-9" placeholder="ابحث بالمزرعة أو المجزر أو النوع" value={query} onChange={(event) => setQuery(event.target.value)} /></div><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger className="w-full md:w-48"><SelectValue placeholder="نوع الحيوان" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Input className="w-full md:w-40" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></CardContent></Card>
-          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="border-b last:border-0 hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
+          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "الم��فوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="border-b last:border-0 hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
         </TabsContent>
 
-        <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} /></TabsContent>
+        <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} /></TabsContent>
       </Tabs>
     </AppShell>
   );
@@ -112,7 +172,7 @@ function MetricCard({ title, value, detail, icon: Icon }: { title: string; value
   return <Card><CardContent className="p-5"><div className="flex items-start justify-between"><div><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 text-2xl font-bold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><div className="rounded-xl bg-primary/10 p-3 text-primary"><Icon className="size-5" /></div></div></CardContent></Card>;
 }
 
-function DailyReportForm({ reportDate, setReportDate, notify }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void }) {
+function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string }) => Promise<boolean> }) {
   const [farm, setFarm] = useState("");
   const [slaughterhouse, setSlaughterhouse] = useState("");
   const [animalType, setAnimalType] = useState(animalTypes[0]);
@@ -135,7 +195,19 @@ function DailyReportForm({ reportDate, setReportDate, notify }: { reportDate: st
       notify("عدد المستلم لا يمكن أن يتجاوز العدد الكلي");
       return;
     }
-    notify("تم تجهيز التقرير كمسودة. سيتم ربط الحفظ بقاعدة البيانات بعد تفعيل مخطط Supabase");
+    void onSave({
+      date: reportDate,
+      farm,
+      slaughterhouse,
+      animalType,
+      number: Number(number),
+      received: Number(received),
+      carcassWeight: Number(carcassWeight || 0),
+      meatScore,
+      amScore: amScore ? Number(amScore) : null,
+      pmScore: pmScore ? Number(pmScore) : null,
+      rejectionReason: reason,
+    });
   };
 
   return (
