@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { CalendarDays, ClipboardCheck, Download, Plus, Search, Scale, XCircle } from "lucide-react";
+import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,7 @@ function DailyReportForm({ reportDate, setReportDate, notify }: { reportDate: st
   const [amScore, setAmScore] = useState("");
   const [pmScore, setPmScore] = useState("");
   const [reason, setReason] = useState("");
+  const [photos, setPhotos] = useState<string[]>([]);
   const rejected = Math.max(0, Number(number || 0) - Number(received || 0));
   const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
 
@@ -153,6 +154,20 @@ function DailyReportForm({ reportDate, setReportDate, notify }: { reportDate: st
           <Field label="المستلم"><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></Field>
           <Field label="وزن الذبائح بالكيلو"><Input type="number" min="0" value={carcassWeight} onChange={(event) => setCarcassWeight(event.target.value)} /></Field>
           <Field label="سبب الرفض الرئيسي"><Select value={reason} onValueChange={setReason}><SelectTrigger><SelectValue placeholder="اختر السبب" /></SelectTrigger><SelectContent>{rejectionReasons.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></Field>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>المرفقات والصور</CardTitle><p className="text-sm text-muted-foreground">أرفق صور الحالات أو المستندات المرتبطة بالتقرير</p></CardHeader>
+        <CardContent>
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-8 text-sm font-medium transition-colors hover:bg-primary/10">
+            <ImagePlus className="size-5 text-primary" />
+            <span>إضافة صور</span>
+            <input type="file" accept="image/*" multiple className="sr-only" onChange={(event) => {
+              const files = Array.from(event.target.files ?? []).slice(0, 8);
+              setPhotos(files.map((file) => URL.createObjectURL(file)));
+            }} />
+          </label>
+          {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((src, index) => <img key={src} src={src} alt={`صورة مرفقة ${index + 1}`} className="aspect-square rounded-lg border object-cover" />)}</div>}
         </CardContent>
       </Card>
       <Card>
