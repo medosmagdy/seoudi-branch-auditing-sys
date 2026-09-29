@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
@@ -48,6 +48,31 @@ function SlaughteringPage() {
   const [reportDate, setReportDate] = useState("2026-09-14");
   const [message, setMessage] = useState("");
   const [savedReports, setSavedReports] = useState<Report[]>(reports);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      const { data, error } = await (supabase as any)
+        .from("slaughter_reports")
+        .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, status")
+        .order("report_date", { ascending: false });
+      if (!active || error || !data?.length) return;
+      setSavedReports(data.map((item: any) => ({
+        id: item.id,
+        date: item.report_date,
+        farm: item.farm_name,
+        slaughterhouse: item.slaughterhouse_name,
+        animalType: item.animal_type,
+        number: item.total_count,
+        received: item.received_count,
+        rejected: item.rejected_count,
+        carcassWeight: Number(item.carcass_weight),
+        meatScore: Number(item.meat_score ?? 0),
+        status: item.status === "draft" ? "مسودة" : item.status === "approved" ? "معتمد" : "مكتمل",
+      })));
+    })();
+    return () => { active = false; };
+  }, []);
 
   const filteredReports = useMemo(() => savedReports.filter((report) => {
     const matchesQuery = [report.farm, report.slaughterhouse, report.animalType].join(" ").toLowerCase().includes(query.toLowerCase());
@@ -106,9 +131,14 @@ function SlaughteringPage() {
       if (failed?.error) {
         notify("تم حفظ التقرير لكن تعذر رفع بعض الصور");
       } else {
-        await (supabase as any).from("slaughter_report_photos").insert(
-          uploads.map((item) => ({ report_id: data.id, storage_path: item.path, file_name: item.fileName, created_by: userData.user.id })),
+        const photoRows = uploads.flatMap((item) =>
+          "path" in item && "fileName" in item
+            ? [{ report_id: data.id, storage_path: item.path, file_name: item.fileName, created_by: userData.user.id }]
+            : [],
         );
+        if (photoRows.length) {
+          await (supabase as any).from("slaughter_report_photos").insert(photoRows);
+        }
       }
     }
     setSavedReports((current) => [{
