@@ -7,6 +7,7 @@ import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -29,6 +30,17 @@ type Report = {
   rejected: number;
   carcassWeight: number;
   meatScore: number;
+  hijriDate?: string;
+  breed?: string;
+  rejectionReasons?: string;
+  totalWeight?: number;
+  receivingWeight?: number;
+  am?: number;
+  pm?: number;
+  dressing?: number;
+  slaughteringEvaluation?: number;
+  condemnation?: string;
+  bruises?: number;
   status: "مكتمل" | "مسودة" | "معتمد";
 };
 
@@ -49,6 +61,7 @@ function SlaughteringPage() {
   const [gallery, setGallery] = useState<Array<{ url: string; name: string }>>([]);
   const [farms, setFarms] = useState<string[]>([...new Set(reports.map((report) => report.farm).filter(Boolean))]);
   const [slaughterhouses, setSlaughterhouses] = useState<string[]>([...new Set(reports.map((report) => report.slaughterhouse).filter(Boolean))]);
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -65,8 +78,8 @@ function SlaughteringPage() {
         slaughterhouse: item.slaughterhouse_name,
         animalType: item.animal_type,
         number: item.total_count,
-        received: item.received_count,
-        rejected: item.rejected_count,
+        received: Number(item.received_count ?? 0),
+        rejected: Number(item.rejected_count ?? Math.max(0, Number(item.total_count ?? 0) - Number(item.received_count ?? 0))),
         carcassWeight: Number(item.carcass_weight),
         meatScore: Number(item.meat_score ?? 0),
         status: item.status === "draft" ? "مسودة" : item.status === "approved" ? "معتمد" : "مكتمل",
@@ -239,14 +252,21 @@ function SlaughteringPage() {
 
         <TabsContent value="reports" className="space-y-4">
           <Card><CardContent className="flex flex-col gap-3 p-4 md:flex-row"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pr-9" placeholder="ابحث بالمزرعة أو المجزر أو النوع" value={query} onChange={(event) => setQuery(event.target.value)} /></div><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger className="w-full md:w-48"><SelectValue placeholder="نوع الحيوان" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Input className="w-full md:w-40" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></CardContent></Card>
-          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "الم��فوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="border-b last:border-0 hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
+          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="cursor-pointer border-b last:border-0 hover:bg-muted/20" onClick={() => setSelectedReport(report)}><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
         </TabsContent>
 
         <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} farms={farms} slaughterhouses={slaughterhouses} addLocation={addLocation} /></TabsContent>
       </Tabs>
+      <Dialog open={Boolean(selectedReport)} onOpenChange={(open) => !open && setSelectedReport(null)}>
+        <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto" dir="rtl">
+          {selectedReport && <><DialogHeader><DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="العدد" value={selectedReport.number} /><Summary label="المستلم / المقبول" value={selectedReport.received} /><Summary label="المرفوض" value={selectedReport.rejected} danger /><Summary label="التقييم" value={`${selectedReport.meatScore}%`} /></div><div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2"><Detail label="المزرعة" value={selectedReport.farm} /><Detail label="المجزر" value={selectedReport.slaughterhouse || "غير مسجل"} /><Detail label="النوع" value={selectedReport.animalType} /><Detail label="السلالة" value={selectedReport.breed || "غير مسجل"} /><Detail label="أسباب الرفض" value={selectedReport.rejectionReasons || "لا توجد"} /><Detail label="الوزن الكلي" value={`${Number(selectedReport.totalWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الاستلام" value={`${Number(selectedReport.receivingWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الذبيحة" value={`${selectedReport.carcassWeight.toLocaleString()} kg`} /><Detail label="AM" value={Number(selectedReport.am ?? 0).toString()} /><Detail label="PM" value={Number(selectedReport.pm ?? 0).toString()} /><Detail label="Dressing %" value={`${(Number(selectedReport.dressing ?? 0) * 100).toFixed(1)}%`} /><Detail label="Slaughtering evaluation" value={`${(Number(selectedReport.slaughteringEvaluation ?? 0) * 100).toFixed(1)}%`} /><Detail label="Condemnation" value={selectedReport.condemnation || "لا توجد"} /><Detail label="Bruises" value={Number(selectedReport.bruises ?? 0).toString()} /></div></>}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
+
+function Detail({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-medium">{value}</p></div>; }
 
 function MetricCard({ title, value, detail, icon: Icon }: { title: string; value: string; detail: string; icon: typeof Scale }) {
   return <Card><CardContent className="p-5"><div className="flex items-start justify-between"><div><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 text-2xl font-bold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><div className="rounded-xl bg-primary/10 p-3 text-primary"><Icon className="size-5" /></div></div></CardContent></Card>;
