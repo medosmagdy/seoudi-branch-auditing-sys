@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_authenticated/slaughtering")({
 });
 
 type Report = {
-  id: number;
+  id: string | number;
   date: string;
   farm: string;
   slaughterhouse: string;
@@ -28,7 +28,7 @@ type Report = {
   rejected: number;
   carcassWeight: number;
   meatScore: number;
-  status: "مكتمل" | "مسودة";
+  status: "مكتمل" | "مسودة" | "معتمد";
 };
 
 const reports: Report[] = [
@@ -48,6 +48,8 @@ function SlaughteringPage() {
   const [reportDate, setReportDate] = useState("2026-09-14");
   const [message, setMessage] = useState("");
   const [savedReports, setSavedReports] = useState<Report[]>(reports);
+  const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({});
+  const [gallery, setGallery] = useState<Array<{ url: string; name: string }>>([]);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +72,20 @@ function SlaughteringPage() {
         meatScore: Number(item.meat_score ?? 0),
         status: item.status === "draft" ? "مسودة" : item.status === "approved" ? "معتمد" : "مكتمل",
       })));
+    })();
+    void (async () => {
+      const { data: reasons } = await (supabase as any).from("slaughter_reports").select("rejection_reason").not("rejection_reason", "is", null);
+      if (active && reasons) {
+        setReasonCounts(reasons.reduce((counts: Record<string, number>, item: { rejection_reason: string }) => ({ ...counts, [item.rejection_reason]: (counts[item.rejection_reason] ?? 0) + 1 }), {}));
+      }
+      const { data: photos } = await (supabase as any).from("slaughter_report_photos").select("storage_path, file_name").order("created_at", { ascending: false }).limit(12);
+      if (active && photos) {
+        const signed = await Promise.all(photos.map(async (photo: { storage_path: string; file_name: string }) => {
+          const result = await supabase.storage.from("audit-reports").createSignedUrl(photo.storage_path, 3600);
+          return result.data?.signedUrl ? { url: result.data.signedUrl, name: photo.file_name } : null;
+        }));
+        setGallery(signed.filter((item): item is { url: string; name: string } => Boolean(item)));
+      }
     })();
     return () => { active = false; };
   }, []);
@@ -197,9 +213,10 @@ function SlaughteringPage() {
             </CardHeader>
             <CardContent><Progress value={acceptance} className="h-3" /><div className="mt-3 flex justify-between text-sm text-muted-foreground"><span>نسبة القبول</span><span>{acceptance}%</span></div></CardContent>
           </Card>
+          {gallery.length > 0 && <Card><CardHeader><CardTitle>معرض الصور الأخير</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">{gallery.map((photo) => <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name} className="aspect-square w-full rounded-lg border object-cover transition-opacity hover:opacity-80" /></a>)}</CardContent></Card>}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card><CardHeader><CardTitle>التراكمي حسب النوع</CardTitle></CardHeader><CardContent className="space-y-4">{animalTypes.map((type) => { const count = filteredReports.filter((report) => report.animalType === type).reduce((sum, report) => sum + report.number, 0); return <div key={type} className="flex items-center justify-between rounded-lg bg-muted/40 p-3"><span>{type}</span><Badge variant="secondary">{count.toLocaleString("en-US")}</Badge></div>; })}</CardContent></Card>
-            <Card><CardHeader><CardTitle>أسباب الرفض</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3">{rejectionReasons.map((reason, index) => <div key={reason} className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">{reason}</p><p className="mt-1 text-xl font-bold">{index < 3 ? totalRejected - index : 0}</p></div>)}</CardContent></Card>
+            <Card><CardHeader><CardTitle>أسباب الرفض</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3">{rejectionReasons.map((reason) => <div key={reason} className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">{reason}</p><p className="mt-1 text-xl font-bold">{reasonCounts[reason] ?? 0}</p></div>)}</CardContent></Card>
           </div>
         </TabsContent>
 
