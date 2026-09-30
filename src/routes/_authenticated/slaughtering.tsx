@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import slaughterArchive from "@/data/slaughter-archive.json";
 import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Badge } from "@/components/ui/badge";
@@ -31,11 +32,7 @@ type Report = {
   status: "مكتمل" | "مسودة" | "معتمد";
 };
 
-const reports: Report[] = [
-  { id: 1, date: "2026-09-13", farm: "Family", slaughterhouse: "Al Salam", animalType: "Native breed bulls", number: 68, received: 66, rejected: 2, carcassWeight: 17540, meatScore: 92, status: "مكتمل" },
-  { id: 2, date: "2026-09-12", farm: "Al Hana", slaughterhouse: "Al Salam", animalType: "Bulls", number: 1090, received: 1085, rejected: 5, carcassWeight: 289430, meatScore: 94, status: "مكتمل" },
-  { id: 3, date: "2026-09-11", farm: "Al Komy", slaughterhouse: "Al Salam", animalType: "Bulls", number: 255, received: 249, rejected: 6, carcassWeight: 68120, meatScore: 89, status: "مكتمل" },
-];
+const reports: Report[] = slaughterArchive as Report[];
 
 const animalTypes = ["Bulls", "Native breed bulls", "Sheep", "Buffalo"];
 const rejectionReasons = ["Carcass", "Live", "Parasitic", "Viral", "TB", "Managemental"];
@@ -44,12 +41,14 @@ function SlaughteringPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const [query, setQuery] = useState("");
   const [animalType, setAnimalType] = useState("all");
-  const [month, setMonth] = useState("2026-09");
+  const [month, setMonth] = useState("");
   const [reportDate, setReportDate] = useState("2026-09-14");
   const [message, setMessage] = useState("");
   const [savedReports, setSavedReports] = useState<Report[]>(reports);
   const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({});
   const [gallery, setGallery] = useState<Array<{ url: string; name: string }>>([]);
+  const [farms, setFarms] = useState<string[]>([...new Set(reports.map((report) => report.farm).filter(Boolean))]);
+  const [slaughterhouses, setSlaughterhouses] = useState<string[]>([...new Set(reports.map((report) => report.slaughterhouse).filter(Boolean))]);
 
   useEffect(() => {
     let active = true;
@@ -93,8 +92,17 @@ function SlaughteringPage() {
   const filteredReports = useMemo(() => savedReports.filter((report) => {
     const matchesQuery = [report.farm, report.slaughterhouse, report.animalType].join(" ").toLowerCase().includes(query.toLowerCase());
     const matchesType = animalType === "all" || report.animalType === animalType;
-    return matchesQuery && matchesType && report.date.startsWith(month);
+    return matchesQuery && matchesType && (!month || report.date.startsWith(month));
   }), [animalType, month, query, savedReports]);
+
+  const addLocation = async (kind: "farm" | "slaughterhouse", value: string) => {
+    const clean = value.trim();
+    if (!clean) return;
+    const setter = kind === "farm" ? setFarms : setSlaughterhouses;
+    setter((current) => current.includes(clean) ? current : [...current, clean].sort());
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) await (supabase as any).from("slaughter_locations").upsert({ kind, name: clean, created_by: userData.user.id }, { onConflict: "kind,name" });
+  };
 
   const saveReport = async (draft: {
     date: string;
@@ -225,7 +233,7 @@ function SlaughteringPage() {
           <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "الم��فوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="border-b last:border-0 hover:bg-muted/20"><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
         </TabsContent>
 
-        <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} /></TabsContent>
+        <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} farms={farms} slaughterhouses={slaughterhouses} addLocation={addLocation} /></TabsContent>
       </Tabs>
     </AppShell>
   );
@@ -243,7 +251,7 @@ const checklistSections = [
   { title: "5. Meat transportation", rows: [{ label: "Cleaning and sanitation", total: 3 }, { label: "Proper food grade packaging material", total: 3 }, { label: "Cooling", total: 2 }, { label: "Capacity", total: 2 }] },
 ];
 
-function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string; photos: File[] }) => Promise<boolean> }) {
+function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, slaughterhouses, addLocation }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; farms: string[]; slaughterhouses: string[]; addLocation: (kind: "farm" | "slaughterhouse", value: string) => Promise<void>; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string; photos: File[] }) => Promise<boolean> }) {
   const [farm, setFarm] = useState("");
   const [slaughterhouse, setSlaughterhouse] = useState("");
   const [animalType, setAnimalType] = useState(animalTypes[0]);
@@ -255,6 +263,7 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
   const [fatWeight, setFatWeight] = useState("");
   const [tripDuration, setTripDuration] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [suggestions, setSuggestions] = useState<Record<string, string[]>>({});
   const [nonconformities, setNonconformities] = useState<Record<string, string>>({});
   const [amScore, setAmScore] = useState("");
   const [pmScore, setPmScore] = useState("");
@@ -265,6 +274,21 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
   const checklistDegree = checklistSections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + row.total * Math.max(0, 1 - Number(nonconformities[row.label] || 0) / Math.max(1, Number(received || 0))), 0), 0);
   const checklistScore = checklistTotal ? (checklistDegree / checklistTotal) * 100 : 0;
   const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await (supabase as any).from("slaughter_suggestions").select("item_key, suggestion").eq("is_active", true);
+      if (data) setSuggestions(data.reduce((result: Record<string, string[]>, item: { item_key: string; suggestion: string }) => ({ ...result, [item.item_key]: [...(result[item.item_key] ?? []), item.suggestion] }), {}));
+    })();
+  }, []);
+
+  const rememberNote = async (itemKey: string, value: string) => {
+    const clean = value.trim();
+    if (!clean) return;
+    setSuggestions((current) => ({ ...current, [itemKey]: [...new Set([...(current[itemKey] ?? []), clean])] }));
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData.user) await (supabase as any).from("slaughter_suggestions").upsert({ item_key: itemKey, suggestion: clean, created_by: userData.user.id }, { onConflict: "item_key,suggestion" });
+  };
 
   const saveDraft = () => {
     if (!reportDate || !farm || !slaughterhouse || !number || !received) {
@@ -300,8 +324,8 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="التاريخ"><Input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} /></Field>
-          <Field label="المزرعة"><Input placeholder="اسم المزرعة" value={farm} onChange={(event) => setFarm(event.target.value)} /></Field>
-          <Field label="المجزر"><Input placeholder="اسم المجزر" value={slaughterhouse} onChange={(event) => setSlaughterhouse(event.target.value)} /></Field>
+          <Field label="المزرعة"><div className="flex gap-2"><Input list="farms-list" placeholder="اختر أو اكتب مزرعة" value={farm} onChange={(event) => setFarm(event.target.value)} onBlur={() => void addLocation("farm", farm)} /><datalist id="farms-list">{farms.map((item) => <option key={item} value={item} />)}</datalist><Button type="button" variant="outline" size="icon" onClick={() => void addLocation("farm", farm)} aria-label="إضافة مزرعة"><Plus className="size-4" /></Button></div></Field>
+          <Field label="المجزر"><div className="flex gap-2"><Input list="slaughterhouses-list" placeholder="اختر أو اكتب مجزر" value={slaughterhouse} onChange={(event) => setSlaughterhouse(event.target.value)} onBlur={() => void addLocation("slaughterhouse", slaughterhouse)} /><datalist id="slaughterhouses-list">{slaughterhouses.map((item) => <option key={item} value={item} />)}</datalist><Button type="button" variant="outline" size="icon" onClick={() => void addLocation("slaughterhouse", slaughterhouse)} aria-label="إضافة مجزر"><Plus className="size-4" /></Button></div></Field>
           <Field label="نوع الحيوان"><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="العدد"><Input type="number" min="0" value={number} onChange={(event) => setNumber(event.target.value)} /></Field>
           <Field label="المستلم"><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></Field>
@@ -319,7 +343,7 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
           {checklistSections.map((section) => {
             const sectionTotal = section.rows.reduce((sum, row) => sum + row.total, 0);
             const sectionDegree = section.rows.reduce((sum, row) => { const nonconformity = Number(nonconformities[row.label] || 0); return sum + row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); }, 0);
-            return <div key={section.title} className="overflow-x-auto rounded-xl border"><div className="bg-primary/10 px-4 py-3 font-semibold">{section.title}</div><table className="w-full min-w-[760px] text-right text-sm"><thead className="bg-muted/40"><tr><th className="px-3 py-2">البند</th><th className="w-24 px-3 py-2">Total</th><th className="w-36 px-3 py-2">Nonconformity</th><th className="w-28 px-3 py-2">Degree</th><th className="px-3 py-2">Notes</th></tr></thead><tbody>{section.rows.map((row) => { const nonconformity = Number(nonconformities[row.label] || 0); const degree = row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); return <tr key={row.label} className="border-t"><td className="px-3 py-2 font-medium">{row.label}</td><td className="px-3 py-2">{row.total}</td><td className="px-3 py-2"><Input type="number" min="0" value={nonconformities[row.label] ?? ""} onChange={(event) => setNonconformities((current) => ({ ...current, [row.label]: event.target.value }))} /></td><td className="px-3 py-2 font-semibold">{degree.toFixed(1)}</td><td className="px-3 py-2"><Input value={notes[row.label] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: event.target.value }))} placeholder="ملاحظات" /></td></tr>; })}</tbody><tfoot className="border-t bg-primary/5 font-semibold"><tr><td className="px-3 py-2">Total</td><td className="px-3 py-2">{sectionTotal}</td><td className="px-3 py-2">{section.rows.reduce((sum, row) => sum + Number(nonconformities[row.label] || 0), 0)}</td><td className="px-3 py-2">{sectionDegree.toFixed(2)}</td><td /></tr></tfoot></table></div>;
+            return <div key={section.title} className="overflow-x-auto rounded-xl border"><div className="bg-primary/10 px-4 py-3 font-semibold">{section.title}</div><table className="w-full min-w-[760px] text-right text-sm"><thead className="bg-muted/40"><tr><th className="px-3 py-2">البند</th><th className="w-24 px-3 py-2">Total</th><th className="w-36 px-3 py-2">Nonconformity</th><th className="w-28 px-3 py-2">Degree</th><th className="px-3 py-2">Notes</th></tr></thead><tbody>{section.rows.map((row) => { const nonconformity = Number(nonconformities[row.label] || 0); const degree = row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); return <tr key={row.label} className="border-t"><td className="px-3 py-2 font-medium">{row.label}</td><td className="px-3 py-2">{row.total}</td><td className="px-3 py-2"><Input type="number" min="0" value={nonconformities[row.label] ?? ""} onChange={(event) => setNonconformities((current) => ({ ...current, [row.label]: event.target.value }))} /></td><td className="px-3 py-2 font-semibold">{degree.toFixed(1)}</td><td className="px-3 py-2"><Input list={`suggestions-${row.label.replace(/[^a-zA-Z0-9]/g, "-")}`} value={notes[row.label] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: event.target.value }))} onBlur={() => void rememberNote(row.label, notes[row.label] ?? "")} placeholder="ملاحظات" /><datalist id={`suggestions-${row.label.replace(/[^a-zA-Z0-9]/g, "-")}`}>{(suggestions[row.label] ?? []).map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist></td></tr>; })}</tbody><tfoot className="border-t bg-primary/5 font-semibold"><tr><td className="px-3 py-2">Total</td><td className="px-3 py-2">{sectionTotal}</td><td className="px-3 py-2">{section.rows.reduce((sum, row) => sum + Number(nonconformities[row.label] || 0), 0)}</td><td className="px-3 py-2">{sectionDegree.toFixed(2)}</td><td /></tr></tfoot></table></div>;
           })}
         </CardContent>
       </Card>
