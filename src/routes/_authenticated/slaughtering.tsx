@@ -235,6 +235,14 @@ function MetricCard({ title, value, detail, icon: Icon }: { title: string; value
   return <Card><CardContent className="p-5"><div className="flex items-start justify-between"><div><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 text-2xl font-bold tracking-tight">{value}</p><p className="mt-1 text-xs text-muted-foreground">{detail}</p></div><div className="rounded-xl bg-primary/10 p-3 text-primary"><Icon className="size-5" /></div></div></CardContent></Card>;
 }
 
+const checklistSections = [
+  { title: "1. Ante-mortem examination", rows: [{ label: "Rough handling", total: 5 }, { label: "Over capacity", total: 5 }, { label: "Animal identification", total: 1 }, { label: "Age", total: 5 }, { label: "Animals hygienic conditions", total: 3 }, { label: "General health condition", total: 1 }, { label: "Lymph nodes", total: 1 }, { label: "Skin diseases", total: 1 }, { label: "External parasites", total: 1 }, { label: "Body condition scores", total: 2 }] },
+  { title: "2. Slaughterhouse hygienic condition", rows: [{ label: "Facilities", total: 1 }, { label: "Tools", total: 2 }, { label: "Employee", total: 2 }] },
+  { title: "3. Post-mortem examination", rows: [{ label: "Proper killing", total: 3 }, { label: "Completely dead before cutting spinal cord", total: 3 }, { label: "Bleeding", total: 5 }, { label: "Flaying process", total: 1 }, { label: "Bruises", total: 5 }, { label: "Urinary bladder", total: 1 }, { label: "Intestine", total: 1 }, { label: "Rumen", total: 2 }, { label: "Gall bladder", total: 1 }, { label: "Examination of carcass L.N.", total: 5 }, { label: "Examination of head", total: 1 }, { label: "Lung", total: 2 }, { label: "Liver", total: 2 }, { label: "Kidney", total: 2 }, { label: "Heart", total: 2 }, { label: "Jaundice", total: 3 }, { label: "Contamination", total: 5 }, { label: "Condemnation", total: 5 }, { label: "Stamp", total: 1 }] },
+  { title: "4. Meat quality score", rows: [{ label: "Meat Color", total: 5 }, { label: "Fat color", total: 3 }, { label: "Marbling", total: 1 }, { label: "Firmness", total: 1 }] },
+  { title: "5. Meat transportation", rows: [{ label: "Cleaning and sanitation", total: 3 }, { label: "Proper food grade packaging material", total: 3 }, { label: "Cooling", total: 2 }, { label: "Capacity", total: 2 }] },
+];
+
 function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { reportDate: string; setReportDate: (value: string) => void; notify: (text: string) => void; onSave: (draft: { date: string; farm: string; slaughterhouse: string; animalType: string; number: number; received: number; carcassWeight: number; meatScore: number; amScore: number | null; pmScore: number | null; rejectionReason: string; photos: File[] }) => Promise<boolean> }) {
   const [farm, setFarm] = useState("");
   const [slaughterhouse, setSlaughterhouse] = useState("");
@@ -242,11 +250,20 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
   const [number, setNumber] = useState("");
   const [received, setReceived] = useState("");
   const [carcassWeight, setCarcassWeight] = useState("");
+  const [farmWeight, setFarmWeight] = useState("");
+  const [receivingWeight, setReceivingWeight] = useState("");
+  const [fatWeight, setFatWeight] = useState("");
+  const [tripDuration, setTripDuration] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [nonconformities, setNonconformities] = useState<Record<string, string>>({});
   const [amScore, setAmScore] = useState("");
   const [pmScore, setPmScore] = useState("");
   const [reason, setReason] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const rejected = Math.max(0, Number(number || 0) - Number(received || 0));
+  const checklistTotal = checklistSections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + row.total, 0), 0);
+  const checklistDegree = checklistSections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + row.total * Math.max(0, 1 - Number(nonconformities[row.label] || 0) / Math.max(1, Number(received || 0))), 0), 0);
+  const checklistScore = checklistTotal ? (checklistDegree / checklistTotal) * 100 : 0;
   const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
 
   const saveDraft = () => {
@@ -288,8 +305,22 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
           <Field label="نوع الحيوان"><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="العدد"><Input type="number" min="0" value={number} onChange={(event) => setNumber(event.target.value)} /></Field>
           <Field label="المستلم"><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></Field>
+          <Field label="وزن المزرعة بالكيلو"><Input type="number" min="0" value={farmWeight} onChange={(event) => setFarmWeight(event.target.value)} /></Field>
+          <Field label="وزن الاستلام بالكيلو"><Input type="number" min="0" value={receivingWeight} onChange={(event) => setReceivingWeight(event.target.value)} /></Field>
           <Field label="وزن الذبائح بالكيلو"><Input type="number" min="0" value={carcassWeight} onChange={(event) => setCarcassWeight(event.target.value)} /></Field>
+          <Field label="وزن الدهون بالكيلو"><Input type="number" min="0" value={fatWeight} onChange={(event) => setFatWeight(event.target.value)} /></Field>
+          <Field label="مدة الرحلة"><Input placeholder="مثال: 2 hours" value={tripDuration} onChange={(event) => setTripDuration(event.target.value)} /></Field>
           <Field label="سبب الرفض الرئيسي"><Select value={reason} onValueChange={setReason}><SelectTrigger><SelectValue placeholder="اختر السبب" /></SelectTrigger><SelectContent>{rejectionReasons.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></Field>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>Meat quality checklist</CardTitle><p className="text-sm text-muted-foreground">مطابق لأعمدة Total وNonconformity وDegree وNotes في ملف Excel</p></CardHeader>
+        <CardContent className="space-y-6">
+          {checklistSections.map((section) => {
+            const sectionTotal = section.rows.reduce((sum, row) => sum + row.total, 0);
+            const sectionDegree = section.rows.reduce((sum, row) => { const nonconformity = Number(nonconformities[row.label] || 0); return sum + row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); }, 0);
+            return <div key={section.title} className="overflow-x-auto rounded-xl border"><div className="bg-primary/10 px-4 py-3 font-semibold">{section.title}</div><table className="w-full min-w-[760px] text-right text-sm"><thead className="bg-muted/40"><tr><th className="px-3 py-2">البند</th><th className="w-24 px-3 py-2">Total</th><th className="w-36 px-3 py-2">Nonconformity</th><th className="w-28 px-3 py-2">Degree</th><th className="px-3 py-2">Notes</th></tr></thead><tbody>{section.rows.map((row) => { const nonconformity = Number(nonconformities[row.label] || 0); const degree = row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); return <tr key={row.label} className="border-t"><td className="px-3 py-2 font-medium">{row.label}</td><td className="px-3 py-2">{row.total}</td><td className="px-3 py-2"><Input type="number" min="0" value={nonconformities[row.label] ?? ""} onChange={(event) => setNonconformities((current) => ({ ...current, [row.label]: event.target.value }))} /></td><td className="px-3 py-2 font-semibold">{degree.toFixed(1)}</td><td className="px-3 py-2"><Input value={notes[row.label] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: event.target.value }))} placeholder="ملاحظات" /></td></tr>; })}</tbody><tfoot className="border-t bg-primary/5 font-semibold"><tr><td className="px-3 py-2">Total</td><td className="px-3 py-2">{sectionTotal}</td><td className="px-3 py-2">{section.rows.reduce((sum, row) => sum + Number(nonconformities[row.label] || 0), 0)}</td><td className="px-3 py-2">{sectionDegree.toFixed(2)}</td><td /></tr></tfoot></table></div>;
+          })}
         </CardContent>
       </Card>
       <Card>
@@ -314,12 +345,14 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave }: { report
           <div className="rounded-xl bg-primary/10 p-4"><p className="text-sm text-muted-foreground">Meat Score</p><p className="mt-1 text-2xl font-bold text-primary">{meatScore}%</p></div>
         </CardContent>
       </Card>
-      <Card>
-        <CardHeader><CardTitle>ملخص الاستلام</CardTitle></CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-3"><Summary label="المرفوض" value={rejected} danger /><Summary label="نسبة الاستثناء" value={`${number ? Math.round((rejected / Number(number)) * 100) : 0}%`} /><Summary label="حالة التقرير" value="مسودة" /></div>
-          <Separator className="my-5" />
-          <Button onClick={saveDraft}><ClipboardCheck className="ml-2 size-4" /> حفظ كمسودة</Button>
+      <Card className="border-primary/30">
+        <CardHeader><CardTitle>Daily report summary</CardTitle><p className="text-sm text-muted-foreground">ملخص نهائي مطابق للصفحة الثانية في ملف Excel</p></CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="Number" value={number || 0} /><Summary label="Nonconformity / المقبول" value={received || 0} /><Summary label="Rejected" value={rejected} danger /><Summary label="Carcass weight" value={`${Number(carcassWeight || 0).toLocaleString()} kg`} /></div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="Farm weight" value={`${Number(farmWeight || 0).toLocaleString()} kg`} /><Summary label="Receiving weight" value={`${Number(receivingWeight || 0).toLocaleString()} kg`} /><Summary label="Transportation loss" value={`${Math.max(0, Number(farmWeight || 0) - Number(receivingWeight || 0)).toLocaleString()} kg`} /><Summary label="Exception %" value={`${number ? Math.round((rejected / Number(number)) * 100) : 0}%`} /></div>
+          <div className="rounded-xl bg-primary/10 p-5"><div className="flex items-center justify-between"><div><p className="text-sm text-muted-foreground">Slaughtering evaluation / SCORE</p><p className="mt-1 text-3xl font-bold text-primary">{checklistScore.toFixed(1)}%</p></div><Progress value={checklistScore} className="max-w-xs" /></div><p className="mt-3 text-sm text-muted-foreground">Total degree: {checklistDegree.toFixed(2)} / {checklistTotal}</p></div>
+          <Separator />
+          <Button onClick={saveDraft}><ClipboardCheck className="ml-2 size-4" /> حفظ التقرير اليومي كمسودة</Button>
         </CardContent>
       </Card>
     </div>
