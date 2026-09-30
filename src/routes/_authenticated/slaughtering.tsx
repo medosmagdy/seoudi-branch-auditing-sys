@@ -86,6 +86,15 @@ function SlaughteringPage() {
         setGallery(signed.filter((item): item is { url: string; name: string } => Boolean(item)));
       }
     })();
+    void (async () => {
+      const { data: locations } = await (supabase as any)
+        .from("slaughter_locations")
+        .select("kind, name")
+        .order("name");
+      if (!active || !locations) return;
+      setFarms(locations.filter((item: { kind: string }) => item.kind === "farm").map((item: { name: string }) => item.name));
+      setSlaughterhouses(locations.filter((item: { kind: string }) => item.kind === "slaughterhouse").map((item: { name: string }) => item.name));
+    })();
     return () => { active = false; };
   }, []);
 
