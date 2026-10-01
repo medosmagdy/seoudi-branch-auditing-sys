@@ -46,7 +46,7 @@ type Report = {
 
 const reports: Report[] = slaughterArchive as Report[];
 
-const animalTypes = ["Bulls", "Native breed bulls", "Sheep", "Buffalo"];
+const animalTypes = ["Bulls", "Sheep", "Goats", "Buffalo"];
 const rejectionReasons = ["Carcass", "Live", "Parasitic", "Viral", "TB", "Managemental"];
 
 function SlaughteringPage() {
@@ -57,7 +57,7 @@ function SlaughteringPage() {
   const [reportDate, setReportDate] = useState("2026-09-14");
   const [message, setMessage] = useState("");
   const [savedReports, setSavedReports] = useState<Report[]>(reports);
-  const [reasonCounts, setReasonCounts] = useState<Record<string, number>>({});
+  const [reasonCounts, setReasonCounts] = useState<Record<string, number>>(() => reports.reduce((counts, report) => { const text = report.rejectionReasons ?? ""; rejectionReasons.forEach((reason) => { if (text.toLowerCase().includes(reason.toLowerCase())) counts[reason] = (counts[reason] ?? 0) + report.rejected; }); return counts; }, {} as Record<string, number>));
   const [gallery, setGallery] = useState<Array<{ url: string; name: string }>>([]);
   const [farms, setFarms] = useState<string[]>([...new Set(reports.map((report) => report.farm).filter(Boolean))]);
   const [slaughterhouses, setSlaughterhouses] = useState<string[]>([...new Set(reports.map((report) => report.slaughterhouse).filter(Boolean))]);
@@ -88,7 +88,7 @@ function SlaughteringPage() {
     void (async () => {
       const { data: reasons } = await (supabase as any).from("slaughter_reports").select("rejection_reason").not("rejection_reason", "is", null);
       if (active && reasons) {
-        setReasonCounts(reasons.reduce((counts: Record<string, number>, item: { rejection_reason: string }) => ({ ...counts, [item.rejection_reason]: (counts[item.rejection_reason] ?? 0) + 1 }), {}));
+        setReasonCounts((current) => reasons.reduce((counts: Record<string, number>, item: { rejection_reason: string }) => { rejectionReasons.forEach((reason) => { if (item.rejection_reason.toLowerCase().includes(reason.toLowerCase())) counts[reason] = (counts[reason] ?? 0) + 1; }); return counts; }, { ...current }));
       }
       const { data: photos } = await (supabase as any).from("slaughter_report_photos").select("storage_path, file_name").order("created_at", { ascending: false }).limit(12);
       if (active && photos) {
@@ -111,11 +111,11 @@ function SlaughteringPage() {
     return () => { active = false; };
   }, []);
 
-  const filteredReports = useMemo(() => savedReports.filter((report) => {
+  const filteredReports = useMemo(() => [...savedReports].filter((report) => {
     const matchesQuery = [report.farm, report.slaughterhouse, report.animalType].join(" ").toLowerCase().includes(query.toLowerCase());
     const matchesType = animalType === "all" || report.animalType === animalType;
     return matchesQuery && matchesType && (!month || report.date.startsWith(month));
-  }), [animalType, month, query, savedReports]);
+  }).sort((a, b) => b.date.localeCompare(a.date)), [animalType, month, query, savedReports]);
 
   const addLocation = async (kind: "farm" | "slaughterhouse", value: string) => {
     const clean = value.trim();
@@ -135,9 +135,8 @@ function SlaughteringPage() {
     received: number;
     carcassWeight: number;
     meatScore: number;
-    amScore: number | null;
-    pmScore: number | null;
     rejectionReason: string;
+    acceptedException: number;
     photos: File[];
   }) => {
     const { data: userData } = await supabase.auth.getUser();
@@ -155,9 +154,8 @@ function SlaughteringPage() {
         total_count: draft.number,
         received_count: draft.received,
         carcass_weight: draft.carcassWeight,
-        am_score: draft.amScore,
-        pm_score: draft.pmScore,
         rejection_reason: draft.rejectionReason || null,
+        accepted_exception: draft.acceptedException,
         status: "draft",
         created_by: userData.user.id,
       })
@@ -246,20 +244,20 @@ function SlaughteringPage() {
           {gallery.length > 0 && <Card><CardHeader><CardTitle>معرض الصور الأخير</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">{gallery.map((photo) => <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name} className="aspect-square w-full rounded-lg border object-cover transition-opacity hover:opacity-80" /></a>)}</CardContent></Card>}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card><CardHeader><CardTitle>التراكمي حسب النوع</CardTitle></CardHeader><CardContent className="space-y-4">{animalTypes.map((type) => { const count = filteredReports.filter((report) => report.animalType === type).reduce((sum, report) => sum + report.number, 0); return <div key={type} className="flex items-center justify-between rounded-lg bg-muted/40 p-3"><span>{type}</span><Badge variant="secondary">{count.toLocaleString("en-US")}</Badge></div>; })}</CardContent></Card>
-            <Card><CardHeader><CardTitle>أسباب الرفض</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3">{rejectionReasons.map((reason) => <div key={reason} className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">{reason}</p><p className="mt-1 text-xl font-bold">{reasonCounts[reason] ?? 0}</p></div>)}</CardContent></Card>
+            <Card><CardHeader><CardTitle>أسباب الرفض</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3">{Object.entries(reasonCounts).filter(([, count]) => count > 0).map(([reason, count]) => <div key={reason} className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">{reason}</p><p className="mt-1 text-xl font-bold">{count.toLocaleString("en-US")}</p></div>)}{Object.keys(reasonCounts).length === 0 && <p className="col-span-2 text-sm text-muted-foreground">لا توجد أسباب رفض مسجلة.</p>}</CardContent></Card>
           </div>
         </TabsContent>
 
         <TabsContent value="reports" className="space-y-4">
           <Card><CardContent className="flex flex-col gap-3 p-4 md:flex-row"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pr-9" placeholder="ابحث بالمزرعة أو المجزر أو النوع" value={query} onChange={(event) => setQuery(event.target.value)} /></div><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger className="w-full md:w-48"><SelectValue placeholder="نوع الحيوان" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Input className="w-full md:w-40" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></CardContent></Card>
-          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="cursor-pointer border-b last:border-0 hover:bg-muted/20" onClick={() => setSelectedReport(report)}><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{report.meatScore}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
+          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="cursor-pointer border-b last:border-0 hover:bg-muted/20" onClick={() => setSelectedReport(report)}><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{Number(report.slaughteringEvaluation ?? report.meatScore ?? 0).toFixed(1)}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
         </TabsContent>
 
         <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} farms={farms} slaughterhouses={slaughterhouses} addLocation={addLocation} /></TabsContent>
       </Tabs>
       <Dialog open={Boolean(selectedReport)} onOpenChange={(open) => !open && setSelectedReport(null)}>
         <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto" dir="rtl">
-          {selectedReport && <><DialogHeader><DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="العدد" value={selectedReport.number} /><Summary label="المستلم / المقبول" value={selectedReport.received} /><Summary label="المرفوض" value={selectedReport.rejected} danger /><Summary label="التقييم" value={`${selectedReport.meatScore}%`} /></div><div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2"><Detail label="المزرعة" value={selectedReport.farm} /><Detail label="المجزر" value={selectedReport.slaughterhouse || "غير مسجل"} /><Detail label="النوع" value={selectedReport.animalType} /><Detail label="السلالة" value={selectedReport.breed || "غير مسجل"} /><Detail label="أسباب الرفض" value={selectedReport.rejectionReasons || "لا توجد"} /><Detail label="الوزن الكلي" value={`${Number(selectedReport.totalWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الاستلام" value={`${Number(selectedReport.receivingWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الذبيحة" value={`${selectedReport.carcassWeight.toLocaleString()} kg`} /><Detail label="AM" value={Number(selectedReport.am ?? 0).toString()} /><Detail label="PM" value={Number(selectedReport.pm ?? 0).toString()} /><Detail label="Dressing %" value={`${(Number(selectedReport.dressing ?? 0) * 100).toFixed(1)}%`} /><Detail label="Slaughtering evaluation" value={`${(Number(selectedReport.slaughteringEvaluation ?? 0) * 100).toFixed(1)}%`} /><Detail label="Condemnation" value={selectedReport.condemnation || "لا توجد"} /><Detail label="Bruises" value={Number(selectedReport.bruises ?? 0).toString()} /></div></>}
+          {selectedReport && <><DialogHeader><DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="العدد" value={selectedReport.number} /><Summary label="المستلم / المقبول" value={selectedReport.received} /><Summary label="المرفوض" value={selectedReport.rejected} danger /><Summary label="Slaughtering evaluation" value={`${Number(selectedReport.slaughteringEvaluation ?? selectedReport.meatScore ?? 0).toFixed(1)}%`} /></div><div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2"><Detail label="المزرعة" value={selectedReport.farm} /><Detail label="المجزر" value={selectedReport.slaughterhouse || "غير مسجل"} /><Detail label="النوع" value={selectedReport.animalType} /><Detail label="السلالة" value={selectedReport.breed || "غير مسجل"} /><Detail label="أسباب الرفض" value={selectedReport.rejectionReasons || "لا توجد"} /><Detail label="الوزن الكلي" value={`${Number(selectedReport.totalWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الاستلام" value={`${Number(selectedReport.receivingWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الذبيحة" value={`${selectedReport.carcassWeight.toLocaleString()} kg`} /><Detail label="Dressing %" value={`${(Number(selectedReport.dressing ?? 0) * 100).toFixed(1)}%`} /><Detail label="Slaughtering evaluation" value={`${(Number(selectedReport.slaughteringEvaluation ?? 0) * 100).toFixed(1)}%`} /><Detail label="Condemnation" value={selectedReport.condemnation || "لا توجد"} /><Detail label="Bruises" value={Number(selectedReport.bruises ?? 0).toString()} /></div></>}
         </DialogContent>
       </Dialog>
     </AppShell>
@@ -294,15 +292,13 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [suggestions, setSuggestions] = useState<Record<string, string[]>>({});
   const [nonconformities, setNonconformities] = useState<Record<string, string>>({});
-  const [amScore, setAmScore] = useState("");
-  const [pmScore, setPmScore] = useState("");
-  const [reason, setReason] = useState("");
+  const [acceptedException, setAcceptedException] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const rejected = Math.max(0, Number(number || 0) - Number(received || 0));
   const checklistTotal = checklistSections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + row.total, 0), 0);
   const checklistDegree = checklistSections.reduce((sum, section) => sum + section.rows.reduce((sectionSum, row) => sectionSum + row.total * Math.max(0, 1 - Number(nonconformities[row.label] || 0) / Math.max(1, Number(received || 0))), 0), 0);
   const checklistScore = checklistTotal ? (checklistDegree / checklistTotal) * 100 : 0;
-  const meatScore = amScore && pmScore ? Math.round((Number(amScore) + Number(pmScore)) / 2) : 0;
+  const meatScore = checklistScore;
 
   useEffect(() => {
     void (async () => {
@@ -337,9 +333,8 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
       received: Number(received),
       carcassWeight: Number(carcassWeight || 0),
       meatScore,
-      amScore: amScore ? Number(amScore) : null,
-      pmScore: pmScore ? Number(pmScore) : null,
-      rejectionReason: reason,
+      rejectionReason: "",
+      acceptedException: Number(acceptedException || 0),
       photos,
     });
   };
@@ -358,12 +353,12 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
           <Field label="نوع الحيوان"><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select></Field>
           <Field label="العدد"><Input type="number" min="0" value={number} onChange={(event) => setNumber(event.target.value)} /></Field>
           <Field label="المستلم"><Input type="number" min="0" max={number} value={received} onChange={(event) => setReceived(event.target.value)} /></Field>
+          <Field label="القبول الاستثنائي"><Input type="number" min="0" max={rejected} value={acceptedException} onChange={(event) => setAcceptedException(event.target.value)} placeholder="عدد العجول المقبولة استثنائيًا" /></Field>
           <Field label="وزن المزرعة بالكيلو"><Input type="number" min="0" value={farmWeight} onChange={(event) => setFarmWeight(event.target.value)} /></Field>
           <Field label="وزن الاستلام بالكيلو"><Input type="number" min="0" value={receivingWeight} onChange={(event) => setReceivingWeight(event.target.value)} /></Field>
           <Field label="وزن الذبائح بالكيلو"><Input type="number" min="0" value={carcassWeight} onChange={(event) => setCarcassWeight(event.target.value)} /></Field>
           <Field label="وزن الدهون بالكيلو"><Input type="number" min="0" value={fatWeight} onChange={(event) => setFatWeight(event.target.value)} /></Field>
           <Field label="مدة الرحلة"><Input placeholder="مثال: 2 hours" value={tripDuration} onChange={(event) => setTripDuration(event.target.value)} /></Field>
-          <Field label="سبب الرفض الرئيسي"><Select value={reason} onValueChange={setReason}><SelectTrigger><SelectValue placeholder="اختر السبب" /></SelectTrigger><SelectContent>{rejectionReasons.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></Field>
         </CardContent>
       </Card>
       <Card>
@@ -372,30 +367,22 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
           {checklistSections.map((section) => {
             const sectionTotal = section.rows.reduce((sum, row) => sum + row.total, 0);
             const sectionDegree = section.rows.reduce((sum, row) => { const nonconformity = Number(nonconformities[row.label] || 0); return sum + row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); }, 0);
-            return <div key={section.title} className="overflow-x-auto rounded-xl border"><div className="bg-primary/10 px-4 py-3 font-semibold">{section.title}</div><table className="w-full min-w-[760px] text-right text-sm"><thead className="bg-muted/40"><tr><th className="px-3 py-2">البند</th><th className="w-24 px-3 py-2">Total</th><th className="w-36 px-3 py-2">Nonconformity</th><th className="w-28 px-3 py-2">Degree</th><th className="px-3 py-2">Notes</th></tr></thead><tbody>{section.rows.map((row) => { const nonconformity = Number(nonconformities[row.label] || 0); const degree = row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); return <tr key={row.label} className="border-t"><td className="px-3 py-2 font-medium">{row.label}</td><td className="px-3 py-2">{row.total}</td><td className="px-3 py-2"><Input type="number" min="0" value={nonconformities[row.label] ?? ""} onChange={(event) => setNonconformities((current) => ({ ...current, [row.label]: event.target.value }))} /></td><td className="px-3 py-2 font-semibold">{degree.toFixed(1)}</td><td className="px-3 py-2"><Input list={`suggestions-${row.label.replace(/[^a-zA-Z0-9]/g, "-")}`} value={notes[row.label] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: event.target.value }))} onBlur={() => void rememberNote(row.label, notes[row.label] ?? "")} placeholder="ملاحظات" /><datalist id={`suggestions-${row.label.replace(/[^a-zA-Z0-9]/g, "-")}`}>{(suggestions[row.label] ?? []).map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist></td></tr>; })}</tbody><tfoot className="border-t bg-primary/5 font-semibold"><tr><td className="px-3 py-2">Total</td><td className="px-3 py-2">{sectionTotal}</td><td className="px-3 py-2">{section.rows.reduce((sum, row) => sum + Number(nonconformities[row.label] || 0), 0)}</td><td className="px-3 py-2">{sectionDegree.toFixed(2)}</td><td /></tr></tfoot></table></div>;
+            return <div key={section.title} className="overflow-x-auto rounded-xl border"><div className="bg-primary/10 px-4 py-3 font-semibold">{section.title}</div><table className="w-full min-w-[760px] text-right text-sm"><thead className="bg-muted/40"><tr><th className="px-3 py-2">البند</th><th className="w-24 px-3 py-2">Total</th><th className="w-36 px-3 py-2">Nonconformity</th><th className="w-28 px-3 py-2">Degree</th><th className="px-3 py-2">Notes</th></tr></thead><tbody>{section.rows.map((row) => { const nonconformity = Number(nonconformities[row.label] || 0); const degree = row.total * Math.max(0, 1 - nonconformity / Math.max(1, Number(received || 0))); return <tr key={row.label} className="border-t"><td className="px-3 py-2 font-medium">{row.label}</td><td className="px-3 py-2">{row.total}</td><td className="px-3 py-2"><Input type="number" min="0" value={nonconformities[row.label] ?? ""} onChange={(event) => setNonconformities((current) => ({ ...current, [row.label]: event.target.value }))} /></td><td className="px-3 py-2 font-semibold">{degree.toFixed(1)}</td><td className="px-3 py-2"><div className="space-y-2"><select multiple value={(notes[row.label] ?? "").split(" | ").filter(Boolean)} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: Array.from(event.target.selectedOptions, (option) => option.value).join(" | ") }))} className="min-h-20 w-full rounded-md border bg-background px-2 py-1 text-xs"><option disabled value="">اختر سببًا أو أكثر</option>{(suggestions[row.label] ?? []).map((suggestion) => <option key={suggestion} value={suggestion}>{suggestion}</option>)}</select><div className="flex gap-2"><Input value={notes[row.label] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [row.label]: event.target.value }))} onBlur={() => void rememberNote(row.label, notes[row.label] ?? "")} placeholder="أضف سببًا جديدًا" /><Button type="button" variant="outline" size="sm" onClick={() => void rememberNote(row.label, notes[row.label] ?? "")}>حفظ السبب</Button></div></div></td></tr>; })}</tbody><tfoot className="border-t bg-primary/5 font-semibold"><tr><td className="px-3 py-2">Total</td><td className="px-3 py-2">{sectionTotal}</td><td className="px-3 py-2">{section.rows.reduce((sum, row) => sum + Number(nonconformities[row.label] || 0), 0)}</td><td className="px-3 py-2">{sectionDegree.toFixed(2)}</td><td /></tr></tfoot></table></div>;
           })}
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>المرفقات والصور</CardTitle><p className="text-sm text-muted-foreground">أرفق صور الحالات أو المستندات المرتبطة بالتقرير</p></CardHeader>
+        <CardHeader><CardTitle>المرفقات والصور</CardTitle><p className="text-sm text-muted-foreground">أرفق صور الحالات أو المستندات المرتبطة ب��لتقرير</p></CardHeader>
         <CardContent>
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-8 text-sm font-medium transition-colors hover:bg-primary/10">
             <ImagePlus className="size-5 text-primary" />
-            <span>إضافة صور</span>
+            <span>��ضافة صور</span>
             <input type="file" accept="image/*" multiple className="sr-only" onChange={(event) => {
               const files = Array.from(event.target.files ?? []).slice(0, 8);
               setPhotos(files);
             }}
           /></label>
           {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((file, index) => <img key={`${file.name}-${index}`} src={URL.createObjectURL(file)} alt={`صورة مرفقة ${index + 1}`} className="aspect-square rounded-lg border object-cover" />)}</div>}
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader><CardTitle>التقييم الصحي</CardTitle><p className="text-sm text-muted-foreground">درجات AM وPM المستخدمة في التقرير الأصلي</p></CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Ante-mortem (AM)"><Input type="number" min="0" max="100" value={amScore} onChange={(event) => setAmScore(event.target.value)} /></Field>
-          <Field label="Post-mortem (PM)"><Input type="number" min="0" max="100" value={pmScore} onChange={(event) => setPmScore(event.target.value)} /></Field>
-          <div className="rounded-xl bg-primary/10 p-4"><p className="text-sm text-muted-foreground">Meat Score</p><p className="mt-1 text-2xl font-bold text-primary">{meatScore}%</p></div>
         </CardContent>
       </Card>
       <Card className="border-primary/30">
