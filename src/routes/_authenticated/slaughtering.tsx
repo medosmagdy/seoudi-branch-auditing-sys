@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { utils, writeFile } from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import slaughterArchive from "@/data/slaughter-archive.json";
 import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
@@ -47,6 +48,7 @@ type Report = {
 const reports: Report[] = slaughterArchive as Report[];
 
 const animalTypes = ["Bulls", "Sheep", "Goats", "Buffalo"];
+const normalizeAnimalType = (value: string) => value.trim().toLowerCase() === "goat" ? "Goats" : value.trim().toLowerCase() === "sheep" ? "Sheep" : value.trim().toLowerCase() === "bulls" ? "Bulls" : value.trim().toLowerCase() === "baffalo" ? "Buffalo" : value;
 const rejectionReasons = ["Carcass", "Live", "Parasitic", "Viral", "TB", "Managemental"];
 
 function SlaughteringPage() {
@@ -68,7 +70,7 @@ function SlaughteringPage() {
     void (async () => {
       const { data, error } = await (supabase as any)
         .from("slaughter_reports")
-        .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, status")
+        .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, slaughtering_evaluation, rejection_reason, status")
         .order("report_date", { ascending: false });
       if (!active || error || !data?.length) return;
       setSavedReports(data.map((item: any) => ({
@@ -76,12 +78,15 @@ function SlaughteringPage() {
         date: item.report_date,
         farm: item.farm_name,
         slaughterhouse: item.slaughterhouse_name,
-        animalType: item.animal_type,
+        animalType: normalizeAnimalType(item.animal_type),
         number: item.total_count,
         received: Number(item.received_count ?? 0),
         rejected: Number(item.rejected_count ?? Math.max(0, Number(item.total_count ?? 0) - Number(item.received_count ?? 0))),
         carcassWeight: Number(item.carcass_weight),
         meatScore: Number(item.meat_score ?? 0),
+        slaughteringEvaluation: Number(item.slaughtering_evaluation ?? item.meat_score ?? 0),
+        rejectionReasons: item.rejection_reason ?? "",
+        rejected: Number(item.rejected_count ?? Math.max(0, Number(item.total_count ?? 0) - Number(item.received_count ?? 0))),
         status: item.status === "draft" ? "مسودة" : item.status === "approved" ? "معتمد" : "مكتمل",
       })));
     })();
@@ -159,7 +164,7 @@ function SlaughteringPage() {
         status: "draft",
         created_by: userData.user.id,
       })
-      .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, status")
+      .select("id, report_date, farm_name, slaughterhouse_name, animal_type, total_count, received_count, rejected_count, carcass_weight, meat_score, slaughtering_evaluation, rejection_reason, status")
       .single();
     if (error) {
       notify(`تعذر حفظ التقرير: ${error.message}`);
@@ -190,10 +195,10 @@ function SlaughteringPage() {
       date: data.report_date,
       farm: data.farm_name,
       slaughterhouse: data.slaughterhouse_name,
-      animalType: data.animal_type,
+      animalType: normalizeAnimalType(data.animal_type),
       number: data.total_count,
       received: data.received_count,
-      rejected: data.rejected_count,
+      rejected: Number(data.rejected_count ?? Math.max(0, Number(data.total_count ?? 0) - Number(data.received_count ?? 0))),
       carcassWeight: Number(data.carcass_weight),
       meatScore: Number(data.meat_score ?? draft.meatScore),
       status: "مسودة",
@@ -201,6 +206,23 @@ function SlaughteringPage() {
     notify("تم حفظ التقرير كمسودة بنجاح");
     setActiveTab("reports");
     return true;
+  };
+
+  const exportReport = (report: Report) => {
+    const row = {
+      date: report.date, "Hejri date ": report.hijriDate ?? "", Season: "", type: report.animalType, Breed: report.breed ?? "", farm: report.farm,
+      number: report.number, received: report.received, rejected: report.rejected, "rejection reasons": report.rejectionReasons ?? "",
+      "total weight": report.totalWeight ?? "", "receiving weight": report.receivingWeight ?? "", "transportation loss ": "", " carcass weight": report.carcassWeight,
+      " kidneys fat quantity": "", "av.total weight": "", "av. Receiving weight": "", "av. Transportation loss": "", "av. Carcass weight": "", "av. Kidneys fat": "",
+      am: "", "slaughter house hygiene": "", pm: "", "meat score": report.meatScore, "meat transportation": "", "wight loss": "", examination: "", "dressing %": report.dressing ?? "",
+      "slaughtering evaluation": report.slaughteringEvaluation ?? report.meatScore, condemnation: report.condemnation ?? "", "cutting leg ligmants": "", trimming: "", "heterogenous selection": "", "bad stamping": "", bruises: report.bruises ?? "",
+      "accepted as exception": "", "over capacity & rough handling": "", "total rejected weight": "",
+    };
+    const sheet = utils.json_to_sheet([row]);
+    sheet["!cols"] = Object.keys(row).map(() => ({ wch: 18 }));
+    const workbook = utils.book_new();
+    utils.book_append_sheet(workbook, sheet, "Grand Total");
+    writeFile(workbook, `slaughter-report-${report.date}.xlsx`);
   };
 
   const totalNumber = filteredReports.reduce((sum, report) => sum + report.number, 0);
@@ -250,14 +272,14 @@ function SlaughteringPage() {
 
         <TabsContent value="reports" className="space-y-4">
           <Card><CardContent className="flex flex-col gap-3 p-4 md:flex-row"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input className="pr-9" placeholder="ابحث بالمزرعة أو المجزر أو النوع" value={query} onChange={(event) => setQuery(event.target.value)} /></div><Select value={animalType} onValueChange={setAnimalType}><SelectTrigger className="w-full md:w-48"><SelectValue placeholder="نوع الحيوان" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأنواع</SelectItem>{animalTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent></Select><Input className="w-full md:w-40" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></CardContent></Card>
-          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="cursor-pointer border-b last:border-0 hover:bg-muted/20" onClick={() => setSelectedReport(report)}><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{Number(report.slaughteringEvaluation ?? report.meatScore ?? 0).toFixed(1)}%</td><td className="px-4 py-3"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
+          <Card><CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full text-right text-sm"><thead className="border-b bg-muted/40"><tr>{["التاريخ", "المزرعة", "المجزر", "النوع", "العدد", "المستلم", "المرفوض", "التقييم", "الحالة"].map((heading) => <th key={heading} className="whitespace-nowrap px-4 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody>{filteredReports.map((report) => <tr key={report.id} className="cursor-pointer border-b last:border-0 hover:bg-muted/20" onClick={() => setSelectedReport(report)}><td className="whitespace-nowrap px-4 py-3">{report.date}</td><td className="px-4 py-3 font-medium">{report.farm}</td><td className="px-4 py-3">{report.slaughterhouse}</td><td className="px-4 py-3">{report.animalType}</td><td className="px-4 py-3">{report.number}</td><td className="px-4 py-3">{report.received}</td><td className="px-4 py-3 text-destructive">{report.rejected}</td><td className="px-4 py-3">{(Number(report.slaughteringEvaluation ?? report.meatScore ?? 0) <= 1 ? Number(report.slaughteringEvaluation ?? report.meatScore ?? 0) * 100 : Number(report.slaughteringEvaluation ?? report.meatScore ?? 0)).toFixed(1)}%</td><td className="px-4 py-3"><div className="flex items-center gap-2"><Badge variant={report.status === "مكتمل" ? "default" : "secondary"}>{report.status}</Badge><Button type="button" variant="ghost" size="icon" title="تصدير Excel" onClick={(event) => { event.stopPropagation(); exportReport(report); }}><Download className="size-4" /></Button></div></td></tr>)}</tbody></table></div>{filteredReports.length === 0 && <div className="p-10 text-center text-sm text-muted-foreground">لا توجد تقارير مطابقة للفلاتر.</div>}</CardContent></Card>
         </TabsContent>
 
         <TabsContent value="new"><DailyReportForm reportDate={reportDate} setReportDate={setReportDate} notify={notify} onSave={saveReport} farms={farms} slaughterhouses={slaughterhouses} addLocation={addLocation} /></TabsContent>
       </Tabs>
       <Dialog open={Boolean(selectedReport)} onOpenChange={(open) => !open && setSelectedReport(null)}>
         <DialogContent className="max-h-[85vh] max-w-5xl overflow-y-auto" dir="rtl">
-          {selectedReport && <><DialogHeader><DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle></DialogHeader><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="العدد" value={selectedReport.number} /><Summary label="المستلم / المقبول" value={selectedReport.received} /><Summary label="المرفوض" value={selectedReport.rejected} danger /><Summary label="Slaughtering evaluation" value={`${Number(selectedReport.slaughteringEvaluation ?? selectedReport.meatScore ?? 0).toFixed(1)}%`} /></div><div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2"><Detail label="المزرعة" value={selectedReport.farm} /><Detail label="المجزر" value={selectedReport.slaughterhouse || "غير مسجل"} /><Detail label="النوع" value={selectedReport.animalType} /><Detail label="السلالة" value={selectedReport.breed || "غير مسجل"} /><Detail label="أسباب الرفض" value={selectedReport.rejectionReasons || "لا توجد"} /><Detail label="الوزن الكلي" value={`${Number(selectedReport.totalWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الاستلام" value={`${Number(selectedReport.receivingWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الذبيحة" value={`${selectedReport.carcassWeight.toLocaleString()} kg`} /><Detail label="Dressing %" value={`${(Number(selectedReport.dressing ?? 0) * 100).toFixed(1)}%`} /><Detail label="Slaughtering evaluation" value={`${(Number(selectedReport.slaughteringEvaluation ?? 0) * 100).toFixed(1)}%`} /><Detail label="Condemnation" value={selectedReport.condemnation || "لا توجد"} /><Detail label="Bruises" value={Number(selectedReport.bruises ?? 0).toString()} /></div></>}
+          {selectedReport && <><DialogHeader><div className="flex items-center justify-between gap-3"><DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle><Button type="button" variant="outline" onClick={() => exportReport(selectedReport)}><Download className="ml-2 size-4" /> تصدير Excel</Button></div></DialogHeader><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Summary label="العدد" value={selectedReport.number} /><Summary label="المستلم / المقبول" value={selectedReport.received} /><Summary label="المرفوض" value={selectedReport.rejected} danger /><Summary label="Slaughtering evaluation" value={`${Number(selectedReport.slaughteringEvaluation ?? selectedReport.meatScore ?? 0).toFixed(1)}%`} /></div><div className="grid gap-4 rounded-xl border p-4 sm:grid-cols-2"><Detail label="المزرعة" value={selectedReport.farm} /><Detail label="المجزر" value={selectedReport.slaughterhouse || "غير مسجل"} /><Detail label="النوع" value={selectedReport.animalType} /><Detail label="السلالة" value={selectedReport.breed || "غير مسجل"} /><Detail label="أسباب الرفض" value={selectedReport.rejectionReasons || "لا توجد"} /><Detail label="الوزن الكلي" value={`${Number(selectedReport.totalWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الاستلام" value={`${Number(selectedReport.receivingWeight ?? 0).toLocaleString()} kg`} /><Detail label="وزن الذبيحة" value={`${selectedReport.carcassWeight.toLocaleString()} kg`} /><Detail label="Dressing %" value={`${(Number(selectedReport.dressing ?? 0) * 100).toFixed(1)}%`} /><Detail label="Slaughtering evaluation" value={`${(Number(selectedReport.slaughteringEvaluation ?? 0) * 100).toFixed(1)}%`} /><Detail label="Condemnation" value={selectedReport.condemnation || "لا توجد"} /><Detail label="Bruises" value={Number(selectedReport.bruises ?? 0).toString()} /></div></>}
         </DialogContent>
       </Dialog>
     </AppShell>
