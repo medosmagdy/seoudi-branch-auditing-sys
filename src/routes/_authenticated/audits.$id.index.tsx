@@ -63,6 +63,8 @@ const LARGE_BRANCH_NAMES = new Set([
   "زايد",
   "ديستركت5",
   "هايد بارك",
+  "سوديك",
+  "Sodic",
 ]);
 
 function getDisabledScore(branchName: string) {

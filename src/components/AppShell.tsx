@@ -46,6 +46,17 @@ export function AppShell({
           </Link>
           <div className="flex items-center gap-2" dir="rtl">
             <Link
+              to="/slaughtering"
+              className={cn(
+                "rounded-lg px-3 py-2 text-sm transition-colors",
+                pathname === "/slaughtering"
+                  ? "bg-secondary text-secondary-foreground font-semibold"
+                  : "hover:bg-primary-soft/60",
+              )}
+            >
+              المجازر
+            </Link>
+            <Link
               to="/audits"
               className={cn(
                 "rounded-lg px-3 py-2 text-sm transition-colors",
