@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { utils, writeFile } from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import slaughterArchive from "@/data/slaughter-archive.json";
@@ -17,6 +17,15 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/slaughtering")({
+  beforeLoad: async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData.session?.user;
+    if (!user) throw new Error("Unauthorized");
+    const { data: roleData } = await supabase.from("user_roles").select("role").eq("user_id", user.id).maybeSingle();
+    if (roleData?.role !== "admin") {
+      throw redirect({ to: "/dashboard", search: { scope: "branches" } });
+    }
+  },
   component: SlaughteringPage,
 });
 
