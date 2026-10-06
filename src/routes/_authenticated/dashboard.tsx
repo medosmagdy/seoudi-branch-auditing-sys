@@ -121,7 +121,10 @@ function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
   const { scope } = useSearch({ from: "/_authenticated/dashboard" });
 
-  const [startDate, setStartDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => {
+    const enteredAt = new Date();
+    return `${enteredAt.getFullYear()}-${String(enteredAt.getMonth() + 1).padStart(2, "0")}-01`;
+  });
   const [endDate, setEndDate] = useState<string>("");
   const [branchFilter, setBranchFilter] = useState("all");
   const [branchSearch, setBranchSearch] = useState("");
@@ -1597,7 +1600,7 @@ function ExecutiveDashboard() {
                     : "حالات عدم المطابقة"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              التفاصيل محسوبة من نفس الفترة والفروع الظاهرة في الداشبورد.
+              التفاصيل محسوبة من نفس الفترة والفروع الظ��هرة في الداشبورد.
             </DialogDescription>
           </DialogHeader>
 
@@ -1892,7 +1895,7 @@ function ExecutiveDashboard() {
               متابعة نشاط وملاحظات: {activeBranch?.nameAr}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              كود الفرع: {activeBranch?.code} • إجمالي الفحوصات المعتمدة:{" "}
+              كود الفرع: {activeBranch?.code} • ��جمالي الفحوصات المعتمدة:{" "}
               {activeBranch?.completed ?? 0}
             </DialogDescription>
           </DialogHeader>
