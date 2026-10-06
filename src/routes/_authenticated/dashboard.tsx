@@ -167,7 +167,22 @@ function ExecutiveDashboard() {
         .eq("tracking_month", trackingMonth)
         .order("branch_name");
       if (error) throw error;
-      return rows ?? [];
+
+      const monthAudits = (data?.audits ?? []).filter((audit) => audit.audit_date?.startsWith(trackingMonth.slice(0, 7)));
+      const programField = (audit: (typeof monthAudits)[number]) => {
+        const value = `${audit.typeName ?? ""} ${audit.typeCode ?? ""}`.toUpperCase();
+        return value.includes("FSMS") ? "fsms_status" : value.includes("GHP") ? "ghp_status" : value.includes("FS") ? "fs_status" : null;
+      };
+      return (rows ?? []).map((row) => {
+        const next = { ...row } as Record<string, unknown>;
+        for (const audit of monthAudits.filter((item) => item.branch_id === row.branch_id)) {
+          const field = programField(audit);
+          if (field && (audit.status === "draft" || audit.status === "submitted")) {
+            next[field] = audit.status === "submitted" ? "completed" : "in_progress";
+          }
+        }
+        return next as typeof row;
+      });
     },
     enabled: Boolean(data?.branches?.length),
   });
