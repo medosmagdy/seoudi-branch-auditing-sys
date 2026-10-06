@@ -24,6 +24,8 @@ import {
   ExternalLink,
   ShieldAlert,
   FileText,
+  Circle,
+  Clock3,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/hooks/useSession";
@@ -82,6 +84,39 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: ExecutiveDashboard,
 });
 
+type TrackingRow = {
+  id: string;
+  branch_name: string;
+  fs_status: "not_started" | "in_progress" | "completed";
+  ghp_status: "not_started" | "in_progress" | "completed";
+  fsms_status: "not_started" | "in_progress" | "completed";
+};
+
+const trackingStatus = {
+  not_started: { label: "لم يبدأ", className: "bg-muted text-muted-foreground", icon: Circle },
+  in_progress: { label: "غير مكتمل", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300", icon: Clock3 },
+  completed: { label: "مكتمل", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", icon: CheckCircle2 },
+} as const;
+
+function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate: (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => Promise<void> }) {
+  const cycle = (row: TrackingRow, field: "fs_status" | "ghp_status" | "fsms_status") => {
+    const values = ["not_started", "in_progress", "completed"] as const;
+    return onUpdate(row.id, field, values[(values.indexOf(row[field]) + 1) % values.length]);
+  };
+  return (
+    <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm" dir="rtl">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-3">
+        <div><h2 className="font-bold">شيت المتابعة الشهري</h2><p className="text-xs text-muted-foreground">اضغط على الحالة للتبديل: لم يبدأ ← غير مكتمل ← مكتمل</p></div>
+        <Badge variant="outline">{new Intl.DateTimeFormat("ar-EG", { month: "long", year: "numeric" }).format(new Date())}</Badge>
+      </div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-sm"><thead className="bg-muted/30 text-xs text-muted-foreground"><tr><th className="px-4 py-3 text-right">الفرع</th><th className="px-4 py-3">FS</th><th className="px-4 py-3">GHP</th><th className="px-4 py-3">FSMS</th></tr></thead><tbody>
+        {rows.map((row) => <tr key={row.id} className="border-t border-border/70"><td className="px-4 py-2.5 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-4 py-2.5 text-center"><button type="button" onClick={() => void cycle(row, field)} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
+        {rows.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">لا توجد بيانات متابعة لهذا الشهر بعد.</td></tr>}
+      </tbody></table></div>
+    </section>
+  );
+}
+
 function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
   const { scope } = useSearch({ from: "/_authenticated/dashboard" });
@@ -110,6 +145,34 @@ function ExecutiveDashboard() {
     queryKey: ["dashboard-data-full", scope],
     queryFn: () => fetchDashboardData(scope as LocationScope),
   });
+
+  const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
+  const trackingQuery = useQuery({
+    queryKey: ["monthly-branch-tracking", trackingMonth],
+    queryFn: async () => {
+      const branches = data?.branches ?? [];
+      if (branches.length) {
+        const { error: seedError } = await supabase.from("monthly_branch_tracking").upsert(
+          branches.map((branch) => ({ branch_id: branch.id, branch_name: branch.name_ar, tracking_month: trackingMonth })),
+          { onConflict: "branch_name,tracking_month", ignoreDuplicates: true },
+        );
+        if (seedError) throw seedError;
+      }
+      const { data: rows, error } = await supabase
+        .from("monthly_branch_tracking")
+        .select("*")
+        .eq("tracking_month", trackingMonth)
+        .order("branch_name");
+      if (error) throw error;
+      return rows ?? [];
+    },
+    enabled: Boolean(data?.branches?.length),
+  });
+
+  const updateTracking = async (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => {
+    await supabase.from("monthly_branch_tracking").update({ [field]: value, [`${field.replace("_status", "")}_updated_at`]: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
+    await trackingQuery.refetch();
+  };
 
   const filteredData = useMemo(() => {
     if (!data || !profile) return null;
@@ -1185,6 +1248,8 @@ function ExecutiveDashboard() {
           </Link>
         </Button>
       </div>
+
+      <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} />
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         <button
