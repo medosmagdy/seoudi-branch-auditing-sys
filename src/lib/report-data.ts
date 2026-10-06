@@ -237,8 +237,8 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       );
       return {
         month: String(row.audit_date ?? "").slice(0, 7),
-        earned: historicalResult.finalScore,
-        possible: historicalResult.overallMax,
+        earned: historicalResult.finalPercentage,
+        possible: 100,
       };
     }),
   );
@@ -257,7 +257,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     .filter(([month]) => month !== currentMonth)
     .map(([month, totals]) => ({
       month,
-      score: Number(((totals.earned / totals.possible) * 100).toFixed(2)),
+      score: Number((totals.earned / totals.possible).toFixed(2)),
     }));
   history.push({ month: currentMonth, score: currentScore });
   history.sort((a, b) => a.month.localeCompare(b.month));

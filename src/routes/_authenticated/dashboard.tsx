@@ -69,6 +69,7 @@ const PROGRAM_LABELS = {
 
 const dashboardSearchSchema = z.object({
   scope: z.enum(["branches", "warehouses"]).default("branches"),
+  tab: z.enum(["overview", "tracking"]).default("overview"),
 });
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -119,7 +120,7 @@ function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate
 
 function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
-  const { scope } = useSearch({ from: "/_authenticated/dashboard" });
+  const { scope, tab } = useSearch({ from: "/_authenticated/dashboard" });
 
   const [startDate, setStartDate] = useState<string>(() => {
     const enteredAt = new Date();
@@ -1267,9 +1268,20 @@ function ExecutiveDashboard() {
         </Button>
       </div>
 
-      <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} />
+      <div className="mb-4 flex items-center gap-2 border-b border-border pb-2 print:hidden">
+        <Button asChild size="sm" variant={tab === "overview" ? "default" : "ghost"}>
+          <Link to="/dashboard" search={{ scope, tab: "overview" }}>نظرة عامة</Link>
+        </Button>
+        <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
+          <Link to="/dashboard" search={{ scope, tab: "tracking" }}>المتابعة الشهرية</Link>
+        </Button>
+      </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+      {tab === "tracking" ? (
+        <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} />
+      ) : null}
+
+      {tab === "overview" ? <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
         <button
           type="button"
           onClick={() => setActiveMetric("compliance")}
@@ -1333,7 +1345,7 @@ function ExecutiveDashboard() {
             {filteredData?.totalCritical ?? 0}
           </div>
         </button>
-      </div>
+      </div> : null}
 
       {isAdmin ? (
         <>
@@ -1427,7 +1439,7 @@ function ExecutiveDashboard() {
                     مؤشرات أقسام FSMS (المعتمدة فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    تفصيل أقسام نظام إدارة سلامة الغذاء حسب الشهر والفرع
+                    تفصيل أقسام نظام إدارة سلامة الغذاء ��سب الشهر والفرع
                   </p>
                 </div>
                 <Badge
