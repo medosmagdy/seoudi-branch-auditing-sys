@@ -178,7 +178,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   }));
 
   const result = computeAudit(scoringSections, answerMap, generalRows);
-  const historyByMonth = new Map<string, { earned: number; possible: number }>();
+  const historyByMonth = new Map<string, number[]>();
   const historicalAudits = (branchAudits.data ?? []).filter((row) => row.id !== auditId);
   const historicalScores = await Promise.all(
     historicalAudits.map(async (row) => {
@@ -248,27 +248,25 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       );
       return {
         month: String(row.audit_date ?? "").slice(0, 7),
-        earned: historicalResult.finalPercentage,
-        possible: 100,
+        score: historicalResult.finalPercentage,
       };
     }),
   );
   for (const entry of historicalScores) {
-    if (entry.month && Number.isFinite(entry.earned) && Number.isFinite(entry.possible) && entry.possible > 0) {
-      const current = historyByMonth.get(entry.month) ?? { earned: 0, possible: 0 };
-      historyByMonth.set(entry.month, {
-        earned: current.earned + entry.earned,
-        possible: current.possible + entry.possible,
-      });
+    if (entry.month && Number.isFinite(entry.score)) {
+      historyByMonth.set(entry.month, [
+        ...(historyByMonth.get(entry.month) ?? []),
+        Math.max(0, Math.min(100, entry.score)),
+      ]);
     }
   }
   const currentMonth = audit.audit_date.slice(0, 7);
   const currentScore = Math.max(0, Math.min(100, Number(result.finalPercentage)));
   const history = [...historyByMonth.entries()]
     .filter(([month]) => month !== currentMonth)
-    .map(([month, totals]) => ({
+    .map(([month, scores]) => ({
       month,
-      score: Number((totals.earned / totals.possible).toFixed(2)),
+      score: Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(2)),
     }));
   history.push({ month: currentMonth, score: currentScore });
   history.sort((a, b) => a.month.localeCompare(b.month));
