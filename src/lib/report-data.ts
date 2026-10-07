@@ -92,7 +92,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     generalDeductions,
     photos,
     auditor,
-    branchAudits,
+    pastAudits,
   ] = await Promise.all([
     supabase
       .from("sections")
@@ -111,10 +111,12 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
     supabase.from("photos").select("*").eq("audit_id", auditId),
     supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
+    // التعديل هنا: جلب الفحوصات التاريخية مع درجاتها المحفوظة مسبقاً وتصفيتها حسب نوع التفتيش
     supabase
       .from("audits")
-      .select("id, audit_date")
+      .select("id, audit_date, score, overall_score")
       .eq("branch_id", audit.branch_id)
+      .eq("audit_type_id", audit.audit_type_id)
       .eq("status", "submitted")
       .order("audit_date", { ascending: true }),
   ]);
@@ -178,85 +180,33 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   }));
 
   const result = computeAudit(scoringSections, answerMap, generalRows);
+
+  // الاعتماد على النتائج المحفوظة تاريخياً في جدول audits مباشرة دون إعادة حساب
   const historyByMonth = new Map<string, number[]>();
-  const historicalAudits = (branchAudits.data ?? []).filter((row) => row.id !== auditId);
-  const historicalScores = await Promise.all(
-    historicalAudits.map(async (row) => {
-      const [
-        historicalAnswers,
-        historicalStatuses,
-        historicalSectionDeductions,
-        historicalGeneralDeductions,
-      ] = await Promise.all([
-        supabase
-          .from("audit_answers")
-          .select("question_id, score, is_na, comment")
-          .eq("audit_id", row.id),
-        supabase.from("audit_section_status").select("section_id, is_na").eq("audit_id", row.id),
-        supabase
-          .from("audit_section_deductions")
-          .select("section_id, percentage")
-          .eq("audit_id", row.id),
-        supabase.from("audit_general_deductions").select("percentage").eq("audit_id", row.id),
-      ]);
-      const historicalNa = new Set(
-        (historicalStatuses.data ?? [])
-          .filter((status) => status.is_na)
-          .map((status) => status.section_id),
-      );
-      const historicalAnswersMap: Record<
-        string,
-        { score: number | null; isNa: boolean; comment: string }
-      > = {};
-      for (const answer of historicalAnswers.data ?? [])
-        historicalAnswersMap[answer.question_id] = {
-          score: answer.score,
-          isNa: answer.is_na,
-          comment: answer.comment ?? "",
-        };
-      const historicalSections: ScoringSection[] = sectionRows.map((section) => ({
-        id: section.id,
-        nameAr: section.name_ar,
-        nameEn: section.name_en,
-        isDelivery: section.is_delivery,
-        isNa: historicalNa.has(section.id),
-        questions: questionRows
-          .filter((question) => question.section_id === section.id)
-          .map((question) => ({ id: question.id, maxScore: question.max_score ?? 4 })),
-        deductions: (historicalSectionDeductions.data ?? [])
-          .filter((deduction) => deduction.section_id === section.id)
-          .map((deduction) => ({ reasonText: "", percentage: Number(deduction.percentage) })),
-      }));
-      const historicalResult = computeAudit(
-        historicalSections,
-        historicalAnswersMap,
-        (historicalGeneralDeductions.data ?? []).map((deduction) => ({
-          reasonText: "",
-          percentage: Number(deduction.percentage),
-        })),
-      );
-      return {
-        month: String(row.audit_date ?? "").slice(0, 7),
-        score: historicalResult.finalPercentage,
-      };
-    }),
-  );
-  for (const entry of historicalScores) {
-    if (entry.month && Number.isFinite(entry.score)) {
-      historyByMonth.set(entry.month, [
-        ...(historyByMonth.get(entry.month) ?? []),
-        Math.max(0, Math.min(100, entry.score)),
+  const historicalAudits = (pastAudits.data ?? []).filter((row) => row.id !== auditId);
+
+  for (const row of historicalAudits) {
+    const month = String(row.audit_date ?? "").slice(0, 7);
+    const scoreVal = Number(row.overall_score ?? row.score ?? 0);
+
+    if (month && Number.isFinite(scoreVal)) {
+      historyByMonth.set(month, [
+        ...(historyByMonth.get(month) ?? []),
+        Math.max(0, Math.min(100, scoreVal)),
       ]);
     }
   }
+
   const currentMonth = audit.audit_date.slice(0, 7);
   const currentScore = Math.max(0, Math.min(100, Number(result.finalPercentage)));
+
   const history = [...historyByMonth.entries()]
     .filter(([month]) => month !== currentMonth)
     .map(([month, scores]) => ({
       month,
       score: Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(2)),
     }));
+
   history.push({ month: currentMonth, score: currentScore });
   history.sort((a, b) => a.month.localeCompare(b.month));
 
