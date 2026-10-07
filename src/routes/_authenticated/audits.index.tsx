@@ -52,7 +52,10 @@ function AuditsList() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
-  const [monthFrom, setMonthFrom] = useState("");
+  const [monthFrom, setMonthFrom] = useState(() => {
+    const enteredAt = new Date();
+    return `${enteredAt.getFullYear()}-${String(enteredAt.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [monthTo, setMonthTo] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
 

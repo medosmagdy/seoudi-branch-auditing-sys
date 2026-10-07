@@ -114,11 +114,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
 
         {/* 3. اتجاه درجات الفرع شهريًا */}
         {model.history.length > 0 && (
-          <div data-report-block className="mt-4 rounded-xl border border-border bg-white p-4">
+          <div data-report-block className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
               <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر
             </h3>
-            <div className="relative h-64 w-full overflow-hidden rounded-lg border border-slate-200 bg-gradient-to-b from-emerald-50/70 via-white to-white px-3 py-3">
+            <div className="relative h-64 w-full overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-b from-emerald-50/70 via-white to-white px-4 py-4">
               <div className="absolute inset-x-3 top-3 bottom-10 flex flex-col justify-between text-[9px] text-muted-foreground">
                 {[100, 75, 50, 25, 0].map((value) => (
                   <div key={value} className="border-t border-dashed border-slate-300">
@@ -138,7 +138,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                       key={entry.month}
                       className="flex h-full min-w-12 flex-1 flex-col items-center justify-end gap-1"
                     >
-                      <span className="rounded-md border border-emerald-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                      <span className="rounded-full border border-emerald-200 bg-white px-2 py-1 text-[10px] font-bold text-primary shadow-sm">
                         {formatPercentage(entry.score)}%
                       </span>
                       <div
@@ -152,11 +152,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                 })}
               </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3" dir="ltr">
+            <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3" dir="ltr">
               {model.history.map((entry) => (
                 <div
                   key={`score-${entry.month}`}
-                  className="flex items-center justify-between rounded-md border border-emerald-100 bg-emerald-50/50 px-2 py-1 text-[10px]"
+                  className="flex items-center justify-between rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[10px] shadow-sm"
                 >
                   <span className="font-semibold text-slate-600">{entry.month}</span>
                   <span className="font-bold text-primary">{formatPercentage(entry.score)}%</span>
