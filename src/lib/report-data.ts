@@ -214,6 +214,17 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
           isNa: answer.is_na,
           comment: answer.comment ?? "",
         };
+      // Keep historical reports on the same scoring baseline as the current report:
+      // unanswered questions default to their configured maximum score.
+      for (const question of questionRows) {
+        if (!historicalAnswersMap[question.id]) {
+          historicalAnswersMap[question.id] = {
+            score: question.max_score ?? 4,
+            isNa: false,
+            comment: "",
+          };
+        }
+      }
       const historicalSections: ScoringSection[] = sectionRows.map((section) => ({
         id: section.id,
         nameAr: section.name_ar,
