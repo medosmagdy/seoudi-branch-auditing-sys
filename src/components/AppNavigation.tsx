@@ -27,7 +27,7 @@ export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; i
         </button>
       </div>
       <nav className="flex flex-col gap-1" aria-label="القائمة الرئيسية">
-        {navItems.filter((item) => item.to !== "/expiry" || isAdmin).map((item) => {
+        {navItems.map((item) => {
           const isDisabled = item.to === "/slaughtering" && !isAdmin;
           const className = cn(
             "flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors",

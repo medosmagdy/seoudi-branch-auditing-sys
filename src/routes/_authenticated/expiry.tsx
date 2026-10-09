@@ -8,15 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useSession } from "@/hooks/useSession";
 
 export const Route = createFileRoute("/_authenticated/expiry")({ component: ExpiryPage });
 
 function ExpiryPage() {
-  const { isAdmin } = useSession();
   const { data: branches = [] } = useQuery({
     queryKey: ["expiry-branches"],
-    enabled: isAdmin,
     queryFn: async () => {
       const { data, error } = await supabase.from("branches").select("id, name").order("name");
       if (error) throw error;
@@ -25,15 +22,12 @@ function ExpiryPage() {
   });
   const { data: sections = [] } = useQuery({
     queryKey: ["expiry-sections"],
-    enabled: isAdmin,
     queryFn: async () => {
       const { data, error } = await supabase.from("sections").select("id, name").order("name");
       if (error) throw error;
       return data ?? [];
     },
   });
-
-  if (!isAdmin) return <AppShell title="تسجيل الإكسبيرات"><p className="text-muted-foreground">هذه الصفحة متاحة للمديرين فقط.</p></AppShell>;
 
   return <AppShell title="تسجيل الإكسبيرات" subtitle="تسجيل ومتابعة الإكسبيرات حسب الشهر والفرع والقسم">
     <div className="flex flex-col gap-6">
