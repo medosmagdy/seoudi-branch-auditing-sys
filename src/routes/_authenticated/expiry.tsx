@@ -9,6 +9,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 
+const EXPIRY_SECTIONS = [
+  "الأسماك",
+  "الجزارة",
+  "الجبن",
+  "المخبوزات",
+  "الخضروات و الفاكهة",
+  "المبردات",
+  "المجمدات",
+  "الوجبات الجاهزة",
+  "البقالة الجافة",
+  "التوصيل",
+  "الاستلامات",
+  "عام",
+] as const;
+
 export const Route = createFileRoute("/_authenticated/expiry")({ component: ExpiryPage });
 
 function ExpiryPage() {
@@ -20,15 +35,6 @@ function ExpiryPage() {
       return data ?? [];
     },
   });
-  const { data: sections = [] } = useQuery({
-    queryKey: ["expiry-sections"],
-    queryFn: async () => {
-      const { data, error } = await supabase.from("sections").select("id, name").order("name");
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
   return <AppShell title="تسجيل الإكسبيرات" subtitle="تسجيل ومتابعة الإكسبيرات حسب الشهر والفرع والقسم">
     <div className="flex flex-col gap-6">
       <Card>
@@ -37,7 +43,7 @@ function ExpiryPage() {
           <form className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div className="flex flex-col gap-2"><Label htmlFor="expiry-date">التاريخ</Label><Input id="expiry-date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div>
             <div className="flex flex-col gap-2"><Label>الفرع</Label><Select><SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger><SelectContent>{branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent></Select></div>
-            <div className="flex flex-col gap-2"><Label>القسم</Label><Select><SelectTrigger><SelectValue placeholder="اختر القسم" /></SelectTrigger><SelectContent>{sections.map((section) => <SelectItem key={section.id} value={section.id}>{section.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="flex flex-col gap-2"><Label>القسم</Label><Select><SelectTrigger><SelectValue placeholder="اختر القسم" /></SelectTrigger><SelectContent>{EXPIRY_SECTIONS.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}</SelectContent></Select></div>
             <div className="flex flex-col gap-2"><Label>الحالة</Label><Select defaultValue="open"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="open">مفتوح</SelectItem><SelectItem value="resolved">تمت المعالجة</SelectItem><SelectItem value="closed">مغلق</SelectItem></SelectContent></Select></div>
             <div className="flex flex-col gap-2"><Label htmlFor="deduction">الخصم %</Label><Input id="deduction" type="number" min="0" max="100" step="0.01" placeholder="0" /></div>
             <div className="flex flex-col gap-2"><Label>نوع الخصم</Label><Select defaultValue="section"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="section">خصم قسم</SelectItem><SelectItem value="branch">خصم فرع</SelectItem></SelectContent></Select></div>

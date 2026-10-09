@@ -741,8 +741,6 @@ function ExecutiveDashboard() {
       "Auditor (المراجع)",
       "BranchManager (مدير الفرع)",
       "Status (الحالة)",
-      "TotalScore (الدرجة)",
-      "MaxScore (القصوى)",
       "FinalPercentage (النسبة)",
       "GeneralDeduction (الخصم العام %)",
       "General Deduction Reason (سبب الخصم)",
@@ -880,13 +878,13 @@ function ExecutiveDashboard() {
       const sheetRows = [
         [PROGRAM_LABELS[code as keyof typeof PROGRAM_LABELS]],
         ["النسب محسوبة من التدقيقات المعتمدة فقط"],
-        ["القسم", "الدرجة المحققة", "إجمالي الدرجة", "نسبة القسم"],
-        ...rows.map((row) => [row.name, row.earned, row.possible, `${row.percentage}%`]),
+        ["القسم", "نسبة القسم"],
+        ...rows.map((row) => [row.name, `${row.percentage}%`]),
       ];
       const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
-      sheet["!cols"] = [{ wch: 38 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+      sheet["!cols"] = [{ wch: 38 }, { wch: 18 }];
       sheet["!freeze"] = { xSplit: 0, ySplit: 3 };
-      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:D1");
+      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:B1");
       for (let row = range.s.r; row <= range.e.r; row += 1) {
         for (let col = range.s.c; col <= range.e.c; col += 1) {
           const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
@@ -957,8 +955,6 @@ function ExecutiveDashboard() {
           { v: audit.auditorName || "—", s: cellLeft },
           { v: audit.branch_manager || "—", s: cellLeft },
           { v: audit.status === "submitted" ? "Approved (معتمد)" : "Draft (مسودة)", s: cellCenter },
-          { v: calc.earned, s: cellCenter },
-          { v: calc.possible, s: cellCenter },
           { v: finalPct === null ? "N/A" : `${finalPct}%`, s: scoreStyle },
           {
             v: gDed.pct > 0 ? `${gDed.pct}%` : "0%",
@@ -1020,8 +1016,6 @@ function ExecutiveDashboard() {
       { wch: 18 },
       { wch: 18 },
       { wch: 15 },
-      { wch: 12 },
-      { wch: 12 },
       { wch: 14 },
       { wch: 18 },
       { wch: 32 },
@@ -1948,7 +1942,7 @@ function ExecutiveDashboard() {
               <TabsContent key={prog.key} value={prog.key} className="space-y-3 pt-2">
                 {prog.dataTree.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">
-                    لا توجد فحوصات معتمد�� مس��لة ��برنامج {prog.title} في هذا الفرع.
+                    لا توجد فحو��ات معتمد�� مس��لة ��برنامج {prog.title} في هذا الفرع.
                   </p>
                 ) : (
                   prog.dataTree.map((mGroup) => {
