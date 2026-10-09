@@ -30,7 +30,7 @@ function ExpiryPage() {
   const { data: branches = [] } = useQuery({
     queryKey: ["expiry-branches"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("branches").select("id, name").order("name");
+      const { data, error } = await supabase.from("branches").select("id, name_ar").order("name_ar");
       if (error) throw error;
       return data ?? [];
     },
@@ -42,7 +42,7 @@ function ExpiryPage() {
         <CardContent>
           <form className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <div className="flex flex-col gap-2"><Label htmlFor="expiry-date">التاريخ</Label><Input id="expiry-date" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div>
-            <div className="flex flex-col gap-2"><Label>الفرع</Label><Select><SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger><SelectContent>{branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name}</SelectItem>)}</SelectContent></Select></div>
+            <div className="flex flex-col gap-2"><Label>الفرع</Label><Select><SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger><SelectContent>{branches.length === 0 ? <SelectItem value="no-branches" disabled>لا توجد فروع متاحة</SelectItem> : branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name_ar}</SelectItem>)}</SelectContent></Select></div>
             <div className="flex flex-col gap-2"><Label>القسم</Label><Select><SelectTrigger><SelectValue placeholder="اختر القسم" /></SelectTrigger><SelectContent>{EXPIRY_SECTIONS.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}</SelectContent></Select></div>
             <div className="flex flex-col gap-2"><Label>الحالة</Label><Select defaultValue="open"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="open">مفتوح</SelectItem><SelectItem value="resolved">تمت المعالجة</SelectItem><SelectItem value="closed">مغلق</SelectItem></SelectContent></Select></div>
             <div className="flex flex-col gap-2"><Label htmlFor="deduction">الخصم %</Label><Input id="deduction" type="number" min="0" max="100" step="0.01" placeholder="0" /></div>
