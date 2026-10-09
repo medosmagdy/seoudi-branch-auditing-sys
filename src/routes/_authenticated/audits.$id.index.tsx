@@ -342,7 +342,7 @@ function AuditRunner() {
         },
         { onConflict: "audit_id,question_id" },
       );
-      if (error) toast.error("تعذر حفظ الإجا��ة");
+      if (error) toast.error("تعذر حفظ الإجابة");
     }, 400);
   };
 

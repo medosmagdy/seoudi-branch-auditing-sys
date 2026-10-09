@@ -1268,16 +1268,16 @@ function ExecutiveDashboard() {
         </Button>
       </div>
 
-      <div className="mb-4 flex items-center gap-2 border-b border-border pb-2 print:hidden">
+      <div className="mb-6 flex items-center gap-2 border-b border-border pb-3 pt-2 print:hidden">
         <Button asChild size="sm" variant={tab === "overview" ? "default" : "ghost"}>
           <Link to="/dashboard" search={{ scope, tab: "overview" }}>نظرة عامة</Link>
         </Button>
-        <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
+        {isAdmin && <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
           <Link to="/dashboard" search={{ scope, tab: "tracking" }}>المتابعة الشهرية</Link>
-        </Button>
+        </Button>}
       </div>
 
-      {tab === "tracking" ? (
+      {isAdmin && tab === "tracking" ? (
         <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} />
       ) : null}
 
@@ -1439,7 +1439,7 @@ function ExecutiveDashboard() {
                     مؤشرات أقسام FSMS (المعتمدة فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    تفصيل أقسام نظام إدارة سلامة الغذاء ��سب الشهر والفرع
+                    تفصيل أقسام نظام إدارة سلامة الغذاء حسب الشهر والفرع
                   </p>
                 </div>
                 <Badge
@@ -1948,7 +1948,7 @@ function ExecutiveDashboard() {
               <TabsContent key={prog.key} value={prog.key} className="space-y-3 pt-2">
                 {prog.dataTree.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">
-                    لا توجد فحوصات معتمدة مس��لة ��برنامج {prog.title} في هذا الفرع.
+                    لا توجد فحوصات معتمد�� مس��لة ��برنامج {prog.title} في هذا الفرع.
                   </p>
                 ) : (
                   prog.dataTree.map((mGroup) => {
