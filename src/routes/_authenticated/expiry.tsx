@@ -77,15 +77,13 @@ function ExpiryPage() {
         deduction_reason: form.reason.trim() || null,
         quantity: form.quantity ? Number(form.quantity) : null,
         notes: form.notes.trim() || null,
-        created_by: profile.id,
-        review_status: "pending",
       };
       if (editingId) {
         const { data, error } = await supabase.from("expiry_records").update(values).eq("id", editingId).select().single();
         if (error) throw error;
         return data;
       }
-      const { data, error } = await supabase.from("expiry_records").insert({ ...values, created_by: profile.id }).select().single();
+      const { data, error } = await supabase.from("expiry_records").insert({ ...values, created_by: profile.id, review_status: "pending" }).select().single();
       if (error) throw error;
       return data;
     },
