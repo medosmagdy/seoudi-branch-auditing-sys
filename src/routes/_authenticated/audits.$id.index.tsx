@@ -443,7 +443,7 @@ function AuditRunner() {
         ))}
       </div>
 
-      <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
+      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/10 p-4 shadow-sm" dir="rtl">
         <div className="text-right">
           <h2 className="text-lg font-bold">{section.name_ar}</h2>
           {section.is_delivery && (
@@ -498,11 +498,11 @@ function AuditRunner() {
               <div
                 key={question.id}
                 id={`q-${question.id}`}
-                className="surface-card p-4 transition-all duration-300"
+                className="surface-card border-border/70 p-4 transition-all duration-300 hover:border-primary/30 hover:shadow-sm"
               >
                 <div dir="rtl" className="text-right">
                   {header && (
-                    <div className="text-xs font-semibold text-primary">{header.label_ar}</div>
+                    <div className="mb-2 rounded-lg border-r-4 border-primary/60 bg-muted/70 px-3 py-2 text-sm font-bold text-foreground shadow-sm">{header.label_ar}</div>
                   )}
                   <div className="mt-1 text-[11px] text-muted-foreground font-mono" dir="ltr">
                     {question.item_id}
