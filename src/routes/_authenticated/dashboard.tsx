@@ -119,17 +119,21 @@ function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate
       </div>
       <div className="grid gap-4 p-4 md:grid-cols-2">
         {trackingGroups.map((group) => {
-          const groupRows = group.branches
-            .map((name) => {
-              const exact = rows.find((row) => row.branch_name.trim() === name);
-              if (exact) return exact;
-              return rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد"].includes(name));
-            })
-            .filter((row, index, matchedRows): row is TrackingRow => Boolean(row) && matchedRows.findIndex((candidate) => candidate?.id === row?.id) === index);
+          const groupRows = group.branches.map((name) => {
+            const exact = rows.find((row) => row.branch_name.trim() === name);
+            const compatible = exact ?? rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد"].includes(name));
+            return compatible ?? {
+              id: `missing-${group.name}-${name}`,
+              branch_name: name,
+              fs_status: "not_started",
+              ghp_status: "not_started",
+              fsms_status: "not_started",
+            } satisfies TrackingRow;
+          });
           return <div key={group.name} className={`overflow-hidden rounded-xl border ${group.tone}`}>
             <div className="border-b border-inherit px-4 py-3"><h3 className="font-bold">{group.name}</h3><p className="text-xs text-muted-foreground">{group.branches.length} فروع</p></div>
             <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead className="bg-background/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-right">الفرع</th><th className="px-3 py-2">FS</th><th className="px-3 py-2">GHP</th><th className="px-3 py-2">FSMS</th></tr></thead><tbody>
-              {groupRows.map((row) => <tr key={row.id} className="border-t border-border/60"><td className="px-3 py-2 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-2 py-2 text-center"><button type="button" onClick={() => void cycle(row, field)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
+              {groupRows.map((row) => <tr key={row.id} className="border-t border-border/60"><td className="px-3 py-2 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-2 py-2 text-center"><button type="button" onClick={() => !row.id.startsWith("missing-") && void cycle(row, field)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
             </tbody></table></div>
           </div>;
         })}
