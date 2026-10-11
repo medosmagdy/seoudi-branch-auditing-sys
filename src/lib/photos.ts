@@ -86,9 +86,6 @@ export async function uploadQuestionPhoto(auditId: string, questionId: string, f
   const uploadResponse = await fetch(uploadUrl, {
     method: "PUT",
     body: compressedBlob,
-    headers: {
-      "Content-Type": "image/jpeg",
-    },
   });
 
   if (!uploadResponse.ok) {
@@ -115,7 +112,7 @@ export async function uploadExpiryPhotos(expiryRecordId: string, files: File[]) 
     const compressedBlob = await compressImage(file);
     const storagePath = `expiry/${expiryRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
     const uploadUrl = await getSignedUrl(r2Client, new PutObjectCommand({ Bucket: R2_BUCKET, Key: storagePath }), { expiresIn: 300 });
-    const response = await fetch(uploadUrl, { method: "PUT", body: compressedBlob, headers: { "Content-Type": "image/jpeg" } });
+    const response = await fetch(uploadUrl, { method: "PUT", body: compressedBlob });
     if (!response.ok) throw new Error("فشل رفع صورة الإكسباير");
     const { data, error } = await supabase.from("expiry_record_images").insert({ expiry_record_id: expiryRecordId, pathname: storagePath, filename: storagePath.split("/").pop() ?? storagePath, content_type: "image/jpeg" }).select().single();
     if (error) throw error;
