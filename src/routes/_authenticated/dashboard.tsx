@@ -119,7 +119,13 @@ function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate
       </div>
       <div className="grid gap-4 p-4 md:grid-cols-2">
         {trackingGroups.map((group) => {
-          const groupRows = group.branches.map((name) => rows.find((row) => row.branch_name === name || row.branch_name.includes(name) || name.includes(row.branch_name))).filter(Boolean) as TrackingRow[];
+          const groupRows = group.branches
+            .map((name) => {
+              const exact = rows.find((row) => row.branch_name.trim() === name);
+              if (exact) return exact;
+              return rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد"].includes(name));
+            })
+            .filter((row, index, matchedRows): row is TrackingRow => Boolean(row) && matchedRows.findIndex((candidate) => candidate?.id === row?.id) === index);
           return <div key={group.name} className={`overflow-hidden rounded-xl border ${group.tone}`}>
             <div className="border-b border-inherit px-4 py-3"><h3 className="font-bold">{group.name}</h3><p className="text-xs text-muted-foreground">{group.branches.length} فروع</p></div>
             <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead className="bg-background/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-right">الفرع</th><th className="px-3 py-2">FS</th><th className="px-3 py-2">GHP</th><th className="px-3 py-2">FSMS</th></tr></thead><tbody>
