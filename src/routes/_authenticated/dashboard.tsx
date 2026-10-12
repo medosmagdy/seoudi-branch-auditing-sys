@@ -335,7 +335,7 @@ function ExecutiveDashboard() {
       const secEntry = sectionDataMap[key];
       if (!secEntry) return;
 
-      const maxScore = maxQuestionScore(q.max_score);
+      const maxScore = maxQuestionScore(q.max_score, q.text_ar);
       const score = numericScore(ans.score);
 
       secEntry.earned += score;
@@ -598,7 +598,7 @@ function ExecutiveDashboard() {
 
         const cleanSecName = cleanSectionName(sec.name_ar);
         const monthKey = auditMonthKey(audit.audit_date);
-        const maxScore = maxQuestionScore(q.max_score);
+        const maxScore = maxQuestionScore(q.max_score, q.text_ar);
         const score = numericScore(ans.score);
 
         if (!monthsMap[monthKey]) {
@@ -1570,7 +1570,7 @@ function ExecutiveDashboard() {
               </div>
               <div className="w-48 print:hidden">
                 <Input
-                  placeholder={scope === "warehouses" ? "بحث عن مخزن مركزي..." : "بحث عن فرع..."}
+                  placeholder={scope === "warehouses" ? "بحث ��ن مخزن مركزي..." : "بحث عن فرع..."}
                   className="h-7 text-xs"
                   value={branchSearch}
                   onChange={(e) => setBranchSearch(e.target.value)}

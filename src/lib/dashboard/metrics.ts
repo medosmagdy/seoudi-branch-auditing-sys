@@ -59,7 +59,9 @@ export function numericScore(score: number | null | undefined): number {
   return score == null || Number.isNaN(Number(score)) ? 0 : Number(score);
 }
 
-export function maxQuestionScore(maxScore: number | null | undefined): number {
+export function maxQuestionScore(maxScore: number | null | undefined, questionText?: string | null): number {
+  const isCcpOrOprp = /CCP|OPRP|نقاط التحكم الحرجة|المتطلبات التشغيلية الأولية/i.test(questionText ?? "");
+  if (isCcpOrOprp) return 4;
   const value = Number(maxScore);
   return Number.isFinite(value) && value > 0 ? value : 4;
 }
