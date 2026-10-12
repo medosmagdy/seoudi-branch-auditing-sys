@@ -85,7 +85,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "INITIAL_SESSION") fetchCurrentUserData();
     });
 
