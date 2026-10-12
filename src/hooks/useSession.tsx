@@ -31,9 +31,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const fetchCurrentUserData = async () => {
     try {
       const {
-        data: { user },
+        data: { session },
         error: userError,
-      } = await supabase.auth.getUser();
+      } = await supabase.auth.getSession();
+      const user = session?.user;
 
       if (userError || !user) {
         setProfile(null);
@@ -85,7 +86,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(() => {
-      fetchCurrentUserData();
+      if (event !== "INITIAL_SESSION") fetchCurrentUserData();
     });
 
     return () => {

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Download, ImagePlus, Pencil, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { CalendarDays, Download, Pencil, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { AppShell } from "@/components/AppShell";
@@ -13,7 +13,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/useSession";
-import { signedPhotoUrls, uploadExpiryPhotos } from "@/lib/photos";
 
 const EXPIRY_SECTIONS = ["الأسماك", "الجزارة", "الجبن", "المخبوزات", "الخضروات و الفاكهة", "المبردات", "المجمدات", "الوجبات الجاهزة", "البقالة الجافة", "التوصيل", "الاستلامات", "عام"] as const;
 const EXPIRY_STATES = ["صلاحية", "تزوير", "تدوير"] as const;
@@ -33,8 +32,7 @@ type ExpiryRecord = {
   created_by: string;
   review_status: "pending" | "reviewed";
   created_at: string;
-  expiry_record_images?: { storage_path: string }[];
-};
+  };
 
 export const Route = createFileRoute("/_authenticated/expiry")({ component: ExpiryPage });
 
@@ -43,7 +41,6 @@ function ExpiryPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ from: "", to: "", branch: "all", section: "all", scope: "all", state: "all", review: "all", search: "" });
   const [form, setForm] = useState({ date: new Date().toISOString().slice(0, 10), branch: "", section: "", product: "", state: "صلاحية" as ExpiryState, deduction: "0", scope: "section", reason: "", quantity: "", notes: "" });
-  const [files, setFiles] = useState<File[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const { data: branches = [] } = useQuery({
@@ -60,12 +57,7 @@ function ExpiryPage() {
     queryFn: async () => {
       const { data, error } = await supabase.from("expiry_records").select("*").order("expiry_date", { ascending: false });
       if (error) throw error;
-      const recordIds = (data ?? []).map((record) => record.id);
-      if (!recordIds.length) return [] as ExpiryRecord[];
-      const { data: images, error: imageError } = await supabase.from("expiry_record_images").select("expiry_record_id, storage_path").in("expiry_record_id", recordIds);
-      const imagesByRecord = new Map<string, { storage_path: string }[]>();
-      for (const image of images ?? []) imagesByRecord.set(image.expiry_record_id, [...(imagesByRecord.get(image.expiry_record_id) ?? []), { storage_path: image.storage_path }]);
-      return (data ?? []).map((record) => ({ ...record, expiry_record_images: imagesByRecord.get(record.id) ?? [] })) as ExpiryRecord[];
+      return (data ?? []) as ExpiryRecord[];
     },
   });
 
@@ -90,14 +82,12 @@ function ExpiryPage() {
       }
       const { data, error } = await supabase.from("expiry_records").insert({ ...values, created_by: profile.id, review_status: "pending" }).select().single();
       if (error) throw error;
-      if (files.length) await uploadExpiryPhotos(data.id, files);
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["expiry-records"] });
       setForm((current) => ({ ...current, product: "", deduction: "0", reason: "", quantity: "", notes: "" }));
       setEditingId(null);
-      setFiles([]);
     },
   });
 
@@ -118,8 +108,6 @@ function ExpiryPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["expiry-records"] }),
   });
 
-  const photoPaths = records.flatMap((record) => (record.expiry_record_images ?? []).map((photo) => photo.storage_path));
-  const { data: photoUrls = {} } = useQuery({ queryKey: ["expiry-photo-urls", photoPaths.join("|")], queryFn: () => signedPhotoUrls(photoPaths), enabled: photoPaths.length > 0 });
   const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name_ar ?? "-";
   const filteredRecords = useMemo(() => records.filter((record) => {
     const searchable = `${record.product_name} ${record.notes ?? ""}`.toLowerCase();
@@ -165,7 +153,6 @@ function ExpiryPage() {
             <div className="flex flex-col gap-2"><Label htmlFor="deduction">الخصم %</Label><Input id="deduction" type="number" min="0" max="100" step="0.01" value={form.deduction} onChange={(event) => setForm({ ...form, deduction: event.target.value })} /></div>
             <div className="flex flex-col gap-2"><Label>نوع الخصم</Label><Select value={form.scope} onValueChange={(scope) => setForm({ ...form, scope })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="section">قسم</SelectItem><SelectItem value="branch">فرع</SelectItem></SelectContent></Select></div>
             <div className="flex flex-col gap-2 lg:col-span-2"><Label htmlFor="expiry-notes">ملاحظات</Label><Textarea id="expiry-notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div>
-            <div className="flex flex-col gap-2 lg:col-span-3"><Label htmlFor="expiry-images">صور الإكسباير</Label><label htmlFor="expiry-images" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border px-4 py-5 text-sm text-muted-foreground hover:bg-muted/50"><ImagePlus className="size-5" /><span>{files.length ? `تم اختيار ${files.length} صورة` : "إرفاق صورة أو أكثر"}</span><Input id="expiry-images" type="file" accept="image/*" multiple className="sr-only" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /></label></div>
             <div className="lg:col-span-3"><Button type="submit" disabled={saveMutation.isPending}><CalendarDays data-icon="inline-start" />{saveMutation.isPending ? "جارٍ الحفظ..." : editingId ? "حفظ التعديل" : "حفظ الإكسباير"}</Button></div>
           </form>
           {saveMutation.error && <p className="mt-3 text-sm text-destructive">{(saveMutation.error as Error).message}</p>}
@@ -176,7 +163,7 @@ function ExpiryPage() {
         <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><CardTitle>سجل الإكسبيرات</CardTitle><Button variant="outline" onClick={exportExcel}><Download data-icon="inline-start" />استخراج Excel</Button></CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4"><div className="relative"><Search className="absolute right-3 top-3 size-4 text-muted-foreground" /><Input className="pr-9" placeholder="بحث بالمنتج أو الملاحظات" value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} /></div><Input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} /><Input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} /><Select value={filters.branch} onValueChange={(branch) => setFilters({ ...filters, branch })}><SelectTrigger><SelectValue placeholder="كل الفروع" /></SelectTrigger><SelectContent><SelectItem value="all">كل الفروع</SelectItem>{branches.map((branch) => <SelectItem key={branch.id} value={branch.id}>{branch.name_ar}</SelectItem>)}</SelectContent></Select><Select value={filters.section} onValueChange={(section) => setFilters({ ...filters, section })}><SelectTrigger><SelectValue placeholder="كل الأقسام" /></SelectTrigger><SelectContent><SelectItem value="all">كل الأقسام</SelectItem>{EXPIRY_SECTIONS.map((section) => <SelectItem key={section} value={section}>{section}</SelectItem>)}</SelectContent></Select><Select value={filters.scope} onValueChange={(scope) => setFilters({ ...filters, scope })}><SelectTrigger><SelectValue placeholder="نوع الخصم" /></SelectTrigger><SelectContent><SelectItem value="all">كل أنواع الخصم</SelectItem><SelectItem value="section">قسم</SelectItem><SelectItem value="branch">فرع</SelectItem></SelectContent></Select><Select value={filters.state} onValueChange={(state) => setFilters({ ...filters, state })}><SelectTrigger><SelectValue placeholder="كل الحالات" /></SelectTrigger><SelectContent><SelectItem value="all">كل الحالات</SelectItem>{EXPIRY_STATES.map((state) => <SelectItem key={state} value={state}>{state}</SelectItem>)}</SelectContent></Select><Select value={filters.review} onValueChange={(review) => setFilters({ ...filters, review })}><SelectTrigger><SelectValue placeholder="كل حالات المراجعة" /></SelectTrigger><SelectContent><SelectItem value="all">كل حالات المراجعة</SelectItem><SelectItem value="pending">لم تتم ��راجعتها</SelectItem><SelectItem value="reviewed">تمت مراجعتها</SelectItem></SelectContent></Select></div>
-          {isLoading ? <p className="text-sm text-muted-foreground">جارٍ تحميل السجل...</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-right text-sm"><thead><tr className="border-b"><th className="p-3">الفرع</th><th className="p-3">القسم</th><th className="p-3">المنتج</th><th className="p-3">عدد القطع</th><th className="p-3">التاريخ</th><th className="p-3">الحالة</th><th className="p-3">الخصم</th><th className="p-3">نوع الخصم</th><th className="p-3">الصور</th><th className="p-3">المراجعة</th><th className="p-3">إجراء</th></tr></thead><tbody>{filteredRecords.map((record) => { const editable = isAdmin || (record.created_by === profile?.id && record.review_status === "pending"); return <tr key={record.id} className="border-b"><td className="p-3">{branchName(record.branch_id)}</td><td className="p-3">{record.section}</td><td className="p-3">{record.product_name}</td><td className="p-3">{record.quantity ?? "-"}</td><td className="p-3">{record.expiry_date}</td><td className="p-3"><Badge variant="secondary">{record.expiry_state || (record as ExpiryRecord & { status?: string }).status || "-"}</Badge></td><td className="p-3">{record.deduction_percentage}%</td><td className="p-3">{record.deduction_scope === "section" ? "قسم" : "فرع"}</td><td className="p-3">{record.expiry_record_images?.length ? <div className="flex gap-1">{record.expiry_record_images.slice(0, 3).map((photo) => <img key={photo.storage_path} src={photoUrls[photo.storage_path] ?? photo.storage_path} alt="صورة الإكسباير" className="size-12 rounded object-cover" />)}</div> : "-"}</td><td className="p-3">{record.review_status === "reviewed" ? <Badge>تمت مراجعتها</Badge> : <Badge variant="outline">لم تتم مراجعتها</Badge>}</td><td className="p-3"><div className="flex items-center gap-2">{editable && <Button size="sm" variant="outline" onClick={() => { setEditingId(record.id); setForm({ date: record.expiry_date, branch: record.branch_id, section: record.section, product: record.product_name, state: record.expiry_state, deduction: String(record.deduction_percentage), scope: record.deduction_scope, reason: record.deduction_reason ?? "", quantity: record.quantity == null ? "" : String(record.quantity), notes: record.notes ?? "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Pencil data-icon="inline-start" />تعديل</Button>}{isAdmin && <Button size="sm" variant="outline" className="text-destructive" onClick={() => { if (window.confirm("هل تريد حذف هذا الإكسباير؟")) deleteMutation.mutate(record.id); }}><Trash2 data-icon="inline-start" />حذف</Button>}{isAdmin && <Button size="sm" variant="outline" onClick={() => reviewMutation.mutate({ id: record.id, review_status: record.review_status === "reviewed" ? "pending" : "reviewed" })}><ShieldCheck data-icon="inline-start" />{record.review_status === "reviewed" ? "إلغاء المراجعة" : "تمت المراجعة"}</Button>}</div></td></tr>; })}</tbody></table>{!filteredRecords.length && <p className="py-8 text-center text-sm text-muted-foreground">لا توجد نتائج مطابقة للفلاتر.</p>}</div>}
+          {isLoading ? <p className="text-sm text-muted-foreground">جارٍ تحميل السجل...</p> : <div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-right text-sm"><thead><tr className="border-b"><th className="p-3">��لفرع</th><th className="p-3">القسم</th><th className="p-3">المنتج</th><th className="p-3">عدد القطع</th><th className="p-3">التاريخ</th><th className="p-3">الحالة</th><th className="p-3">الخصم</th><th className="p-3">نوع الخصم</th><th className="p-3">المراجعة</th><th className="p-3">إجراء</th></tr></thead><tbody>{filteredRecords.map((record) => { const editable = isAdmin || (record.created_by === profile?.id && record.review_status === "pending"); return <tr key={record.id} className="border-b"><td className="p-3">{branchName(record.branch_id)}</td><td className="p-3">{record.section}</td><td className="p-3">{record.product_name}</td><td className="p-3">{record.quantity ?? "-"}</td><td className="p-3">{record.expiry_date}</td><td className="p-3"><Badge variant="secondary">{record.expiry_state || (record as ExpiryRecord & { status?: string }).status || "-"}</Badge></td><td className="p-3">{record.deduction_percentage}%</td><td className="p-3">{record.deduction_scope === "section" ? "قسم" : "فرع"}</td><td className="p-3">{record.review_status === "reviewed" ? <Badge>تمت مراجعتها</Badge> : <Badge variant="outline">لم تتم مراجعتها</Badge>}</td><td className="p-3"><div className="flex items-center gap-2">{editable && <Button size="sm" variant="outline" onClick={() => { setEditingId(record.id); setForm({ date: record.expiry_date, branch: record.branch_id, section: record.section, product: record.product_name, state: record.expiry_state, deduction: String(record.deduction_percentage), scope: record.deduction_scope, reason: record.deduction_reason ?? "", quantity: record.quantity == null ? "" : String(record.quantity), notes: record.notes ?? "" }); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Pencil data-icon="inline-start" />تعديل</Button>}{isAdmin && <Button size="sm" variant="outline" className="text-destructive" onClick={() => { if (window.confirm("هل تريد حذف هذا الإكسباير؟")) deleteMutation.mutate(record.id); }}><Trash2 data-icon="inline-start" />حذف</Button>}{isAdmin && <Button size="sm" variant="outline" onClick={() => reviewMutation.mutate({ id: record.id, review_status: record.review_status === "reviewed" ? "pending" : "reviewed" })}><ShieldCheck data-icon="inline-start" />{record.review_status === "reviewed" ? "إلغاء المراجعة" : "تمت المراجعة"}</Button>}</div></td></tr>; })}</tbody></table>{!filteredRecords.length && <p className="py-8 text-center text-sm text-muted-foreground">لا توجد نتائج مطابقة للفلاتر.</p>}</div>}
         </CardContent>
       </Card>
     </div>
