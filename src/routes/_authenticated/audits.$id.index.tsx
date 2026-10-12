@@ -154,8 +154,7 @@ function AuditRunner() {
       /fsms/i.test(auditType?.code || ""),
     [auditType],
   );
-  const scoreOptions = SCORE_OPTIONS;
-
+  
   useEffect(() => {
     if (search.section !== undefined && search.section !== stepIndex) {
       setStepIndex(search.section);
@@ -493,6 +492,9 @@ function AuditRunner() {
                 (header.label_ar.includes("CCP") ||
                   header.label_ar.includes("OPRP") ||
                   header.label_ar.includes("نقاط التحكم الحرجة")));
+            const scoreOptions = isCcpOrOprp
+              ? SCORE_OPTIONS.filter((option) => option.value === 4 || option.value === 0)
+              : SCORE_OPTIONS;
 
             return (
               <div

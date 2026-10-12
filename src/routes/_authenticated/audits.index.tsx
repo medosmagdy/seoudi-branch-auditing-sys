@@ -95,10 +95,11 @@ function AuditsList() {
         auditsQuery = auditsQuery.eq("auditor_id", userProfile.user.id);
       }
 
-      const [auditsRes, branchesRes, typesRes] = await Promise.all([
+      const [auditsRes, branchesRes, typesRes, profilesRes] = await Promise.all([
         auditsQuery,
         supabase.from("branches").select("*"),
         supabase.from("audit_types").select("*"),
+        supabase.from("profiles").select("id, full_name, email"),
       ]);
 
       if (auditsRes.error) {
@@ -115,6 +116,12 @@ function AuditsList() {
           t.name_ar || t.name || t.name_en || "سلامة الغذاء",
         ]),
       );
+      const profileMap = new Map(
+        (profilesRes.data || []).map((profile: any) => [
+          profile.id,
+          profile.full_name || profile.email || "مراجع غير محدد",
+        ]),
+      );
 
       const raw = auditsRes.data || [];
 
@@ -123,6 +130,7 @@ function AuditsList() {
         branchName: branchMap.get(audit.branch_id) || "فرع غير محدد",
         typeName: typeMap.get(audit.audit_type_id) || "سلامة الغذاء",
         typeId: audit.audit_type_id,
+        auditorName: profileMap.get(audit.auditor_id) || "مراجع غير محدد",
       }));
     },
     enabled: userProfile !== undefined,
@@ -226,6 +234,7 @@ function AuditsList() {
         <div className="text-xs text-muted-foreground">
           {audit.typeName} · <span dir="ltr">{audit.audit_date}</span>
         </div>
+        <div className="mt-1 text-xs font-medium text-primary">المراجع: {audit.auditorName}</div>
       </div>
 
       <Badge variant={isDraft ? "outline" : "default"}>
