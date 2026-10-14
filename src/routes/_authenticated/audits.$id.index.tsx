@@ -125,8 +125,9 @@ function AuditRunner() {
         supabase.from("photos").select("*").eq("audit_id", id),
       ]);
 
-      let inheritedStatuses: any[] = [];
-      if (!(statuses.data ?? []).length && audit.branch_id) {
+  let inheritedStatuses: any[] = [];
+  let inheritedAnswers: any[] = [];
+  if (audit.branch_id) {
         const { data: previousAudit } = await supabase
           .from("audits")
           .select("id")
@@ -143,6 +144,12 @@ function AuditRunner() {
             .eq("audit_id", previousAudit.id)
             .eq("is_na", true);
           inheritedStatuses = previousStatuses ?? [];
+          const { data: previousAnswers } = await supabase
+            .from("audit_answers")
+            .select("question_id, score, is_na, comment")
+            .eq("audit_id", previousAudit.id)
+            .eq("is_na", true);
+          inheritedAnswers = previousAnswers ?? [];
         }
       }
 
@@ -154,6 +161,7 @@ function AuditRunner() {
         savedAnswers: savedAnswers.data ?? [],
         statuses: statuses.data ?? [],
         inheritedStatuses,
+        inheritedAnswers,
         sectionDeductions: sectionDeductions.data ?? [],
         generalDeductions: generalDeductions.data ?? [],
         photos: photos.data ?? [],
@@ -208,7 +216,8 @@ function AuditRunner() {
     const isFsms =
       /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
     const nextAnswers: Record<string, AnswerState> = {};
-    data.savedAnswers.forEach((answer) => {
+    const answerRows = data.savedAnswers.length ? data.savedAnswers : data.inheritedAnswers;
+    answerRows.forEach((answer) => {
       nextAnswers[answer.question_id] = {
         score: answer.score,
         isNa: answer.is_na,
