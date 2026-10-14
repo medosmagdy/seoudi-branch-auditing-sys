@@ -89,7 +89,7 @@ function AuditRunner() {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -125,6 +125,34 @@ function AuditRunner() {
         supabase.from("photos").select("*").eq("audit_id", id),
       ]);
 
+  let inheritedStatuses: any[] = [];
+  let inheritedAnswers: any[] = [];
+  if (audit.branch_id) {
+        const { data: previousAudit } = await supabase
+          .from("audits")
+          .select("id")
+          .eq("branch_id", audit.branch_id)
+          .eq("audit_type_id", audit.audit_type_id)
+          .neq("id", id)
+          .order("audit_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (previousAudit?.id) {
+          const { data: previousStatuses } = await supabase
+            .from("audit_section_status")
+            .select("section_id, is_na")
+            .eq("audit_id", previousAudit.id)
+            .eq("is_na", true);
+          inheritedStatuses = previousStatuses ?? [];
+          const { data: previousAnswers } = await supabase
+            .from("audit_answers")
+            .select("question_id, score, is_na, comment")
+            .eq("audit_id", previousAudit.id)
+            .eq("is_na", true);
+          inheritedAnswers = previousAnswers ?? [];
+        }
+      }
+
       return {
         audit,
         sections: sections.data ?? [],
@@ -132,6 +160,8 @@ function AuditRunner() {
         questions: questions.data ?? [],
         savedAnswers: savedAnswers.data ?? [],
         statuses: statuses.data ?? [],
+        inheritedStatuses,
+        inheritedAnswers,
         sectionDeductions: sectionDeductions.data ?? [],
         generalDeductions: generalDeductions.data ?? [],
         photos: photos.data ?? [],
@@ -154,8 +184,7 @@ function AuditRunner() {
       /fsms/i.test(auditType?.code || ""),
     [auditType],
   );
-  const scoreOptions = SCORE_OPTIONS;
-
+  
   useEffect(() => {
     if (search.section !== undefined && search.section !== stepIndex) {
       setStepIndex(search.section);
@@ -187,7 +216,8 @@ function AuditRunner() {
     const isFsms =
       /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
     const nextAnswers: Record<string, AnswerState> = {};
-    data.savedAnswers.forEach((answer) => {
+    const answerRows = data.savedAnswers.length ? data.savedAnswers : data.inheritedAnswers;
+    answerRows.forEach((answer) => {
       nextAnswers[answer.question_id] = {
         score: answer.score,
         isNa: answer.is_na,
@@ -196,10 +226,11 @@ function AuditRunner() {
     });
     setAnswers(nextAnswers);
     const nextStatus: Record<string, boolean> = {};
-    data.statuses.forEach((status) => {
-      nextStatus[status.section_id] = status.is_na;
-    });
-    setSectionNa(nextStatus);
+  const statusRows = data.statuses.length ? data.statuses : data.inheritedStatuses;
+  statusRows.forEach((status) => {
+    nextStatus[status.section_id] = status.is_na;
+  });
+  setSectionNa(nextStatus);
   }, [data]);
 
   const changeStep = (newIndex: number) => {
@@ -493,6 +524,9 @@ function AuditRunner() {
                 (header.label_ar.includes("CCP") ||
                   header.label_ar.includes("OPRP") ||
                   header.label_ar.includes("نقاط التحكم الحرجة")));
+            const scoreOptions = isCcpOrOprp
+              ? SCORE_OPTIONS.filter((option) => option.value === 4 || option.value === 0)
+              : SCORE_OPTIONS;
 
             return (
               <div

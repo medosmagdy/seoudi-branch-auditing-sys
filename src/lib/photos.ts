@@ -112,9 +112,9 @@ export async function uploadExpiryPhotos(expiryRecordId: string, files: File[]) 
     const compressedBlob = await compressImage(file);
     const storagePath = `expiry/${expiryRecordId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
     const uploadUrl = await getSignedUrl(r2Client, new PutObjectCommand({ Bucket: R2_BUCKET, Key: storagePath }), { expiresIn: 300 });
-    const response = await fetch(uploadUrl, { method: "PUT", body: compressedBlob });
+    const response = await fetch(uploadUrl, { method: "PUT", body: compressedBlob, headers: { "Content-Type": "image/jpeg" } });
     if (!response.ok) throw new Error("فشل رفع صورة الإكسباير");
-    const { data, error } = await supabase.from("expiry_record_images").insert({ expiry_record_id: expiryRecordId, pathname: storagePath, filename: storagePath.split("/").pop() ?? storagePath, content_type: "image/jpeg" }).select().single();
+    const { data, error } = await supabase.from("expiry_record_images").insert({ expiry_record_id: expiryRecordId, storage_path: storagePath }).select().single();
     if (error) throw error;
     uploaded.push(data);
   }
@@ -152,9 +152,9 @@ export async function signedPhotoUrls(storagePaths: string[]): Promise<Record<st
     if (path.startsWith("http://") || path.startsWith("https://")) {
       map[path] = path;
     } else if (R2_PUBLIC_URL) {
-      map[path] = `${R2_PUBLIC_URL}/${path}`;
+      map[path] = `${R2_PUBLIC_URL}/${path.split("/").map(encodeURIComponent).join("/")}`;
     } else {
-      map[path] = path;
+      map[path] = "";
     }
   });
 
