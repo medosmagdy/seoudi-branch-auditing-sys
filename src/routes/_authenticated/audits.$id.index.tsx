@@ -89,7 +89,7 @@ function AuditRunner() {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -125,6 +125,27 @@ function AuditRunner() {
         supabase.from("photos").select("*").eq("audit_id", id),
       ]);
 
+      let inheritedStatuses: any[] = [];
+      if (!(statuses.data ?? []).length && audit.branch_id) {
+        const { data: previousAudit } = await supabase
+          .from("audits")
+          .select("id")
+          .eq("branch_id", audit.branch_id)
+          .eq("audit_type_id", audit.audit_type_id)
+          .neq("id", id)
+          .order("audit_date", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (previousAudit?.id) {
+          const { data: previousStatuses } = await supabase
+            .from("audit_section_status")
+            .select("section_id, is_na")
+            .eq("audit_id", previousAudit.id)
+            .eq("is_na", true);
+          inheritedStatuses = previousStatuses ?? [];
+        }
+      }
+
       return {
         audit,
         sections: sections.data ?? [],
@@ -132,6 +153,7 @@ function AuditRunner() {
         questions: questions.data ?? [],
         savedAnswers: savedAnswers.data ?? [],
         statuses: statuses.data ?? [],
+        inheritedStatuses,
         sectionDeductions: sectionDeductions.data ?? [],
         generalDeductions: generalDeductions.data ?? [],
         photos: photos.data ?? [],
@@ -195,10 +217,11 @@ function AuditRunner() {
     });
     setAnswers(nextAnswers);
     const nextStatus: Record<string, boolean> = {};
-    data.statuses.forEach((status) => {
-      nextStatus[status.section_id] = status.is_na;
-    });
-    setSectionNa(nextStatus);
+  const statusRows = data.statuses.length ? data.statuses : data.inheritedStatuses;
+  statusRows.forEach((status) => {
+    nextStatus[status.section_id] = status.is_na;
+  });
+  setSectionNa(nextStatus);
   }, [data]);
 
   const changeStep = (newIndex: number) => {
