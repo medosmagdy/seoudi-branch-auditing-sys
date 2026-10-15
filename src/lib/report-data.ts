@@ -98,12 +98,14 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       .from("sections")
       .select("*")
       .eq("audit_type_id", audit.audit_type_id)
+      .eq("active", true)
       .order("order_index"),
     supabase.from("headers").select("*").order("order_index"),
     supabase
       .from("questions")
       .select("*")
       .eq("audit_type_id", audit.audit_type_id)
+      .eq("active", true)
       .order("item_order"),
     supabase.from("audit_answers").select("*").eq("audit_id", auditId),
     supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
