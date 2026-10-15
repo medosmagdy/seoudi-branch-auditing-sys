@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import slaughterArchive from "@/data/slaughter-archive.json";
 import { CalendarDays, ClipboardCheck, Download, ImagePlus, Plus, Search, Scale, XCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -272,7 +273,7 @@ function SlaughteringPage() {
             </CardHeader>
             <CardContent><Progress value={acceptance} className="h-3" /><div className="mt-3 flex justify-between text-sm text-muted-foreground"><span>نسبة القبول</span><span>{acceptance}%</span></div></CardContent>
           </Card>
-          {gallery.length > 0 && <Card><CardHeader><CardTitle>معرض الصور الأخير</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">{gallery.map((photo) => <a key={photo.url} href={photo.url} target="_blank" rel="noreferrer"><img src={photo.url} alt={photo.name} className="aspect-square w-full rounded-lg border object-cover transition-opacity hover:opacity-80" /></a>)}</CardContent></Card>}
+          {gallery.length > 0 && <Card><CardHeader><CardTitle>معرض الصور الأخير</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-4">{gallery.map((photo) => <ImageLightbox key={photo.url} src={photo.url} alt={photo.name} className="aspect-square w-full" imageClassName="aspect-square w-full rounded-lg border object-cover" />)}</CardContent></Card>}
           <div className="grid gap-4 lg:grid-cols-2">
             <Card><CardHeader><CardTitle>التراكمي حسب النوع</CardTitle></CardHeader><CardContent className="space-y-4">{animalTypes.map((type) => { const count = filteredReports.filter((report) => report.animalType === type).reduce((sum, report) => sum + report.number, 0); return <div key={type} className="flex items-center justify-between rounded-lg bg-muted/40 p-3"><span>{type}</span><Badge variant="secondary">{count.toLocaleString("en-US")}</Badge></div>; })}</CardContent></Card>
             <Card><CardHeader><CardTitle>أسباب الرفض</CardTitle></CardHeader><CardContent className="grid grid-cols-2 gap-3">{Object.entries(reasonCounts).filter(([, count]) => count > 0).map(([reason, count]) => <div key={reason} className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">{reason}</p><p className="mt-1 text-xl font-bold">{count.toLocaleString("en-US")}</p></div>)}{Object.keys(reasonCounts).length === 0 && <p className="col-span-2 text-sm text-muted-foreground">لا توجد أسباب رفض مسجلة.</p>}</CardContent></Card>
@@ -413,7 +414,7 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
               setPhotos(files);
             }}
           /></label>
-          {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((file, index) => <img key={`${file.name}-${index}`} src={URL.createObjectURL(file)} alt={`صورة مرفقة ${index + 1}`} className="aspect-square rounded-lg border object-cover" />)}</div>}
+          {photos.length > 0 && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{photos.map((file, index) => <ImageLightbox key={`${file.name}-${index}`} src={URL.createObjectURL(file)} alt={`صورة مرفقة ${index + 1}`} className="aspect-square w-full" imageClassName="aspect-square w-full rounded-lg border object-cover" />)}</div>}
         </CardContent>
       </Card>
       <Card className="border-primary/30">

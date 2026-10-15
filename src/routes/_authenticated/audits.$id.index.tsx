@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Camera, ChevronLeft, ChevronRight, FolderOpen, Trash2, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -629,10 +630,11 @@ function AuditRunner() {
                           key={photo.id}
                           className="relative rounded-lg border border-border p-1 bg-muted/20"
                         >
-                          <img
-                            src={photoUrls?.[photo.storage_path]}
+                          <ImageLightbox
+                            src={photoUrls?.[photo.storage_path] ?? ""}
                             alt="Audit evidence"
-                            className="size-16 rounded-md object-cover"
+                            className="size-16"
+                            imageClassName="size-16 rounded-md object-cover"
                           />
                           {!readOnly && (
                             <button

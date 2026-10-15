@@ -1,3 +1,4 @@
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { useState } from "react";
 import type { ReportModel } from "@/lib/report-data";
 import { formatPercentage } from "@/lib/dashboard/metrics";
