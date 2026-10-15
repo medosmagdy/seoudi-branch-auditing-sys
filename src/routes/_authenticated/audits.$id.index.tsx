@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Camera, ChevronLeft, ChevronRight, FolderOpen, Trash2, Award } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/AppShell";
+import { ImageLightbox } from "@/components/ImageLightbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -305,30 +306,16 @@ function AuditRunner() {
   );
 
   const liveStats = useMemo(() => {
-    let earned = 0;
-    let max = 0;
+    if (!data) return { earned: 0, max: 0, pct: "0.0" };
 
-    if (!data?.questions) return { earned: 0, max: 0, pct: "0.0" };
-
-    data.questions.forEach((q) => {
-      if (sectionNa[q.section_id]) return;
-
-      const a = answers[q.id];
-      const maxScore = q.max_score ?? 4;
-
-      if (a) {
-        if (a.isNa) return;
-        earned += a.score !== null ? a.score : maxScore;
-        max += maxScore;
-      } else {
-        earned += maxScore;
-        max += maxScore;
-      }
-    });
-
-    const pct = max > 0 ? ((earned / max) * 100).toFixed(1) : "0.0";
-    return { earned, max, pct };
-  }, [answers, data, sectionNa]);
+    // Use the same scoring engine as the summary so section exclusions,
+    // section deductions, delivery handling, and general deductions agree.
+    return {
+      earned: result.overallRawScore,
+      max: result.overallMax,
+      pct: result.finalPercentage.toFixed(1),
+    };
+  }, [data, result]);
 
   if (isLoading || !data) {
     return (
@@ -643,10 +630,11 @@ function AuditRunner() {
                           key={photo.id}
                           className="relative rounded-lg border border-border p-1 bg-muted/20"
                         >
-                          <img
-                            src={photoUrls?.[photo.storage_path]}
+                          <ImageLightbox
+                            src={photoUrls?.[photo.storage_path] ?? ""}
                             alt="Audit evidence"
-                            className="size-16 rounded-md object-cover"
+                            className="size-16"
+                            imageClassName="size-16 rounded-md object-cover"
                           />
                           {!readOnly && (
                             <button
@@ -709,14 +697,14 @@ function AuditRunner() {
               <Award className="size-4 text-emerald-600" />
               <span className="text-[11px] sm:text-xs">المجموع الكلي:</span>
             </div>
-            <div className="flex items-baseline gap-1 font-mono">
-              <span className="text-base sm:text-lg font-black text-foreground">
-                {liveStats.earned}
-              </span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground">
-                / {liveStats.max}
-              </span>
-            </div>
+<div className="flex items-baseline gap-1 font-mono" dir="ltr">
+                <span className="text-base sm:text-lg font-black text-foreground">
+                  {liveStats.earned}
+                </span>
+                <span className="text-[10px] sm:text-xs text-muted-foreground">
+                  / {liveStats.max}
+                </span>
+              </div>
             <Badge
               variant={Number(liveStats.pct) >= 85 ? "default" : "destructive"}
               className="text-[10px] sm:text-xs font-mono font-bold px-1.5 py-0.5"

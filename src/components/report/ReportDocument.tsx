@@ -1,3 +1,5 @@
+import { ImageLightbox } from "@/components/ImageLightbox";
+import { useState } from "react";
 import type { ReportModel } from "@/lib/report-data";
 import { formatPercentage } from "@/lib/dashboard/metrics";
 import {
@@ -9,6 +11,7 @@ import {
 } from "lucide-react";
 
 export function ReportDocument({ model }: { model: ReportModel }) {
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const rawScore = Number(model?.result?.finalScore);
   const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
   const isPassed = finalPercentage >= 85;
@@ -291,13 +294,21 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                 data-report-block
                 className="rounded-xl border border-border bg-card p-3 shadow-xs space-y-2"
               >
-                <div className="relative h-52 w-full overflow-hidden rounded-lg border border-border/80 bg-muted/40">
-                  <img
-                    src={item.url}
-                    alt={item.questionText}
-                    className="size-full object-contain"
-                  />
-                </div>
+<button
+                type="button"
+                onClick={() => setSelectedPhoto({ url: item.url, alt: item.questionText })}
+                className="group relative block h-52 w-full overflow-hidden rounded-lg border border-border/80 bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                aria-label={`تكبير صورة ${item.questionText}`}
+              >
+                <img
+                  src={item.url}
+                  alt={item.questionText}
+                  className="size-full object-contain transition-transform duration-200 group-hover:scale-105"
+                />
+                <span className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-center text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  اضغط للتكبير
+                </span>
+              </button>
                 <div className="space-y-1 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-mono font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded text-[10px]">
@@ -362,6 +373,30 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               </p>
             </div>
           </div>
+        </div>
+      )}
+      {selectedPhoto && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="عرض الصورة بالحجم الكامل"
+          onClick={() => setSelectedPhoto(null)}
+        >
+          <button
+            type="button"
+            className="absolute right-4 top-4 rounded-full bg-white/15 px-3 py-2 text-xl text-white hover:bg-white/25"
+            onClick={() => setSelectedPhoto(null)}
+            aria-label="إغلاق الصورة"
+          >
+            ×
+          </button>
+          <img
+            src={selectedPhoto.url}
+            alt={selectedPhoto.alt}
+            className="max-h-[90vh] max-w-[95vw] rounded-lg object-contain shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          />
         </div>
       )}
     </div>
