@@ -305,30 +305,16 @@ function AuditRunner() {
   );
 
   const liveStats = useMemo(() => {
-    let earned = 0;
-    let max = 0;
+    if (!data) return { earned: 0, max: 0, pct: "0.0" };
 
-    if (!data?.questions) return { earned: 0, max: 0, pct: "0.0" };
-
-    data.questions.forEach((q) => {
-      if (sectionNa[q.section_id]) return;
-
-      const a = answers[q.id];
-      const maxScore = q.max_score ?? 4;
-
-      if (a) {
-        if (a.isNa) return;
-        earned += a.score !== null ? a.score : maxScore;
-        max += maxScore;
-      } else {
-        earned += maxScore;
-        max += maxScore;
-      }
-    });
-
-    const pct = max > 0 ? ((earned / max) * 100).toFixed(1) : "0.0";
-    return { earned, max, pct };
-  }, [answers, data, sectionNa]);
+    // Use the same scoring engine as the summary so section exclusions,
+    // section deductions, delivery handling, and general deductions agree.
+    return {
+      earned: result.overallRawScore,
+      max: result.overallMax,
+      pct: result.finalPercentage.toFixed(1),
+    };
+  }, [data, result]);
 
   if (isLoading || !data) {
     return (
