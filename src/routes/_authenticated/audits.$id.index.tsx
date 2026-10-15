@@ -709,14 +709,14 @@ function AuditRunner() {
               <Award className="size-4 text-emerald-600" />
               <span className="text-[11px] sm:text-xs">المجموع الكلي:</span>
             </div>
-            <div className="flex items-baseline gap-1 font-mono">
-              <span className="text-base sm:text-lg font-black text-foreground">
-                {liveStats.earned}
-              </span>
-              <span className="text-[10px] sm:text-xs text-muted-foreground">
-                / {liveStats.max}
-              </span>
-            </div>
+<div className="flex items-baseline gap-1 font-mono" dir="ltr">
+                <span className="text-base sm:text-lg font-black text-foreground">
+                  {liveStats.earned}
+                </span>
+                <span className="text-[10px] sm:text-xs text-muted-foreground">
+                  / {liveStats.max}
+                </span>
+              </div>
             <Badge
               variant={Number(liveStats.pct) >= 85 ? "default" : "destructive"}
               className="text-[10px] sm:text-xs font-mono font-bold px-1.5 py-0.5"

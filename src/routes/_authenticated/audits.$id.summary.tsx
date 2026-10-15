@@ -212,9 +212,9 @@ function SummaryPage() {
                     </span>
                   )}
                 </td>
-                <td className="p-3 font-mono">
-                  {entry.excluded ? "N/A" : `${entry.finalScore} / ${entry.max}`}
-                </td>
+<td className="p-3 font-mono">
+                    {entry.excluded ? "N/A" : <span dir="ltr">{entry.finalScore} / {entry.max}</span>}
+                  </td>
                 <td className="p-3 font-mono text-destructive">
                   {entry.excluded ? "—" : `${entry.deductionPercentage}%`}
                 </td>
