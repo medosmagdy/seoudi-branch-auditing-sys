@@ -23,6 +23,8 @@ export function ImageLightbox({ src, alt, className, imageClassName }: ImageLigh
         <img
           src={src}
           alt={alt}
+          loading="lazy"
+          decoding="async"
           className={`transition-transform duration-200 group-hover:scale-105 ${imageClassName ?? ""}`}
         />
         <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-center text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">

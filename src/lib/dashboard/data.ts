@@ -82,7 +82,7 @@ async function fetchAllAuditAnswers(): Promise<{ data: AuditAnswerRow[]; error: 
   for (let from = 0; ; from += pageSize) {
     const { data: page, error } = await supabase
       .from("audit_answers")
-      .select("*")
+      .select("audit_id, question_id, score, is_na, comment")
       .range(from, from + pageSize - 1);
     if (error) throw error;
     rows.push(...(page ?? []));

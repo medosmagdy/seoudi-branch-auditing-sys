@@ -301,9 +301,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                 aria-label={`تكبير صورة ${item.questionText}`}
               >
                 <img
-                  src={item.url}
-                  alt={item.questionText}
-                  className="size-full object-contain transition-transform duration-200 group-hover:scale-105"
+src={item.url}
+                          alt={item.questionText}
+                          loading="lazy"
+                          decoding="async"
+                          className="size-full object-contain transition-transform duration-200 group-hover:scale-105"
                 />
                 <span className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-center text-xs font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
                   اضغط للتكبير
