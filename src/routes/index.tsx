@@ -44,7 +44,7 @@ function Landing() {
     <div className="min-h-screen bg-background" dir="ltr">
       <header className="brand-banner">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
-          <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="h-12 w-20 object-contain brightness-0 invert" />
+          <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="h-12 w-20 object-contain mix-blend-multiply" />
           <div className="text-sm font-semibold leading-tight">
             Seoudi Quality Operating Platform
             <span className="block text-[11px] font-normal opacity-80">SQOP</span>
