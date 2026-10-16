@@ -412,7 +412,7 @@ function AuditRunner() {
       queryClient.invalidateQueries({ queryKey: ["audit", id] });
       toast.success(`تم رفع ${files.length} صورة بنجاح`);
     } catch {
-      toast.error("تعذر رفع بعض الصور أو كله��");
+      toast.error("تعذر رفع بعض الصور أو كلها");
     }
   };
 

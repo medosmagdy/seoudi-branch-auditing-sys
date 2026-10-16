@@ -6,7 +6,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -30,7 +29,6 @@ function AuthPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetMode, setResetMode] = useState<"request" | "update" | null>(null);
 
@@ -85,7 +83,13 @@ function AuthPage() {
     }
   };
 
-  const submit = async (mode: "signin" | "signup", e?: FormEvent) => {
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session) navigate({ to: "/dashboard", replace: true });
+    });
+  }, [navigate]);
+
+  const submit = async (e?: FormEvent) => {
     if (e) e.preventDefault();
 
     const parsed = credentials.safeParse({ email, password });
@@ -95,19 +99,8 @@ function AuthPage() {
     }
     setLoading(true);
     try {
-      if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword(parsed.data);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signUp({
-          ...parsed.data,
-          options: {
-            emailRedirectTo: window.location.origin,
-            data: { full_name: fullName.trim().slice(0, 100) },
-          },
-        });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithPassword(parsed.data);
+      if (error) throw error;
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         navigate({ to: "/dashboard", replace: true });
@@ -165,15 +158,7 @@ function AuthPage() {
               </Button>
             </form>
           ) : (
-          <Tabs defaultValue="signin">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">Sign In</TabsTrigger>
-              <TabsTrigger value="signup">Create Account</TabsTrigger>
-            </TabsList>
-
-            {/* نموذج تسجيل الدخول */}
-            <TabsContent value="signin" className="pt-4">
-              <form onSubmit={(e) => submit("signin", e)} className="space-y-4">
+          <form onSubmit={(e) => submit(e)} className="flex flex-col gap-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="email">Email</Label>
                   <Input
@@ -201,50 +186,6 @@ function AuthPage() {
                   Forgot password?
                 </button>
               </form>
-            </TabsContent>
-
-            {/* نموذج إنشاء الحساب */}
-            <TabsContent value="signup" className="pt-4">
-              <form onSubmit={(e) => submit("signup", e)} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input
-                    id="name"
-                    type="text"
-                    autoComplete="name"
-                    value={fullName}
-                    onChange={(event) => setFullName(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="email2">Email</Label>
-                  <Input
-                    id="email2"
-                    type="email"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="password2">Password</Label>
-                  <Input
-                    id="password2"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </div>
-                <Button className="w-full" size="lg" type="submit" disabled={loading}>
-                  {loading ? "Creating account..." : "Create Account"}
-                </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  The first account created becomes the system administrator.
-                </p>
-              </form>
-            </TabsContent>
-          </Tabs>
           )}
         </div>
       </div>
