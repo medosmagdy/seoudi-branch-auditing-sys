@@ -76,9 +76,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   validateSearch: dashboardSearchSchema,
   head: () => ({
     meta: [
-      { title: "Bird Eye — SAS" },
+      { title: "Bird Eye — SQOP" },
       { name: "description", content: "Executive Food Safety Quality Dashboard." },
-      { property: "og:title", content: "لوحة التحكم والتحليلات — SAS" },
+      { property: "og:title", content: "لوحة التحكم والتحليلات — SQOP" },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -864,7 +864,7 @@ function ExecutiveDashboard() {
         .filter((section: any) => section.audit_type_id === typeId)
         .forEach((section: any) => {
           bySection[section.id] = {
-            name: (section.name_ar || "قسم غير مسمى").replace(/^قس����\\s+/i, "").trim(),
+            name: (section.name_ar || "قسم غير مسمى").replace(/^قسم\\s+/i, "").trim(),
             earned: 0,
             possible: 0,
           };
@@ -933,7 +933,7 @@ function ExecutiveDashboard() {
 
     sortedMonths.forEach((mKey) => {
       const monthAudits = auditsByMonth[mKey]!;
-      const monthTitle = ` 📅 شهر: ${mKey} (إجما����ي ${monthAudits.length} زيارة) `;
+      const monthTitle = ` 📅 شهر: ${mKey} (إجمالي ${monthAudits.length} زيارة) `;
 
       wsBranchesData[`A${bRowIdx}`] = { v: monthTitle, t: "s", s: monthSeparatorStyle };
       for (let c = 1; c < branchHeaders.length; c++) {
@@ -1570,7 +1570,7 @@ function ExecutiveDashboard() {
               </div>
               <div className="w-48 print:hidden">
                 <Input
-                  placeholder={scope === "warehouses" ? "بحث ��ن مخزن مركزي..." : "بحث عن فرع..."}
+                  placeholder={scope === "warehouses" ? "بحث عن مخزن مركزي..." : "بحث عن فرع..."}
                   className="h-7 text-xs"
                   value={branchSearch}
                   onChange={(e) => setBranchSearch(e.target.value)}
@@ -1638,7 +1638,7 @@ function ExecutiveDashboard() {
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-primary">
               <BarChart3 className="size-4" />
               {activeMetric === "compliance"
-                ? "تفاصيل متوسط الامتثال حسب البر��امج"
+                ? "تفاصيل متوسط الامتثال حسب البرامج"
                 : activeMetric === "visits"
                   ? "تفاصيل جميع الزيارات"
                   : activeMetric === "critical"
@@ -1646,7 +1646,7 @@ function ExecutiveDashboard() {
                     : "حالات عدم المطابقة"}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              التفاصيل محسوبة من نفس الفترة والفروع الظ��هرة في الداشبورد.
+              التفاصيل محسوبة من نفس الفترة والفروع الظاهرة في الداشبورد.
             </DialogDescription>
           </DialogHeader>
 
@@ -1941,7 +1941,7 @@ function ExecutiveDashboard() {
               متابعة نشاط وملاحظات: {activeBranch?.nameAr}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              كود الفرع: {activeBranch?.code} • ��جمالي الفحوصات المعتمدة:{" "}
+              كود الفرع: {activeBranch?.code} • إجمالي الفحوصات المعتمدة:{" "}
               {activeBranch?.completed ?? 0}
             </DialogDescription>
           </DialogHeader>
@@ -1967,7 +1967,7 @@ function ExecutiveDashboard() {
               <TabsContent key={prog.key} value={prog.key} className="space-y-3 pt-2">
                 {prog.dataTree.length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center py-8">
-                    لا توجد فحو��ات معتمد�� مس��لة ��برنامج {prog.title} في هذا الفرع.
+                    لا توجد فحوصات معتمدة مسجلة ببرنامج {prog.title} في هذا الفرع.
                   </p>
                 ) : (
                   prog.dataTree.map((mGroup) => {
@@ -2060,7 +2060,7 @@ function ExecutiveDashboard() {
                                     <div className="p-2.5 border-t border-border/60 bg-muted/20 space-y-2">
                                       {sec.items.length === 0 ? (
                                         <p className="text-[11px] text-emerald-700 font-semibold text-center py-1">
-                                          ✓ هذا القسم ممتثل بالكامل (لا توجد أي بنود غير مطابق��).
+                                          ✓ هذا القسم ممتثل بالكامل (لا توجد أي بنود غير مطابقة).
                                         </p>
                                       ) : (
                                         sec.items.map((it, itIdx) => (

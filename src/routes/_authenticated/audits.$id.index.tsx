@@ -33,7 +33,7 @@ export const Route = createFileRoute("/_authenticated/audits/$id/")({
   },
   head: () => ({
     meta: [
-      { title: "Run Audit — SAS" },
+      { title: "Run Audit — SQOP" },
       { name: "description", content: "Score checklist section by section." },
       { name: "robots", content: "noindex" },
     ],
@@ -412,7 +412,7 @@ function AuditRunner() {
       queryClient.invalidateQueries({ queryKey: ["audit", id] });
       toast.success(`تم رفع ${files.length} صورة بنجاح`);
     } catch {
-      toast.error("تعذر رفع بعض الصور أو كله��");
+      toast.error("تعذر رفع بعض الصور أو كلها");
     }
   };
 

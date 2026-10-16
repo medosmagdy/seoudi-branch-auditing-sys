@@ -404,11 +404,11 @@ function DailyReportForm({ reportDate, setReportDate, notify, onSave, farms, sla
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle>المرفقات والصور</CardTitle><p className="text-sm text-muted-foreground">أرفق صور الحالات أو المستندات المرتبطة ب��لتقرير</p></CardHeader>
+        <CardHeader><CardTitle>المرفقات والصور</CardTitle><p className="text-sm text-muted-foreground">أرفق صور الحالات أو المستندات المرتبطة بالتقرير</p></CardHeader>
         <CardContent>
           <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-primary/40 bg-primary/5 px-4 py-8 text-sm font-medium transition-colors hover:bg-primary/10">
             <ImagePlus className="size-5 text-primary" />
-            <span>��ضافة صور</span>
+            <span>إضافة صور</span>
             <input type="file" accept="image/*" multiple className="sr-only" onChange={(event) => {
               const files = Array.from(event.target.files ?? []).slice(0, 8);
               setPhotos(files);

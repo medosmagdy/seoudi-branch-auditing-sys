@@ -5,13 +5,13 @@ import { Button } from "@/components/ui/button";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Seoudi Auditing System" },
+      { title: "Seoudi Quality Operating Platform" },
       {
         name: "description",
         content:
           "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
       },
-      { property: "og:title", content: "Seoudi Auditing System" },
+      { property: "og:title", content: "Seoudi Quality Operating Platform" },
       {
         property: "og:description",
         content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
@@ -44,12 +44,10 @@ function Landing() {
     <div className="min-h-screen bg-background" dir="ltr">
       <header className="brand-banner">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
-          <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground text-lg font-bold">
-            S
-          </span>
+          <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="h-16 w-28 object-contain mix-blend-multiply" />
           <div className="text-sm font-semibold leading-tight">
-            Seoudi Auditing System
-            <span className="block text-[11px] font-normal opacity-80">SAS</span>
+            Seoudi Quality Operating Platform
+            <span className="block text-[11px] font-normal opacity-80">SQOP</span>
           </div>
           <div className="ml-auto">
             <Button asChild variant="secondary" size="sm">
