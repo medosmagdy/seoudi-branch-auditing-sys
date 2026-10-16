@@ -36,12 +36,10 @@ export function AppShell({
       <header className="brand-banner sticky top-0 z-30 shadow-[var(--shadow-card)]">
         <div className="flex items-center justify-between gap-3 px-4 py-3" dir="ltr">
           <Link to="/dashboard" className="flex items-center gap-2 text-left">
-            <span className="grid size-9 place-items-center rounded-xl bg-secondary text-secondary-foreground font-bold">
-              S
-            </span>
+            <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="h-10 w-16 object-contain brightness-0 invert" />
             <span className="text-sm font-semibold leading-tight">
-              Seoudi Auditing System
-              <span className="block text-[11px] font-normal opacity-80">SAS</span>
+              Seoudi Quality Operating Platform
+              <span className="block text-[11px] font-normal opacity-80">SQOP</span>
             </span>
           </Link>
           <div className="flex items-center gap-2" dir="rtl">

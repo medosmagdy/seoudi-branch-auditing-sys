@@ -10,10 +10,10 @@ import { Label } from "@/components/ui/label";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Sign In — SAS" },
-      { name: "description", content: "Sign in to the Seoudi Auditing System to run food safety audits." },
-      { property: "og:title", content: "Sign In — SAS" },
-      { property: "og:description", content: "Access the Seoudi Auditing System." },
+      { title: "Sign In — SQOP" },
+      { name: "description", content: "Sign in to the Seoudi Quality Operating Platform to run food safety audits." },
+      { property: "og:title", content: "Sign In — SQOP" },
+      { property: "og:description", content: "Access the Seoudi Quality Operating Platform." },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -118,10 +118,8 @@ function AuthPage() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4 py-10" dir="ltr">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <span className="mx-auto grid size-14 place-items-center rounded-2xl brand-banner text-2xl font-bold">
-            S
-          </span>
-          <h1 className="mt-4 text-xl font-extrabold">Seoudi Auditing System</h1>
+          <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="mx-auto h-20 w-32 object-contain" />
+          <h1 className="mt-4 text-xl font-extrabold">Seoudi Quality Operating Platform</h1>
           <p className="text-xs text-muted-foreground">{"\n"}</p>
         </div>
 

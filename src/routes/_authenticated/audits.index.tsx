@@ -33,12 +33,12 @@ export const Route = createFileRoute("/_authenticated/audits/")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Audits — SAS" },
+      { title: "Audits — SQOP" },
       {
         name: "description",
         content: "Food safety audit history: drafts in progress and completed audits.",
       },
-      { property: "og:title", content: "Audits — SAS" },
+      { property: "og:title", content: "Audits — SQOP" },
       { property: "og:description", content: "Seoudi branch audit records." },
       { name: "robots", content: "noindex" },
     ],

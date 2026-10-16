@@ -76,9 +76,9 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   validateSearch: dashboardSearchSchema,
   head: () => ({
     meta: [
-      { title: "Bird Eye — SAS" },
+      { title: "Bird Eye — SQOP" },
       { name: "description", content: "Executive Food Safety Quality Dashboard." },
-      { property: "og:title", content: "لوحة التحكم والتحليلات — SAS" },
+      { property: "og:title", content: "لوحة التحكم والتحليلات — SQOP" },
       { name: "robots", content: "noindex" },
     ],
   }),

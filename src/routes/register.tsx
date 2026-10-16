@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/register")({
-  head: () => ({ meta: [{ title: "Create Account — SAS" }, { name: "robots", content: "noindex,nofollow" }] }),
+  head: () => ({ meta: [{ title: "Create Account — SQOP" }, { name: "robots", content: "noindex,nofollow" }] }),
   component: RegisterPage,
 });
 
@@ -54,7 +54,7 @@ function RegisterPage() {
 
   return <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10" dir="ltr">
     <section className="surface-card w-full max-w-sm p-5" aria-labelledby="register-title">
-      <div className="mb-6 text-center"><span className="mx-auto grid size-14 place-items-center rounded-2xl brand-banner text-2xl font-bold">S</span><h1 id="register-title" className="mt-4 text-xl font-extrabold">Create Account</h1><p className="mt-1 text-sm text-muted-foreground">Authorized registration link</p></div>
+      <div className="mb-6 text-center"><img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="mx-auto h-20 w-32 object-contain" /><h1 id="register-title" className="mt-4 text-xl font-extrabold">Create Account</h1><p className="mt-1 text-sm text-muted-foreground">Authorized registration link</p></div>
       <form onSubmit={submit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5"><Label htmlFor="register-name">Full Name</Label><Input id="register-name" autoComplete="name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></div>
         <div className="flex flex-col gap-1.5"><Label htmlFor="register-email">Email</Label><Input id="register-email" type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></div>

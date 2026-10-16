@@ -33,7 +33,7 @@ export const Route = createFileRoute("/_authenticated/audits/$id/")({
   },
   head: () => ({
     meta: [
-      { title: "Run Audit — SAS" },
+      { title: "Run Audit — SQOP" },
       { name: "description", content: "Score checklist section by section." },
       { name: "robots", content: "noindex" },
     ],
