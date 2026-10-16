@@ -173,8 +173,6 @@ function ExecutiveDashboard() {
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard-data-full", scope],
     queryFn: () => fetchDashboardData(scope as LocationScope),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
   });
 
   const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";

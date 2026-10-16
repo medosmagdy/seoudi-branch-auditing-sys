@@ -40,8 +40,6 @@ function SummaryPage() {
   const { data: model, isLoading } = useQuery({
     queryKey: ["audit-summary", id],
     queryFn: () => loadReportModel(id),
-    staleTime: 60_000,
-    refetchOnWindowFocus: false,
   });
 
   if (isLoading || !model) {

@@ -148,9 +148,7 @@ export async function signedPhotoUrls(storagePaths: string[]): Promise<Record<st
 
   const map: Record<string, string> = {};
 
-  const uniquePaths = [...new Set(storagePaths)];
-
-  uniquePaths.forEach((path) => {
+  storagePaths.forEach((path) => {
     if (path.startsWith("http://") || path.startsWith("https://")) {
       map[path] = path;
     } else if (R2_PUBLIC_URL) {

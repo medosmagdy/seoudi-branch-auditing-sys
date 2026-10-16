@@ -111,10 +111,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
     supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
     supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
-    supabase
-      .from("photos")
-      .select("id, question_id, storage_path, created_at")
-      .eq("audit_id", auditId),
+    supabase.from("photos").select("*").eq("audit_id", auditId),
     supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
     // التعديل هنا: جلب الفحوصات التاريخية مع درجاتها المحفوظة مسبقاً وتصفيتها حسب نوع التفتيش
     supabase
