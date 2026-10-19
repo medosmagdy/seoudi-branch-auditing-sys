@@ -201,7 +201,12 @@ export async function exportAuditToExcel(auditId: string) {
         percentage: Number(d.percentage),
     }));
 
-    const result = computeAudit(scoringSections, Object.fromEntries(answerMap), genDeductionRows);
+    const result = computeAudit(
+        scoringSections,
+        Object.fromEntries(answerMap),
+        genDeductionRows,
+        (audit.branches as any)?.name_ar,
+    );
 
     const wb = XLSX.utils.book_new();
     (wb as any).Workbook = {

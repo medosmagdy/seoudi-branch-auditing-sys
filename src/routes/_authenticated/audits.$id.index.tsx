@@ -300,7 +300,8 @@ function AuditRunner() {
         (data?.generalDeductions ?? []).map((deduction) => ({
           reasonText: deduction.reason_text,
           percentage: Number(deduction.percentage),
-        })),
+          })),
+          (data?.audit.branches as { name_ar?: string } | null)?.name_ar,
       ),
     [scoringSections, effectiveAnswers, data],
   );
