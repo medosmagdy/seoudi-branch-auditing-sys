@@ -6,25 +6,6 @@ const MARGIN_MM = 10;
 const CORS_FALLBACK_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
-async function waitForImages(target: HTMLElement): Promise<void> {
-  const images = Array.from(target.querySelectorAll<HTMLImageElement>("img"));
-  await Promise.all(
-    images.map(async (image) => {
-      if (!image.complete) {
-        await new Promise<void>((resolve) => {
-          image.addEventListener("load", () => resolve(), { once: true });
-          image.addEventListener("error", () => resolve(), { once: true });
-        });
-      }
-      try {
-        await image.decode();
-      } catch {
-        // Some mobile browsers reject decode for cached or cross-origin images.
-      }
-    }),
-  );
-}
-
 function collectBreakpoints(target: HTMLElement): number[] {
   const top = target.getBoundingClientRect().top;
   const blocks = Array.from(target.querySelectorAll<HTMLElement>("[data-report-block]"));
@@ -106,7 +87,6 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
 
   let first = true;
   for (const target of targets) {
-    await waitForImages(target);
     const breaks = collectBreakpoints(target);
     const rect = target.getBoundingClientRect();
     const cssWidth = Math.ceil(rect.width || target.scrollWidth || 800);
@@ -118,7 +98,7 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
       height: cssHeight,
       backgroundColor: "#ffffff",
       imagePlaceholder: CORS_FALLBACK_IMAGE,
-      cacheBust: false,
+      cacheBust: true,
       skipFonts: true, // يمنع SecurityError بتاع Google Fonts
       fontEmbedCSS: "", // يمنع محاولة جلب الخطوط الخارجية inline
       filter: (domNode: HTMLElement) => !domNode.classList?.contains("print:hidden"),
