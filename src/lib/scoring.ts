@@ -42,6 +42,16 @@ export interface SectionResult {
   percentage: number;
 }
 
+const DELIVERY_INCLUDED_BRANCHES = new Set([
+  "دارك ستور زايد",
+  "دارك ستور المعادي",
+  "دارك ستور الكيت كات",
+]);
+
+export function includesDeliveryInOverall(branchName?: string | null): boolean {
+  return DELIVERY_INCLUDED_BRANCHES.has((branchName ?? "").trim());
+}
+
 export interface AuditResult {
   sections: SectionResult[];
   delivery: SectionResult | null;
@@ -103,6 +113,7 @@ export function computeAudit(
   sections: ScoringSection[],
   answers: Record<string, ScoringAnswer | undefined>,
   generalDeductions: { reasonText?: string; percentage: number }[] = [],
+  branchName?: string | null,
 ): AuditResult {
   const results = (sections || []).map((section) => computeSection(section, answers));
 
@@ -110,10 +121,11 @@ export function computeAudit(
   const delivery = results.find((result) => result.isDelivery && !result.excluded) ?? null;
 
   // الأقسام المحتسبة
-  let scored = results.filter((result) => !result.isDelivery && !result.excluded && result.max > 0);
+  const includeDelivery = includesDeliveryInOverall(branchName);
+  let scored = results.filter((result) => (includeDelivery || !result.isDelivery) && !result.excluded && result.max > 0);
 
   if (scored.length === 0) {
-    scored = results.filter((result) => !result.excluded && result.max > 0);
+    scored = results.filter((result) => (includeDelivery || !result.isDelivery) && !result.excluded && result.max > 0);
   }
 
   // إجمالي الدرجات الممكنة والمحصلة (مخصوم منها خصومات الأقسام داخلياً فقط)

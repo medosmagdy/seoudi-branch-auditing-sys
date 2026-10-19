@@ -181,7 +181,12 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
     percentage: Number(row.percentage),
   }));
 
-  const result = computeAudit(scoringSections, answerMap, generalRows);
+  const result = computeAudit(
+    scoringSections,
+    answerMap,
+    generalRows,
+    (audit.branches as { name_ar?: string } | null)?.name_ar,
+  );
 
   // الاعتماد على النتائج المحفوظة تاريخياً في جدول audits مباشرة دون إعادة حساب
   const historyByMonth = new Map<string, number[]>();
