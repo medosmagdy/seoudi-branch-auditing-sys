@@ -6,6 +6,25 @@ const MARGIN_MM = 10;
 const CORS_FALLBACK_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
+async function waitForImages(target: HTMLElement): Promise<void> {
+  const images = Array.from(target.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(
+    images.map(async (image) => {
+      if (!image.complete) {
+        await new Promise<void>((resolve) => {
+          image.addEventListener("load", () => resolve(), { once: true });
+          image.addEventListener("error", () => resolve(), { once: true });
+        });
+      }
+      try {
+        await image.decode();
+      } catch {
+        // Some mobile browsers reject decode for cached or cross-origin images.
+      }
+    }),
+  );
+}
+
 function collectBreakpoints(target: HTMLElement): number[] {
   const top = target.getBoundingClientRect().top;
   const blocks = Array.from(target.querySelectorAll<HTMLElement>("[data-report-block]"));
@@ -13,7 +32,13 @@ function collectBreakpoints(target: HTMLElement): number[] {
   return Array.from(new Set(points.map((p) => Math.round(p)))).sort((a, b) => a - b);
 }
 
-function addCanvas(pdf: jsPDF, canvas: HTMLCanvasElement, isFirst: boolean, breakpointsPx: number[], cssWidth: number) {
+function addCanvas(
+  pdf: jsPDF,
+  canvas: HTMLCanvasElement,
+  isFirst: boolean,
+  breakpointsPx: number[],
+  cssWidth: number,
+) {
   const pageWidthMm = pdf.internal.pageSize.getWidth();
   const pageHeightMm = pdf.internal.pageSize.getHeight();
   const contentWidthMm = pageWidthMm - MARGIN_MM * 2;
@@ -48,7 +73,17 @@ function addCanvas(pdf: jsPDF, canvas: HTMLCanvasElement, isFirst: boolean, brea
     // ضمان خلفية بيضاء صريحة للشريحة
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, slice.width, slice.height);
-    context.drawImage(canvas, 0, offset, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+    context.drawImage(
+      canvas,
+      0,
+      offset,
+      canvas.width,
+      sliceHeight,
+      0,
+      0,
+      canvas.width,
+      sliceHeight,
+    );
 
     if (!first) pdf.addPage();
     pdf.addImage(
@@ -71,6 +106,7 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
 
   let first = true;
   for (const target of targets) {
+    await waitForImages(target);
     const breaks = collectBreakpoints(target);
     const rect = target.getBoundingClientRect();
     const cssWidth = Math.ceil(rect.width || target.scrollWidth || 800);
@@ -82,7 +118,7 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
       height: cssHeight,
       backgroundColor: "#ffffff",
       imagePlaceholder: CORS_FALLBACK_IMAGE,
-      cacheBust: true,
+      cacheBust: false,
       skipFonts: true, // يمنع SecurityError بتاع Google Fonts
       fontEmbedCSS: "", // يمنع محاولة جلب الخطوط الخارجية inline
       filter: (domNode: HTMLElement) => !domNode.classList?.contains("print:hidden"),
