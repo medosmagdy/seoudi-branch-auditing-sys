@@ -264,7 +264,8 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
                 return { id: photo.id, path: photo.storage_path, url: photoUrl };
               });
 
-            if (!isSectionExcluded && !isNa && earned !== null && earned < max) {
+            const hasCommentOrPhoto = Boolean(comment.trim()) || questionPhotos.length > 0;
+            if (!isSectionExcluded && !isNa && (earned < max || hasCommentOrPhoto)) {
               ncrs.push({
                 id: question.id,
                 sectionName: section.name_ar,
