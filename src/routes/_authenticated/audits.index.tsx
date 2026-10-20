@@ -22,6 +22,8 @@ import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { loadReportModel } from "@/lib/report-data";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
 import { ReportDocument } from "@/components/report/ReportDocument";
+import { useSession } from "@/hooks/useSession";
+import { canEditAudit, canViewAllAudits } from "@/lib/permissions";
 
 const searchSchema = z.object({
   status: z.enum(["all", "draft", "submitted"]).default("all"),
@@ -50,6 +52,7 @@ function AuditsList() {
   const navigate = useNavigate();
   const { status, type, scope } = useSearch({ from: "/_authenticated/audits/" });
   const queryClient = useQueryClient();
+  const { profile } = useSession();
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
   const [monthFrom, setMonthFrom] = useState(() => {
@@ -75,7 +78,7 @@ function AuditsList() {
         .maybeSingle();
 
       const userRole = (roleRecord?.role || "").toLowerCase();
-      const isAdmin = userRole === "admin" || userRole === "manager";
+      const isAdmin = userRole === "admin";
 
       return { user, role: userRole, isAdmin };
     },
@@ -91,7 +94,7 @@ function AuditsList() {
         .order("audit_date", { ascending: false });
 
       // لو مراجع فقط، نحصر النتائج على فحوصاته
-      if (userProfile && !userProfile.isAdmin && userProfile.user?.id) {
+      if (userProfile && !canViewAllAudits(userProfile.role as "admin" | "manager" | "auditor") && userProfile.user?.id) {
         auditsQuery = auditsQuery.eq("auditor_id", userProfile.user.id);
       }
 
@@ -227,7 +230,12 @@ function AuditsList() {
     (a) => a.status === "draft" || a.status === "in_progress",
   );
 
-  const renderAuditCard = (audit: any, isDraft: boolean) => (
+  const renderAuditCard = (audit: any, isDraft: boolean) => {
+    const canEdit = profile
+      ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: audit.created_by, status: audit.status })
+      : false;
+
+    return (
     <div key={audit.id} className="surface-card flex flex-wrap items-center gap-3 p-4">
       <div className="min-w-40" dir="rtl">
         <div className="text-base font-bold text-foreground">{audit.branchName}</div>
@@ -247,16 +255,18 @@ function AuditsList() {
 
       <div className="ml-auto flex flex-wrap gap-2">
         {isDraft ? (
-          <Button asChild size="sm" variant="outline">
-            <Link to="/audits/$id" params={{ id: audit.id }}>
-              <PenLine className="size-4 ml-1" /> استكمال
-            </Link>
-          </Button>
-        ) : (
+          canEdit ? (
+            <Button asChild size="sm" variant="outline">
+              <Link to="/audits/$id" params={{ id: audit.id }}>
+                <PenLine className="size-4 ml-1" /> استكمال
+              </Link>
+            </Button>
+          ) : null
+        ) : canEdit ? (
           <Button size="sm" variant="outline" onClick={() => reopen(audit.id, audit.version ?? 1)}>
             <PenLine className="size-4 ml-1" /> إعادة فتح للتعديل
           </Button>
-        )}
+        ) : null}
 
         <Button asChild size="sm" variant="outline">
           <Link to="/audits/$id/summary" params={{ id: audit.id }}>
@@ -284,17 +294,18 @@ function AuditsList() {
           {exportingPdfId === audit.id ? "جاري التجهيز..." : "PDF"}
         </Button>
 
-        <Button
+        {canEdit && <Button
           size="sm"
           variant="ghost"
           aria-label="Delete audit"
           onClick={() => removeAudit(audit.id)}
         >
           <Trash2 className="size-4 text-destructive" />
-        </Button>
+        </Button>}
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <AppShell

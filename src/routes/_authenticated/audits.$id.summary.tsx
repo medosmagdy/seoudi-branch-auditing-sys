@@ -13,6 +13,8 @@ import { logAuditEdit } from "@/lib/generate-reports";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
+import { useSession } from "@/hooks/useSession";
+import { canEditAudit } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
   head: () => ({
@@ -31,6 +33,7 @@ function SummaryPage() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useSession();
   const reportRef = useRef<HTMLDivElement>(null);
   const [reason, setReason] = useState("");
   const [percentage, setPercentage] = useState("");
@@ -52,6 +55,14 @@ function SummaryPage() {
 
   const { result } = model;
   const isDraft = model.status === "draft";
+  const canEdit = profile
+    ? canEditAudit({
+        role: profile.role,
+        userId: profile.id,
+        createdBy: model.createdBy,
+        status: model.status,
+      })
+    : false;
 
   const exportSummaryPdf = async () => {
     if (!reportRef.current) return;
@@ -68,6 +79,10 @@ function SummaryPage() {
 
   const addGeneralDeduction = async () => {
     const value = Number(percentage);
+    if (!canEdit) {
+      toast.error("لا تملك صلاحية تعديل هذا الفحص");
+      return;
+    }
     if (!reason.trim() || !Number.isFinite(value) || value <= 0 || value > 100) {
       toast.error("أدخل سبب الخصم ونسبة بين 1 و 100%");
       return;
@@ -86,6 +101,10 @@ function SummaryPage() {
   };
 
   const submitAudit = async () => {
+    if (!canEdit) {
+      toast.error("لا تملك صلاحية اعتماد هذا الفحص");
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -285,7 +304,7 @@ function SummaryPage() {
       </div>
 
       <div className="mt-6 flex flex-wrap gap-2" dir="rtl">
-        {isDraft && (
+        {isDraft && canEdit && (
           <Button disabled={submitting} onClick={submitAudit} className="gap-2 font-bold">
             {submitting && <Loader2 className="size-4 animate-spin" />} اعتماد وإنهاء الفحص
           </Button>
