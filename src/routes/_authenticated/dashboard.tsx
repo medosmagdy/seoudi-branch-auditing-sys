@@ -171,9 +171,16 @@ function ExecutiveDashboard() {
     setExpandedNodes((prev) => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
   };
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["dashboard-data-full", scope],
     queryFn: () => fetchDashboardData(scope as LocationScope),
+    retry: 1,
   });
 
   const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
@@ -1392,11 +1399,17 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-              {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">
-                  جاري تحميل البيانات...
-                </p>
-              ) : (
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">
+            جاري تحميل البيانات...
+          </p>
+        ) : isError ? (
+          <div className="space-y-3 py-6 text-center" dir="rtl">
+            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
+            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+          </div>
+        ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.fsSections.map((sec) => (
                     <SectionCard
@@ -1431,11 +1444,17 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-              {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">
-                  جاري تحميل البيانات...
-                </p>
-              ) : (
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">
+            جاري تحميل البيانات...
+          </p>
+        ) : isError ? (
+          <div className="space-y-3 py-6 text-center" dir="rtl">
+            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
+            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+          </div>
+        ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.ghpSections.map((sec) => (
                     <SectionCard
