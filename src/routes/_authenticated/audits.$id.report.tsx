@@ -12,6 +12,8 @@ import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { logAuditEdit } from "@/lib/generate-reports";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
+import { useSession } from "@/hooks/useSession";
+import { canEditAudit } from "@/lib/permissions";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/report")({
   head: () => ({
@@ -29,13 +31,14 @@ function ReportPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const reportRef = useRef<HTMLDivElement>(null);
+  const { profile } = useSession();
 
   const [reopening, setReopening] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   // 1. جلب بيانات التقرير والـ NCRs
-  const { data: model, isLoading } = useQuery({
+  const { data: model, isLoading, error } = useQuery({
     queryKey: ["audit-report", id],
     queryFn: () => loadReportModel(id),
   });
@@ -54,7 +57,7 @@ function ReportPage() {
     },
   });
 
-  if (isLoading || !model) {
+  if (isLoading) {
     return (
       <AppShell title="جاري تجهيز تقرير الفحص">
         <p className="text-sm text-muted-foreground text-center py-10" dir="rtl">
@@ -63,6 +66,22 @@ function ReportPage() {
       </AppShell>
     );
   }
+
+  if (error || !model) {
+    return (
+      <AppShell title="تعذر فتح تقرير الفحص">
+        <div className="mx-auto max-w-xl rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center" dir="rtl">
+          <p className="font-semibold text-destructive">تعذر تحميل بيانات هذا التقرير.</p>
+          <p className="mt-2 text-sm text-muted-foreground">تأكد من صلاحيات القراءة في Supabase ثم أعد المحاولة.</p>
+          <Button className="mt-4" onClick={() => window.location.reload()}>إعادة المحاولة</Button>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const canEdit = profile
+    ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: model.createdBy, status: model.status })
+    : false;
 
   // تصدير الإكسيل المباشر
   const handleExportExcel = async () => {
@@ -98,6 +117,10 @@ function ReportPage() {
 
   // إعادة الفتح للتعديل
   const handleReopen = async () => {
+    if (!canEdit) {
+      toast.error("يمكنك عرض التقرير فقط؛ لا تملك صلاحية تعديله");
+      return;
+    }
     setReopening(true);
     const nextVersion = (model.version ?? 1) + 1;
     const { error } = await supabase
@@ -159,7 +182,7 @@ function ReportPage() {
             تصدير تقرير إكسيل (Excel)
           </Button>
 
-          {model.status === "submitted" && (
+          {model.status === "submitted" && canEdit && (
             <Button
               variant="secondary"
               size="sm"

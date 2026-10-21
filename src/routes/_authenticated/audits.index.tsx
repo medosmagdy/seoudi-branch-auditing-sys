@@ -311,8 +311,8 @@ function AuditsList() {
     <AppShell
       title="Audits"
       subtitle={
-        userProfile?.isAdmin
-          ? "سجل الفحوصات والزيارات المسجلة لجميع الفروع"
+        canViewAllAudits((userProfile?.role || "auditor") as "admin" | "manager" | "auditor")
+          ? "سجل الفحوصات والزيارات المسجلة لجميع الفروع — عرض فقط"
           : "سجل الفحوصات والزيارات الخاصة بك"
       }
       action={
