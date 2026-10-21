@@ -14,6 +14,8 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { computeAudit, type ScoringSection } from "@/lib/scoring";
 import { deletePhoto, signedPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
+import { useSession } from "@/hooks/useSession";
+import { canEditAudit } from "@/lib/permissions";
 
 type AuditSearchParams = {
   section?: number;
@@ -79,6 +81,7 @@ function AuditRunner() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { profile } = useSession();
   const [stepIndex, setStepIndex] = useState(search.section ?? 0);
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [sectionNa, setSectionNa] = useState<Record<string, boolean>>({});
@@ -90,7 +93,7 @@ function AuditRunner() {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, created_by, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -346,7 +349,14 @@ function AuditRunner() {
     ? "4-2-0"
     : (auditType?.scoring_system ?? (LARGE_BRANCH_NAMES.has(branchName) ? "4-2-0" : "4-1-0"));
   const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
-  const readOnly = data.audit.status === "submitted";
+  const readOnly = profile
+    ? !canEditAudit({
+        role: profile.role,
+        userId: profile.id,
+        createdBy: data.audit.created_by,
+        status: data.audit.status,
+      })
+    : true;
 
   const persistAnswer = (questionId: string, state: AnswerState) => {
     clearTimeout(timers.current[questionId]);

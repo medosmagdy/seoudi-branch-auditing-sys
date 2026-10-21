@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 export const updateUserRoleServerFn = createServerFn({ method: "POST" })
-    .validator((data: { userId: string; newRole: "admin" | "auditor" }) => data)
+    .validator((data: { userId: string; newRole: "admin" | "manager" | "auditor" }) => data)
     .handler(async ({ data }) => {
         const { userId, newRole } = data;
 

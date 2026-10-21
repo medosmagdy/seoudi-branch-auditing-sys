@@ -20,6 +20,7 @@ export function AppShell({
   action?: ReactNode;
 }) {
   const { profile, isAdmin } = useSession();
+  const canAccessSlaughtering = profile?.role === "admin";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { pathname } = useRouterState({ select: (state) => state.location });
@@ -43,7 +44,7 @@ export function AppShell({
             </span>
           </Link>
           <div className="flex items-center gap-2" dir="rtl">
-            <Link
+            {canAccessSlaughtering && <Link
               to="/slaughtering"
               className={cn(
                 "rounded-lg px-3 py-2 text-sm transition-colors",
@@ -51,9 +52,9 @@ export function AppShell({
                   ? "bg-secondary text-secondary-foreground font-semibold"
                   : "hover:bg-primary-soft/60",
               )}
-            >
+              >
               المجازر
-            </Link>
+            </Link>}
             <Link
               to="/audits"
               className={cn(

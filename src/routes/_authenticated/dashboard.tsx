@@ -106,7 +106,7 @@ const trackingGroups = [
   { name: "فروع مشتركة", tone: "border-emerald-500/30 bg-emerald-500/5", branches: ["العلمين", "مراسي", "سوديك سيزر", "المخازن المركزية"] },
 ] as const;
 
-function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate: (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => Promise<void> }) {
+function MonthlyTrackingCard({ rows, onUpdate, canEdit }: { rows: TrackingRow[]; onUpdate: (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => Promise<void>; canEdit: boolean }) {
   const cycle = (row: TrackingRow, field: "fs_status" | "ghp_status" | "fsms_status") => {
     const values = ["not_started", "in_progress", "completed"] as const;
     return onUpdate(row.id, field, values[(values.indexOf(row[field]) + 1) % values.length]);
@@ -133,7 +133,7 @@ function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate
           return <div key={group.name} className={`overflow-hidden rounded-xl border ${group.tone}`}>
             <div className="border-b border-inherit px-4 py-3"><h3 className="font-bold">{group.name}</h3><p className="text-xs text-muted-foreground">{group.branches.length} فروع</p></div>
             <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead className="bg-background/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-right">الفرع</th><th className="px-3 py-2">FS</th><th className="px-3 py-2">GHP</th><th className="px-3 py-2">FSMS</th></tr></thead><tbody>
-              {groupRows.map((row) => <tr key={row.id} className="border-t border-border/60"><td className="px-3 py-2 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-2 py-2 text-center"><button type="button" onClick={() => !row.id.startsWith("missing-") && void cycle(row, field)} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
+              {groupRows.map((row) => <tr key={row.id} className="border-t border-border/60"><td className="px-3 py-2 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-2 py-2 text-center"><button type="button" onClick={() => canEdit && !row.id.startsWith("missing-") && void cycle(row, field)} disabled={!canEdit || row.id.startsWith("missing-")} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
             </tbody></table></div>
           </div>;
         })}
@@ -145,6 +145,7 @@ function MonthlyTrackingCard({ rows, onUpdate }: { rows: TrackingRow[]; onUpdate
 
 function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
+  const canViewAll = profile?.role === "admin" || profile?.role === "manager";
   const { scope, tab } = useSearch({ from: "/_authenticated/dashboard" });
 
   const [startDate, setStartDate] = useState<string>(() => {
@@ -170,9 +171,16 @@ function ExecutiveDashboard() {
     setExpandedNodes((prev) => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
   };
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["dashboard-data-full", scope],
     queryFn: () => fetchDashboardData(scope as LocationScope),
+    retry: 1,
   });
 
   const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
@@ -222,7 +230,7 @@ function ExecutiveDashboard() {
     if (!data || !profile) return null;
 
     const userScopedAudits = data.audits.filter((a) => {
-      if (isAdmin) return true;
+      if (canViewAll) return true;
       return a.auditor_id === profile.id;
     });
 
@@ -449,7 +457,7 @@ function ExecutiveDashboard() {
     );
 
     const fsmsBranchScores = data.branches
-      .filter((b) => isAdmin || allowedBranchIds.has(b.id))
+      .filter((b) => canViewAll || allowedBranchIds.has(b.id))
       .map((b) => {
     const branchFsmsAudits = allSubmittedAudits.filter(
       (a) =>
@@ -473,7 +481,7 @@ function ExecutiveDashboard() {
       })
       .filter((item) => item.score !== null);
 
-    const branchesToDisplay = isAdmin
+    const branchesToDisplay = canViewAll
       ? data.branches
       : data.branches.filter((b) => allowedBranchIds.has(b.id));
     const branchAuditsMap: Record<string, any[]> = {};
@@ -525,7 +533,7 @@ function ExecutiveDashboard() {
       branchesSummary,
       submittedAuditIds: allSubmittedAuditIds,
     };
-  }, [data, profile, isAdmin, startDate, endDate, branchFilter, scope]);
+  }, [data, profile, canViewAll, startDate, endDate, branchFilter, scope]);
 
   const activeSection = useMemo(() => {
     if (!activeSectionId || !filteredData) return null;
@@ -1167,7 +1175,7 @@ function ExecutiveDashboard() {
     <AppShell
       title={`لوحة المتابعة والتحليلات — ${profile?.full_name || "إدارة الجودة"}`}
       subtitle={
-        isAdmin
+        canViewAll
           ? "متابعة دقيقة لنسب الامتثال وملاحظات الفروع والأقسام بالشهور"
           : "الملخص العام ومؤشرات الأداء"
       }
@@ -1291,13 +1299,13 @@ function ExecutiveDashboard() {
         <Button asChild size="sm" variant={tab === "overview" ? "default" : "ghost"}>
           <Link to="/dashboard" search={{ scope, tab: "overview" }}>نظرة عامة</Link>
         </Button>
-        {isAdmin && <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
+        {canViewAll && <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
           <Link to="/dashboard" search={{ scope, tab: "tracking" }}>المتابعة الشهرية</Link>
         </Button>}
       </div>
 
-      {isAdmin && tab === "tracking" ? (
-        <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} />
+      {canViewAll && tab === "tracking" ? (
+        <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} canEdit={isAdmin} />
       ) : null}
 
       {tab === "overview" ? <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
@@ -1366,7 +1374,7 @@ function ExecutiveDashboard() {
         </button>
       </div> : null}
 
-      {isAdmin ? (
+      {canViewAll ? (
         <>
           <div className="mt-6 space-y-6">
             <div className="surface-card p-4 rounded-xl border border-border">
@@ -1391,11 +1399,17 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-              {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">
-                  جاري تحميل البيانات...
-                </p>
-              ) : (
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">
+            جاري تحميل البيانات...
+          </p>
+        ) : isError ? (
+          <div className="space-y-3 py-6 text-center" dir="rtl">
+            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
+            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+          </div>
+        ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.fsSections.map((sec) => (
                     <SectionCard
@@ -1430,11 +1444,17 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-              {isLoading ? (
-                <p className="text-xs text-muted-foreground py-6 text-center">
-                  جاري تحميل البيانات...
-                </p>
-              ) : (
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground py-6 text-center">
+            جاري تحميل البيانات...
+          </p>
+        ) : isError ? (
+          <div className="space-y-3 py-6 text-center" dir="rtl">
+            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
+            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+          </div>
+        ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.ghpSections.map((sec) => (
                     <SectionCard

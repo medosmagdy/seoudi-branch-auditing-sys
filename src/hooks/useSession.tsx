@@ -6,7 +6,7 @@ export interface UserProfile {
   full_name: string | null;
   email: string | null;
   active: boolean;
-  role: "admin" | "auditor";
+  role: "admin" | "manager" | "auditor";
   isAdmin: boolean;
 }
 
@@ -55,7 +55,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           .maybeSingle(),
       ]);
 
-      const role: "admin" | "auditor" = (roleRes.data?.role as any) || "auditor";
+      const role: "admin" | "manager" | "auditor" =
+        roleRes.data?.role === "admin" || roleRes.data?.role === "manager"
+          ? roleRes.data.role
+          : "auditor";
       const isUserAdmin = role === "admin";
 
       const displayName =

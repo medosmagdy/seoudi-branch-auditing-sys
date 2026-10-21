@@ -49,6 +49,7 @@ export interface ReportSection {
 
 export interface ReportModel {
   auditId: string;
+  createdBy: string | null;
   status: string;
   version: number;
   auditTypeName: string;
@@ -76,7 +77,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   const { data: audit, error } = await supabase
     .from("audits")
     .select(
-      "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, auditor_id, branches(name_ar), audit_types(name_ar, name_en)",
+      "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar), audit_types(name_ar, name_en)",
     )
     .eq("id", auditId)
     .single();
@@ -312,8 +313,9 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   });
 
   return {
-    auditId,
-    status: audit.status,
+  auditId,
+  createdBy: audit.created_by ?? null,
+  status: audit.status,
     version: audit.version ?? 1,
     auditTypeName: (audit.audit_types as { name_ar: string } | null)?.name_ar ?? "",
     auditTypeNameEn: (audit.audit_types as { name_en: string | null } | null)?.name_en ?? "",

@@ -39,7 +39,7 @@ interface ProfileItem {
     id: string;
     full_name: string;
     email: string;
-    role: "admin" | "auditor";
+    role: "admin" | "manager" | "auditor";
     created_at?: string;
 }
 
@@ -69,9 +69,9 @@ export function UserManager() {
                 throw profilesRes.error;
             }
 
-            const rolesMap = new Map<string, "admin" | "auditor">();
+            const rolesMap = new Map<string, "admin" | "manager" | "auditor">();
             (rolesRes.data || []).forEach((r: any) => {
-                rolesMap.set(r.user_id, r.role as "admin" | "auditor");
+                rolesMap.set(r.user_id, r.role as "admin" | "manager" | "auditor");
             });
 
             return (profilesRes.data || []).map((p: any): ProfileItem => {
@@ -90,7 +90,7 @@ export function UserManager() {
     });
 
     // تحديث رتبة المستخدم في user_roles
-    const updateUserRole = async (userId: string, newRole: "admin" | "auditor") => {
+    const updateUserRole = async (userId: string, newRole: "admin" | "manager" | "auditor") => {
         if (userId === currentProfile?.id && newRole !== "admin") {
             toast.error("لا يمكنك تخفيض صلاحية حسابك الحالي بنفسك!");
             return;
@@ -110,7 +110,7 @@ export function UserManager() {
             if (error) throw error;
 
             toast.success(
-                `تم تحويل المستخدم إلى ${newRole === "admin" ? "مدير نظام (Admin)" : "مفتش (Auditor)"}`
+                `تم تحويل المستخدم إلى ${newRole === "admin" ? "مدير نظام (Admin)" : newRole === "manager" ? "مشرف (Manager)" : "مفتش (Auditor)"}`
             );
 
             await Promise.all([
@@ -321,6 +321,11 @@ export function UserManager() {
                                                     <SelectItem value="admin" className="text-xs font-bold text-primary">
                                                         <span className="flex items-center gap-1.5">
                                                             <ShieldCheck className="size-3.5 text-primary" /> مدير نظام (Admin)
+                                                        </span>
+                                                    </SelectItem>
+                                                    <SelectItem value="manager" className="text-xs font-bold text-amber-600">
+                                                        <span className="flex items-center gap-1.5">
+                                                            <ShieldCheck className="size-3.5 text-amber-600" /> مشرف (Manager)
                                                         </span>
                                                     </SelectItem>
                                                     <SelectItem value="auditor" className="text-xs font-medium">
