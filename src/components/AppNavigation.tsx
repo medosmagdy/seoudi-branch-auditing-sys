@@ -51,7 +51,7 @@ export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; i
       <div className="mt-auto px-3 pt-8 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1">
           <ShieldCheck className="size-3.5" />
-          {profile?.full_name || profile?.email} · {isAdmin ? "Administrator" : "Auditor"}
+          {profile?.full_name || profile?.email} · {isAdmin ? "Administrator" : profile?.role === "manager" ? "Manager" : "Auditor"}
         </span>
       </div>
     </aside>
