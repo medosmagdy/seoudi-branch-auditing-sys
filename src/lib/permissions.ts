@@ -4,6 +4,7 @@ export function canEditAudit({
   role,
   userId,
   createdBy,
+  auditorId,
   status,
 }: {
   role: AppRole;
