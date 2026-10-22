@@ -93,7 +93,7 @@ function AuditRunner() {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, created_by, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -354,6 +354,7 @@ function AuditRunner() {
         role: profile.role,
         userId: profile.id,
         createdBy: data.audit.created_by,
+        auditorId: data.audit.auditor_id,
         status: data.audit.status,
       })
     : true;
