@@ -80,7 +80,7 @@ function ReportPage() {
   }
 
   const canEdit = profile
-    ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: model.createdBy, status: model.status })
+    ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: model.createdBy, auditorId: model.auditorId, status: model.status })
     : false;
 
   // تصدير الإكسيل المباشر

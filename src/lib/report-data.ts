@@ -50,6 +50,7 @@ export interface ReportSection {
 export interface ReportModel {
   auditId: string;
   createdBy: string | null;
+  auditorId: string | null;
   status: string;
   version: number;
   auditTypeName: string;
@@ -315,6 +316,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   return {
   auditId,
   createdBy: audit.created_by ?? null,
+  auditorId: audit.auditor_id ?? null,
   status: audit.status,
     version: audit.version ?? 1,
     auditTypeName: (audit.audit_types as { name_ar: string } | null)?.name_ar ?? "",

@@ -60,6 +60,7 @@ function SummaryPage() {
         role: profile.role,
         userId: profile.id,
         createdBy: model.createdBy,
+        auditorId: model.auditorId,
         status: model.status,
       })
     : false;

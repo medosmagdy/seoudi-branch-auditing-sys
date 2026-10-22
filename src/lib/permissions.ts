@@ -4,16 +4,17 @@ export function canEditAudit({
   role,
   userId,
   createdBy,
+  auditorId,
   status,
 }: {
   role: AppRole;
   userId: string;
   createdBy?: string | null;
+  auditorId?: string | null;
   status?: string | null;
 }) {
   if (role === "admin") return true;
-  if (status === "submitted" || status === "approved" || status === "reviewed") return false;
-  return createdBy === userId;
+  return createdBy === userId || auditorId === userId;
 }
 
 export function canViewAllAudits(role: AppRole) {
