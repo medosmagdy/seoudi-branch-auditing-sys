@@ -232,7 +232,7 @@ function AuditsList() {
 
   const renderAuditCard = (audit: any, isDraft: boolean) => {
     const canEdit = profile
-      ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: audit.created_by, status: audit.status })
+      ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: audit.created_by, auditorId: audit.auditor_id, status: audit.status })
       : false;
 
     return (
@@ -263,8 +263,10 @@ function AuditsList() {
             </Button>
           ) : null
         ) : canEdit ? (
-          <Button size="sm" variant="outline" onClick={() => reopen(audit.id, audit.version ?? 1)}>
-            <PenLine className="size-4 ml-1" /> إعادة فتح للتعديل
+          <Button asChild size="sm" variant="outline">
+            <Link to="/audits/$id" params={{ id: audit.id }}>
+              <PenLine className="size-4 ml-1" /> تعديل
+            </Link>
           </Button>
         ) : null}
 

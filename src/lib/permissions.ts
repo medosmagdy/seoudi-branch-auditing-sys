@@ -14,7 +14,6 @@ export function canEditAudit({
   status?: string | null;
 }) {
   if (role === "admin") return true;
-  if (status === "submitted" || status === "approved" || status === "reviewed") return false;
   return createdBy === userId || auditorId === userId;
 }
 
