@@ -7,26 +7,21 @@ import {
 import type { AuditAnswerRow } from "@/lib/dashboard/types";
 
 export async function fetchDashboardData(scope: LocationScope) {
-  const [
-    auditsRes,
-    branchesRes,
-    sectionsRes,
-    questionsRes,
-    answersRes,
-    auditTypesRes,
-    profilesRes,
-  ] = await Promise.all([
-    supabase
-      .from("audits")
-      .select("id, audit_date, status, branch_id, audit_type_id, auditor_id, version, overall_score, created_by")
-      .order("audit_date", { ascending: false }),
-    supabase.from("branches").select("id, name_ar, name_en, code, region, active").order("name_ar"),
-    supabase.from("sections").select("id, name_ar, name_en, code, order_index, active").order("order_index"),
-    supabase.from("questions").select("id, section_id, text_ar, text_en, weight, is_critical, active"),
-    fetchAllAuditAnswers(),
-    supabase.from("audit_types").select("id, name_ar, name_en, code, active"),
-    supabase.from("profiles").select("id, full_name, email"),
-  ]);
+  const [auditsRes, branchesRes, sectionsRes, questionsRes, auditTypesRes, profilesRes] =
+    await Promise.all([
+      supabase
+        .from("audits")
+        .select("id, audit_date, status, branch_id, audit_type_id, auditor_id, version, overall_score, created_by")
+        .order("audit_date", { ascending: false }),
+      supabase.from("branches").select("id, name_ar, name_en, code, region, active").order("name_ar"),
+      supabase.from("sections").select("id, name_ar, name_en, code, order_index, active").order("order_index"),
+      supabase.from("questions").select("id, section_id, text_ar, text_en, weight, is_critical, active"),
+      supabase.from("audit_types").select("id, name_ar, name_en, code, active"),
+      supabase.from("profiles").select("id, full_name, email"),
+    ]);
+
+  const dashboardAuditIds = (auditsRes.data ?? []).map((audit) => audit.id);
+  const answersRes = await fetchAuditAnswers(dashboardAuditIds);
 
   const responses = [
     auditsRes,
@@ -78,7 +73,9 @@ export async function fetchDashboardData(scope: LocationScope) {
   };
 }
 
-async function fetchAllAuditAnswers(): Promise<{ data: AuditAnswerRow[]; error: null }> {
+async function fetchAuditAnswers(auditIds: string[]): Promise<{ data: AuditAnswerRow[]; error: null }> {
+  if (auditIds.length === 0) return { data: [], error: null };
+
   const pageSize = 1000;
   const rows: AuditAnswerRow[] = [];
 
@@ -86,6 +83,7 @@ async function fetchAllAuditAnswers(): Promise<{ data: AuditAnswerRow[]; error: 
     const { data: page, error } = await supabase
       .from("audit_answers")
       .select("audit_id, question_id, score, is_na, comment")
+      .in("audit_id", auditIds)
       .range(from, from + pageSize - 1);
     if (error) throw error;
     rows.push(...(page ?? []));
