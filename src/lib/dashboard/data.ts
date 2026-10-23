@@ -7,11 +7,18 @@ import {
 import type { AuditAnswerRow } from "@/lib/dashboard/types";
 
 export async function fetchDashboardData(scope: LocationScope) {
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const nextMonthStart = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}-01`;
+
   const [auditsRes, branchesRes, sectionsRes, questionsRes, auditTypesRes, profilesRes] =
     await Promise.all([
       supabase
         .from("audits")
         .select("id, audit_date, status, branch_id, audit_type_id, auditor_id, version, overall_score, created_by")
+        .gte("audit_date", monthStart)
+        .lt("audit_date", nextMonthStart)
         .order("audit_date", { ascending: false }),
       supabase.from("branches").select("id, name_ar, name_en, code, region, active").order("name_ar"),
       supabase.from("sections").select("id, name_ar, name_en, code, order_index, active").order("order_index"),
