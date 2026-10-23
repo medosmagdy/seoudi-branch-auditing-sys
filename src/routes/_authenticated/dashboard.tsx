@@ -180,21 +180,21 @@ function ExecutiveDashboard() {
   } = useQuery({
     queryKey: ["dashboard-data-full", scope],
     queryFn: () => fetchDashboardData(scope as LocationScope),
+    staleTime: 2 * 60_000,
+    gcTime: 30 * 60_000,
     retry: 1,
+    refetchOnWindowFocus: false,
+    placeholderData: (previousData) => previousData,
   });
 
   const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
   const trackingQuery = useQuery({
     queryKey: ["monthly-branch-tracking", trackingMonth],
+    enabled: Boolean(data?.branches),
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
-      const branches = data?.branches ?? [];
-      if (branches.length) {
-        const { error: seedError } = await supabase.from("monthly_branch_tracking").upsert(
-          branches.map((branch) => ({ branch_id: branch.id, branch_name: branch.name_ar, tracking_month: trackingMonth })),
-          { onConflict: "branch_name,tracking_month", ignoreDuplicates: true },
-        );
-        if (seedError) throw seedError;
-      }
       const { data: rows, error } = await supabase
         .from("monthly_branch_tracking")
         .select("*")
@@ -202,12 +202,28 @@ function ExecutiveDashboard() {
         .order("branch_name");
       if (error) throw error;
 
+      let trackingRows = rows ?? [];
+      if (trackingRows.length === 0 && (data?.branches?.length ?? 0) > 0) {
+        const { error: seedError } = await supabase.from("monthly_branch_tracking").upsert(
+          data!.branches.map((branch) => ({ branch_id: branch.id, branch_name: branch.name_ar, tracking_month: trackingMonth })),
+          { onConflict: "branch_name,tracking_month", ignoreDuplicates: true },
+        );
+        if (seedError) throw seedError;
+        const { data: seededRows, error: reloadError } = await supabase
+          .from("monthly_branch_tracking")
+          .select("*")
+          .eq("tracking_month", trackingMonth)
+          .order("branch_name");
+        if (reloadError) throw reloadError;
+        trackingRows = seededRows ?? [];
+      }
+
       const monthAudits = (data?.audits ?? []).filter((audit) => audit.audit_date?.startsWith(trackingMonth.slice(0, 7)));
       const programField = (audit: (typeof monthAudits)[number]) => {
         const value = `${audit.typeName ?? ""} ${audit.typeCode ?? ""}`.toUpperCase();
         return value.includes("FSMS") ? "fsms_status" : value.includes("GHP") ? "ghp_status" : value.includes("FS") ? "fs_status" : null;
       };
-      return (rows ?? []).map((row) => {
+      return trackingRows.map((row) => {
         const next = { ...row } as Record<string, unknown>;
         for (const audit of monthAudits.filter((item) => item.branch_id === row.branch_id)) {
           const field = programField(audit);
@@ -218,7 +234,6 @@ function ExecutiveDashboard() {
         return next as typeof row;
       });
     },
-    enabled: Boolean(data?.branches?.length),
   });
 
   const updateTracking = async (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => {
@@ -1067,7 +1082,7 @@ function ExecutiveDashboard() {
       ["المسودات", filteredData.draftsCount],
       ["متوسط الامتثال العام", `${filteredData.overallScore}%`],
       ["حالات عدم المطابقة", filteredData.totalComments],
-      ["المخالفات الحرجة", filteredData.totalCritical],
+      ["المخالفات الحر��ة", filteredData.totalCritical],
       ["عدد الفروع", filteredData.totalBranches],
     ];
     const wsExecutive = XLSX.utils.aoa_to_sheet(executiveRows);
@@ -1430,7 +1445,7 @@ function ExecutiveDashboard() {
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700">
                     <BarChart3 className="size-4" />
-                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمدة فقط)
+                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمد�� فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     مؤشرات الأقسام التابعة لتدقيق الـ GHP
