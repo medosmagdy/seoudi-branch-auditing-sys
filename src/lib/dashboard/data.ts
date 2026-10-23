@@ -16,12 +16,15 @@ export async function fetchDashboardData(scope: LocationScope) {
     auditTypesRes,
     profilesRes,
   ] = await Promise.all([
-    supabase.from("audits").select("*").order("audit_date", { ascending: false }),
-    supabase.from("branches").select("*").order("name_ar"),
-    supabase.from("sections").select("*").order("order_index"),
-    supabase.from("questions").select("*"),
+    supabase
+      .from("audits")
+      .select("id, audit_date, status, branch_id, audit_type_id, auditor_id, version, overall_score, created_by")
+      .order("audit_date", { ascending: false }),
+    supabase.from("branches").select("id, name_ar, name_en, code, region, active").order("name_ar"),
+    supabase.from("sections").select("id, name_ar, name_en, code, order_index, active").order("order_index"),
+    supabase.from("questions").select("id, section_id, text_ar, text_en, weight, is_critical, active"),
     fetchAllAuditAnswers(),
-    supabase.from("audit_types").select("*"),
+    supabase.from("audit_types").select("id, name_ar, name_en, code, active"),
     supabase.from("profiles").select("id, full_name, email"),
   ]);
 
@@ -82,7 +85,7 @@ async function fetchAllAuditAnswers(): Promise<{ data: AuditAnswerRow[]; error: 
   for (let from = 0; ; from += pageSize) {
     const { data: page, error } = await supabase
       .from("audit_answers")
-      .select("*")
+      .select("audit_id, question_id, score, is_na, comment")
       .range(from, from + pageSize - 1);
     if (error) throw error;
     rows.push(...(page ?? []));

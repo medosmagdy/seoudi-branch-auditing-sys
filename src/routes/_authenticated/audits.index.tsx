@@ -89,9 +89,10 @@ function AuditsList() {
     queryKey: ["audits", userProfile?.user?.id, userProfile?.isAdmin],
     queryFn: async () => {
       let auditsQuery = supabase
-        .from("audits")
-        .select("*")
-        .order("audit_date", { ascending: false });
+.from("audits")
+    .select("id, audit_date, status, branch_id, audit_type_id, auditor_id, created_by, version, overall_score, edited_at")
+    .order("audit_date", { ascending: false })
+    .limit(100);
 
       // لو مراجع فقط، نحصر النتائج على فحوصاته
       if (userProfile && !canViewAllAudits(userProfile.role as "admin" | "manager" | "auditor") && userProfile.user?.id) {
