@@ -31,6 +31,7 @@ export function trackingBranchKey(name: string): string {
     .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
     .replace(/^\s*فرع\s+/, "")
     .replace(/[\s\-–_()]/g, "")
+    .replace(/^(?:ال)?معادي([12])$/, "المعادي$1")
     .toLowerCase();
 }
 

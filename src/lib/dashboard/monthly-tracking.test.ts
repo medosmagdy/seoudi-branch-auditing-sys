@@ -11,6 +11,20 @@ describe("monthly tracking", () => {
     expect(findTrackingRow([{ ...row, branch_name: name }], "المعادي 2")).toBeUndefined();
     expect(trackingBranchKey(name)).not.toBe(trackingBranchKey("دارك ستور المعادي"));
   });
+  it.each(["معادي2", "معادى ٢", "فرع معادي 2", "المعادي 2"])("matches Maadi 2 alias %s without merging other branches", (name) => {
+    const second = { ...row, id: "tracking-2", branch_id: "maadi-2", branch_name: name };
+    expect(findTrackingRow([row, second], "المعادي 2")?.id).toBe(second.id);
+    expect(findTrackingRow([second], "المعادي 1")).toBeUndefined();
+    expect(findTrackingRow([second], "دارك ستور المعادي")).toBeUndefined();
+  });
+  it.each(["FS", "GHP", "FSMS"] as const)("shows completed %s for the seeded Maadi 2 name", (program) => {
+    for (const branch_id of ["maadi-2", null]) {
+      const second = { ...row, id: "tracking-2", branch_id, branch_name: "المعادي 2" };
+      const secondAudit = { ...audit, branch_id: "maadi-2", branchName: "معادي2", audit_type_id: DASHBOARD_PROGRAM_IDS[program], typeCode: program };
+      const rows = applyMonthlyAudits([second], [secondAudit], "2026-10");
+      expect(findTrackingRow(rows, "معادي2")?.[`${program.toLowerCase()}_status` as "fs_status"]).toBe("completed");
+    }
+  });
   it("matches Sodic East spelling without including other Sodic branches", () => {
     const east = { ...row, branch_name: "سوديك إيست" };
     expect(findTrackingRow([east], "سوديك ايست")?.id).toBe(row.id);
