@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { z } from "zod";
 import { type LocationScope } from "@/lib/location-scope";
 import { fetchDashboardData } from "@/lib/dashboard/data";
+import { applyMonthlyAudits, findTrackingRow, type TrackingRow } from "@/lib/dashboard/monthly-tracking";
 import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -85,14 +86,6 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: ExecutiveDashboard,
 });
 
-type TrackingRow = {
-  id: string;
-  branch_name: string;
-  fs_status: "not_started" | "in_progress" | "completed";
-  ghp_status: "not_started" | "in_progress" | "completed";
-  fsms_status: "not_started" | "in_progress" | "completed";
-};
-
 const trackingStatus = {
   not_started: { label: "لم يبدأ", className: "bg-muted text-muted-foreground", icon: Circle },
   in_progress: { label: "غير مكتمل", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300", icon: Clock3 },
@@ -120,8 +113,7 @@ function MonthlyTrackingCard({ rows, onUpdate, canEdit }: { rows: TrackingRow[];
       <div className="grid gap-4 p-4 md:grid-cols-2">
         {trackingGroups.map((group) => {
           const groupRows = group.branches.map((name) => {
-            const exact = rows.find((row) => row.branch_name.trim() === name);
-            const compatible = exact ?? rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد"].includes(name));
+            const compatible = findTrackingRow(rows, name) ?? rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد", "المعادي 1", "المعادي 2", "سوديك ايست"].includes(name));
             return compatible ?? {
               id: `missing-${group.name}-${name}`,
               branch_name: name,
@@ -185,7 +177,7 @@ function ExecutiveDashboard() {
 
   const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
   const trackingQuery = useQuery({
-    queryKey: ["monthly-branch-tracking", trackingMonth],
+    queryKey: ["monthly-branch-tracking", trackingMonth, scope],
     queryFn: async () => {
       const branches = data?.branches ?? [];
       if (branches.length) {
@@ -202,24 +194,15 @@ function ExecutiveDashboard() {
         .order("branch_name");
       if (error) throw error;
 
-      const monthAudits = (data?.audits ?? []).filter((audit) => audit.audit_date?.startsWith(trackingMonth.slice(0, 7)));
-      const programField = (audit: (typeof monthAudits)[number]) => {
-        const value = `${audit.typeName ?? ""} ${audit.typeCode ?? ""}`.toUpperCase();
-        return value.includes("FSMS") ? "fsms_status" : value.includes("GHP") ? "ghp_status" : value.includes("FS") ? "fs_status" : null;
-      };
-      return (rows ?? []).map((row) => {
-        const next = { ...row } as Record<string, unknown>;
-        for (const audit of monthAudits.filter((item) => item.branch_id === row.branch_id)) {
-          const field = programField(audit);
-          if (field && (audit.status === "draft" || audit.status === "submitted")) {
-            next[field] = audit.status === "submitted" ? "completed" : "in_progress";
-          }
-        }
-        return next as typeof row;
-      });
+      return rows ?? [];
     },
     enabled: Boolean(data?.branches?.length),
   });
+
+  const trackingRows = useMemo(
+    () => applyMonthlyAudits(trackingQuery.data ?? [], data?.audits ?? [], trackingMonth),
+    [trackingQuery.data, data?.audits, trackingMonth],
+  );
 
   const updateTracking = async (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => {
     await supabase.from("monthly_branch_tracking").update({ [field]: value, [`${field.replace("_status", "")}_updated_at`]: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
@@ -1305,7 +1288,7 @@ function ExecutiveDashboard() {
       </div>
 
       {canViewAll && tab === "tracking" ? (
-        <MonthlyTrackingCard rows={trackingQuery.data ?? []} onUpdate={updateTracking} canEdit={isAdmin} />
+        <MonthlyTrackingCard rows={trackingRows} onUpdate={updateTracking} canEdit={isAdmin} />
       ) : null}
 
       {tab === "overview" ? <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
@@ -1430,7 +1413,7 @@ function ExecutiveDashboard() {
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700">
                     <BarChart3 className="size-4" />
-                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمدة فقط)
+                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمد�� فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     مؤشرات الأقسام التابعة لتدقيق الـ GHP
