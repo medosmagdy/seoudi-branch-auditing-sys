@@ -1,7 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { parseEnv } from "node:util";
-const directory = resolve(".output/public");
+const directory = resolve(".vercel/output/static");
 const env = {};
 for (const name of [".env", ".env.local", ".env.production", ".env.production.local"]) {
   try { Object.assign(env, parseEnv(await readFile(resolve(name), "utf8"))); }
