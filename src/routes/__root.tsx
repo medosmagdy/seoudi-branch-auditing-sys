@@ -21,7 +21,9 @@ function NotFoundComponent() {
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
         <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">The page you are looking for is not available.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          The page you are looking for is not available.
+        </p>
         <div className="mt-6">
           <Link
             to="/"
@@ -35,7 +37,7 @@ function NotFoundComponent() {
   );
 }
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+function ErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
@@ -45,8 +47,12 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4" dir="ltr">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Something went wrong</h1>
-        <p className="mt-2 text-sm text-muted-foreground">An unexpected error occurred. Please try again.</p>
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
+          Something went wrong
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          An unexpected error occurred. Please try again.
+        </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
@@ -69,7 +75,6 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
-
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -86,8 +91,16 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       { property: "og:title", content: "Seoudi Quality Operating Platform" },
       { name: "twitter:title", content: "Seoudi Quality Operating Platform" },
-      { property: "og:description", content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports." },
-      { name: "twitter:description", content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports." },
+      {
+        property: "og:description",
+        content:
+          "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
+      },
       { property: "og:image", content: "/quality-assurance-logo.png" },
       { name: "twitter:image", content: "/quality-assurance-logo.png" },
     ],
@@ -110,7 +123,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" dir="ltr">
+    <html lang="ar" dir="rtl" data-sqop-theme="green">
       <head>
         <HeadContent />
       </head>

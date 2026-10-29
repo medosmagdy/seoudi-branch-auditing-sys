@@ -1,6 +1,9 @@
-import { useState, useEffect } from "react";
+import { initializeAuditNa } from "@/lib/audit-na";
+import { invalidateDashboard } from "@/lib/dashboard/cache";
+import { insertAuditOnce } from "@/lib/audit-create";
+import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ArrowRight,
@@ -29,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { logAuditEdit } from "@/lib/generate-reports";
+import { logAuditEdit } from "@/lib/audit-log";
 
 export const Route = createFileRoute("/_authenticated/audits/new")({
   head: () => ({
@@ -44,13 +47,18 @@ export const Route = createFileRoute("/_authenticated/audits/new")({
 
 function NewAuditPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [submitting, setSubmitting] = useState(false);
+  const creating = useRef(false);
+  const request = useRef<{ key: string; id: string } | null>(null);
 
   // Form State
   const [locationScope, setLocationScope] = useState<LocationScope>("branches");
   const [branchId, setBranchId] = useState("");
   const [auditTypeId, setAuditTypeId] = useState("");
-  const [auditDate, setAuditDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [auditDate, setAuditDate] = useState(() =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Cairo" }).format(new Date()),
+  );
   const [auditorName, setAuditorName] = useState("");
   const [branchManager, setBranchManager] = useState("");
 
@@ -67,7 +75,7 @@ function NewAuditPage() {
 
         const name =
           profile?.full_name ||
-          authData.user.user_metadata?.full_name ||
+          authData.user.user_metadata?.["full_name"] ||
           authData.user.email?.split("@")[0] ||
           "";
         setAuditorName(name);
@@ -77,7 +85,12 @@ function NewAuditPage() {
   }, []);
 
   // جلب الفروع المتاحة
-  const { data: branches, isLoading: loadingBranches } = useQuery({
+  const {
+    data: branches,
+    isLoading: loadingBranches,
+    isError: branchesError,
+    refetch: retryBranches,
+  } = useQuery({
     queryKey: ["branches-select"],
     queryFn: async () => {
       const { data, error } = await supabase.from("branches").select("*").order("name_ar");
@@ -87,7 +100,12 @@ function NewAuditPage() {
   });
 
   // جلب أنواع التدقيق النشطة
-  const { data: auditTypes, isLoading: loadingTypes } = useQuery({
+  const {
+    data: auditTypes,
+    isLoading: loadingTypes,
+    isError: typesError,
+    refetch: retryTypes,
+  } = useQuery({
     queryKey: ["audit-types-select"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -106,12 +124,17 @@ function NewAuditPage() {
 
   const handleCreateAudit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (creating.current) return;
 
-    if (!branchId) {
+    if (branchesError || typesError || loadingBranches || loadingTypes) {
+      toast.error("انتظر تحميل بيانات الفحص أو أعد المحاولة");
+      return;
+    }
+    if (!branchId || !availableLocations.some((branch) => branch.id === branchId)) {
       toast.error("يرجى اختيار الفرع");
       return;
     }
-    if (!auditTypeId) {
+    if (!auditTypeId || !scopedAuditTypes.some((type) => type.id === auditTypeId)) {
       toast.error("يرجى اختيار نوع التدقيق");
       return;
     }
@@ -124,14 +147,20 @@ function NewAuditPage() {
       return;
     }
 
+    creating.current = true;
+    let createdAuditId: string | undefined;
     try {
       setSubmitting(true);
 
       const { data: authData } = await supabase.auth.getUser();
       const currentUserId = authData?.user?.id ?? null;
+      if (!currentUserId) throw new Error("يجب تسجيل الدخول قبل إنشاء الفحص");
+      const key = JSON.stringify([branchId, auditTypeId, auditDate, currentUserId]);
+      if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
 
       // تجهيز الحقول بشكل آمن ومتوافق
       const insertPayload: Record<string, any> = {
+        id: request.current.id,
         branch_id: branchId,
         audit_type_id: auditTypeId,
         audit_date: auditDate,
@@ -142,34 +171,16 @@ function NewAuditPage() {
 
       // إضافة الـ auditor_id إذا كان المستخدم مسجلاً
       if (currentUserId) {
-        insertPayload.auditor_id = currentUserId;
+        insertPayload["auditor_id"] = currentUserId;
       }
 
-      // محاولة الإدخال الأساسية
-      let res = await supabase
-        .from("audits")
-        .insert(insertPayload as never)
-        .select("id")
-        .single();
+      const newAuditId = await insertAuditOnce(
+        { ...insertPayload, id: request.current.id, auditor_id: currentUserId },
+        auditorName.trim(),
+      );
 
-      // لو الجدول فيه حقل اسمه auditor_name ومطلوب
-      if (res.error && res.error.message.includes("auditor_name")) {
-        insertPayload.auditor_name = auditorName.trim();
-        res = await supabase
-          .from("audits")
-          .insert(insertPayload as never)
-          .select("id")
-          .single();
-      }
-
-      if (res.error) {
-        // تحديث بروفايل المستخدم بالاسم المدخل لضمان ظهوره في كل التقارير
-        console.error("Supabase insert error:", res.error);
-        throw res.error;
-      }
-
-      const newAuditId = res.data?.id;
-      if (!newAuditId) throw new Error("لم يتم إنشاء الفحص بنجاح");
+      createdAuditId = newAuditId;
+      await initializeAuditNa(newAuditId);
 
       // تحديث الاسم في البروفايل لضمان قراءته في التقارير والإكسيل
       if (currentUserId && auditorName.trim()) {
@@ -183,14 +194,20 @@ function NewAuditPage() {
         newAuditId,
         "created",
         `تم إنشاء مسودة فحص جديدة بواسطة: ${auditorName.trim()}`,
-      );
+      ).catch(() => toast.error("تم إنشاء الفحص، لكن تعذر حفظ سجل الإنشاء"));
+      void invalidateDashboard(queryClient);
       toast.success("تم بدء الفحص بنجاح!");
 
       navigate({ to: "/audits/$id", params: { id: newAuditId } });
     } catch (err: any) {
       console.error("Create audit failed:", err);
-      toast.error("تعذر إنشاء الفحص: " + (err?.message || "خطأ في الاتصال"));
+      toast.error(
+        (createdAuditId
+          ? "تم إنشاء المسودة لكن تعذر تجهيزها؛ أعد المحاولة بنفس البيانات: "
+          : "تعذر إنشاء الفحص: ") + (err?.message || "خطأ في الاتصال"),
+      );
     } finally {
+      creating.current = false;
       setSubmitting(false);
     }
   };
@@ -201,7 +218,11 @@ function NewAuditPage() {
   );
 
   return (
-    <AppShell title="بدء زيارة وفحص جديد" subtitle="قم بتحديد الفرع ونوع التدقيق والمفتش المسئول">
+    <AppShell
+      contentClassName="audit-create-page"
+      title="بدء زيارة وفحص جديد"
+      subtitle="قم بتحديد الفرع ونوع التدقيق والمفتش المسئول"
+    >
       <div className="max-w-xl mx-auto py-6" dir="rtl">
         <div className="surface-card p-6 rounded-2xl border border-border shadow-xs space-y-6">
           <div className="border-b border-border pb-4">
@@ -214,15 +235,47 @@ function NewAuditPage() {
             </p>
           </div>
 
-          <form onSubmit={handleCreateAudit} className="space-y-4">
+          <form onSubmit={handleCreateAudit} className="space-y-4" aria-busy={submitting}>
+            {(branchesError || typesError) && (
+              <div
+                role="alert"
+                className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-2"
+              >
+                <p className="text-sm">
+                  تعذر تحميل الفروع أو أنواع التدقيق. أعد المحاولة لإكمال بيانات الفحص.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (branchesError) void retryBranches();
+                    if (typesError) void retryTypes();
+                  }}
+                >
+                  إعادة المحاولة
+                </Button>
+              </div>
+            )}
+            {!isLoading &&
+              !branchesError &&
+              !typesError &&
+              (!availableLocations.length || !scopedAuditTypes.length) && (
+                <p role="status" className="rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+                  لا توجد مواقع أو أنواع تدقيق متاحة لهذا القسم. راجع إعدادات الفروع وأنواع التدقيق.
+                </p>
+              )}
             <div className="flex gap-2 rounded-lg bg-muted p-1">
               <Button
                 type="button"
                 variant={locationScope === "branches" ? "default" : "ghost"}
                 className="flex-1"
+                disabled={submitting}
+                aria-pressed={locationScope === "branches"}
                 onClick={() => {
                   setLocationScope("branches");
                   setBranchId("");
+                  setAuditTypeId("");
                 }}
               >
                 <Store className="size-4 ml-1" /> الفروع
@@ -231,9 +284,12 @@ function NewAuditPage() {
                 type="button"
                 variant={locationScope === "warehouses" ? "default" : "ghost"}
                 className="flex-1"
+                disabled={submitting}
+                aria-pressed={locationScope === "warehouses"}
                 onClick={() => {
                   setLocationScope("warehouses");
                   setBranchId("");
+                  setAuditTypeId("");
                 }}
               >
                 <Warehouse className="size-4 ml-1" /> المخازن
@@ -352,7 +408,14 @@ function NewAuditPage() {
               <Button
                 type="submit"
                 size="sm"
-                disabled={submitting || isLoading}
+                disabled={
+                  submitting ||
+                  isLoading ||
+                  branchesError ||
+                  typesError ||
+                  !availableLocations.length ||
+                  !scopedAuditTypes.length
+                }
                 className="gap-2 font-bold px-5 bg-primary text-primary-foreground"
               >
                 {submitting ? (

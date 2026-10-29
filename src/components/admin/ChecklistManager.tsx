@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { loadChecklistTypes, loadChecklistTree } from "@/lib/checklist-data";
+import { invalidateDashboard } from "@/lib/dashboard/cache";
+import { useMemo, useState, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import {
   ChevronDown,
   ChevronUp,
@@ -36,7 +37,9 @@ export function ChecklistManager() {
   const [replaceExisting, setReplaceExisting] = useState(true);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeCode, setNewTypeCode] = useState("");
-  const [newScoringSystem, setNewScoringSystem] = useState<"4-1-0" | "4-2-0" | "4-2-1-0">("4-2-1-0");
+  const [newScoringSystem, setNewScoringSystem] = useState<"4-1-0" | "4-2-0" | "4-2-1-0">(
+    "4-2-1-0",
+  );
   const [newSection, setNewSection] = useState("");
   const [newSectionIsDelivery, setNewSectionIsDelivery] = useState(false);
   const [newHeader, setNewHeader] = useState<Record<string, string>>({});
@@ -50,35 +53,29 @@ export function ChecklistManager() {
   const [editingHeaderId, setEditingHeaderId] = useState<string | null>(null);
   const [editingHeaderName, setEditingHeaderName] = useState("");
 
-  const { data: types } = useQuery({
+  const {
+    data: types,
+    isLoading: typesLoading,
+    isError: typesError,
+    refetch: retryTypes,
+  } = useQuery({
     queryKey: ["audit-types"],
-    queryFn: async () =>
-      (await supabase.from("audit_types").select("*").order("name_ar")).data ?? [],
+    queryFn: ({ signal }) => loadChecklistTypes(signal),
   });
 
-  const { data: tree } = useQuery({
+  const {
+    data: tree,
+    isLoading: treeLoading,
+    isError: treeError,
+    refetch: retryTree,
+  } = useQuery({
     queryKey: ["checklist", typeId],
     enabled: Boolean(typeId),
-    queryFn: async () => {
-      const [sections, questions] = await Promise.all([
-        supabase.from("sections").select("*").eq("audit_type_id", typeId).order("order_index"),
-        supabase.from("questions").select("*").eq("audit_type_id", typeId).order("item_order"),
-      ]);
-      const sectionIds = (sections.data ?? []).map((section) => section.id);
-      const headers = sectionIds.length
-        ? ((
-            await supabase
-              .from("headers")
-              .select("*")
-              .in("section_id", sectionIds)
-              .order("order_index")
-          ).data ?? [])
-        : [];
-      return { sections: sections.data ?? [], headers, questions: questions.data ?? [] };
-    },
+    queryFn: ({ signal }) => loadChecklistTree(typeId, signal),
   });
 
   const refresh = () => {
+    void invalidateDashboard(queryClient);
     queryClient.invalidateQueries({ queryKey: ["checklist", typeId] });
     queryClient.invalidateQueries({ queryKey: ["audit-types"] });
   };
@@ -96,7 +93,12 @@ export function ChecklistManager() {
   );
 
   const toggleAuditTypeActive = async (id: string, current: boolean) => {
-    const { error } = await supabase.from("audit_types").update({ active: !current }).eq("id", id);
+    const { error } = await supabase
+      .from("audit_types")
+      .update({ active: !current })
+      .eq("id", id)
+      .select("id")
+      .single();
     if (error) {
       toast.error("تعذر تعديل الحالة");
       return;
@@ -110,7 +112,9 @@ export function ChecklistManager() {
     const { error } = await supabase
       .from("audit_types")
       .update({ name_ar: editingTypeName.trim() })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .single();
     if (error) {
       toast.error("تعذر إعادة التسمية");
       return;
@@ -122,17 +126,26 @@ export function ChecklistManager() {
 
   const deleteAuditType = async (id: string) => {
     if (!confirm("هل أنت متأكد من حذف نوع التدقيق بالكامل؟")) return;
-    const { count } = await supabase
+    const { count, error: countError } = await supabase
       .from("audits")
       .select("id", { count: "exact", head: true })
       .eq("audit_type_id", id);
-    if (count && count > 0) {
+    if (countError || count === null) {
+      toast.error("تعذر التحقق من الفحوصات المرتبطة؛ لم يتم الحذف");
+      return;
+    }
+    if (count > 0) {
       toast.error(
         "لا يمكن حذف نوع التدقيق لوجود فحوصات وزيارات مرتبطة به. يمكنك تعطيله بدلاً من ذلك.",
       );
       return;
     }
-    const { error } = await supabase.from("audit_types").delete().eq("id", id);
+    const { error } = await supabase
+      .from("audit_types")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .single();
     if (error) {
       toast.error("تعذر الحذف، يرجى تفريغ الأقسام التابعة له أولاً");
       return;
@@ -147,7 +160,9 @@ export function ChecklistManager() {
     const { error } = await supabase
       .from("sections")
       .update({ name_ar: editingSectionName.trim() })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .single();
     if (error) {
       toast.error("تعذر إعادة تسمية القسم");
       return;
@@ -159,15 +174,16 @@ export function ChecklistManager() {
 
   const deleteSection = async (id: string) => {
     if (!confirm("هل أنت متأكد من حذف القسم وكافة الأسئلة التابعة له؟")) return;
-    await supabase.from("questions").delete().eq("section_id", id);
-    await supabase.from("headers").delete().eq("section_id", id);
-    const { error } = await supabase.from("sections").delete().eq("id", id);
-    if (error) {
-      toast.error("تعذر حذف القسم لوجود إجابات مسجلة له مسبقاً");
-      return;
+    try {
+      await supabase.from("questions").delete().eq("section_id", id).throwOnError();
+      await supabase.from("headers").delete().eq("section_id", id).throwOnError();
+      await supabase.from("sections").delete().eq("id", id).select("id").single().throwOnError();
+      toast.success("تم حذف القسم");
+    } catch {
+      toast.error("تعذر إكمال حذف القسم؛ تم إيقاف العملية. راجع القائمة قبل إعادة المحاولة");
+    } finally {
+      refresh();
     }
-    toast.success("تم حذف القسم");
-    refresh();
   };
 
   const saveHeaderName = async (id: string) => {
@@ -175,7 +191,9 @@ export function ChecklistManager() {
     const { error } = await supabase
       .from("headers")
       .update({ label_ar: editingHeaderName.trim() })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .single();
     if (error) {
       toast.error("تعذر تعديل العنوان");
       return;
@@ -187,14 +205,19 @@ export function ChecklistManager() {
 
   const deleteHeader = async (id: string) => {
     if (!confirm("هل أنت متأكد من حذف هذا العنوان؟ (الأسئلة التابعة له ستصبح بدون عنوان)")) return;
-    await supabase.from("questions").update({ header_id: null }).eq("header_id", id);
-    const { error } = await supabase.from("headers").delete().eq("id", id);
-    if (error) {
-      toast.error("تعذر حذف العنوان");
-      return;
+    try {
+      await supabase
+        .from("questions")
+        .update({ header_id: null })
+        .eq("header_id", id)
+        .throwOnError();
+      await supabase.from("headers").delete().eq("id", id).select("id").single().throwOnError();
+      toast.success("تم حذف العنوان الفرعي");
+    } catch {
+      toast.error("تعذر إكمال حذف العنوان؛ راجع القائمة قبل إعادة المحاولة");
+    } finally {
+      refresh();
     }
-    toast.success("تم حذف العنوان الفرعي");
-    refresh();
   };
 
   const addAuditType = async () => {
@@ -228,417 +251,73 @@ export function ChecklistManager() {
     const { data: oldQuestions } = await supabase
       .from("questions")
       .select("id")
-      .eq("audit_type_id", typeId);
+      .eq("audit_type_id", typeId)
+      .throwOnError();
     const ids = (oldQuestions ?? []).map((question) => question.id);
     if (ids.length) {
       const { count } = await supabase
         .from("audit_answers")
         .select("id", { count: "exact", head: true })
-        .in("question_id", ids);
+        .in("question_id", ids)
+        .throwOnError();
       if (count && count > 0) {
-        await supabase.from("questions").update({ active: false }).eq("audit_type_id", typeId);
-        await supabase.from("sections").update({ active: false }).eq("audit_type_id", typeId);
+        await supabase
+          .from("questions")
+          .update({ active: false })
+          .eq("audit_type_id", typeId)
+          .throwOnError();
+        await supabase
+          .from("sections")
+          .update({ active: false })
+          .eq("audit_type_id", typeId)
+          .throwOnError();
         return "archived" as const;
       }
-      await supabase.from("questions").delete().eq("audit_type_id", typeId);
+      await supabase.from("questions").delete().eq("audit_type_id", typeId).throwOnError();
     }
     const { data: oldSections } = await supabase
       .from("sections")
       .select("id")
-      .eq("audit_type_id", typeId);
+      .eq("audit_type_id", typeId)
+      .throwOnError();
     const sectionIds = (oldSections ?? []).map((section) => section.id);
     if (sectionIds.length) {
-      await supabase.from("headers").delete().in("section_id", sectionIds);
-      await supabase.from("sections").delete().eq("audit_type_id", typeId);
+      await supabase.from("headers").delete().in("section_id", sectionIds).throwOnError();
+      await supabase.from("sections").delete().eq("audit_type_id", typeId).throwOnError();
     }
     return "deleted" as const;
   };
 
   // معالج استيراد ذكي وشامل لجميع أنواع الفحوصات (FS, GHP, FSMS)
   const importChecklist = async (file: File) => {
+    if (importing) return;
     if (!typeId) {
       toast.error("اختر نوع التدقيق أولاً");
       return;
     }
     setImporting(true);
     try {
+      const { readChecklistFile, validateChecklistWorkbook, importChecklistWorkbook } =
+        await import("@/lib/checklist-import");
+      const workbook = await readChecklistFile(file);
+      await validateChecklistWorkbook(workbook, {
+        typeId,
+        sectionCount: tree?.sections?.length ?? 0,
+        questionCount: tree?.questions?.length ?? 0,
+      });
       await (replaceExisting ? purgeChecklist() : Promise.resolve(null));
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-
-      let secCounter = tree?.sections?.length ?? 0;
-      let qCounter = tree?.questions?.length ?? 0;
-      let totalSections = 0;
-      let totalQuestions = 0;
-
-      // فحص نوع الملف بناء على محتواه
-      const templateSheet = workbook.Sheets[workbook.SheetNames[0]];
-      const templateRows = templateSheet
-        ? XLSX.utils.sheet_to_json<unknown[]>(templateSheet, { header: 1, defval: null })
-        : [];
-      const templateHeader = (templateRows[0] ?? []).map((cell) =>
-        String(cell ?? "")
-          .trim()
-          .toLowerCase(),
-      );
-      const isChecklistTemplate = ["title", "department", "header", "itemtext", "maxscore"].every(
-        (column) => templateHeader.includes(column.toLowerCase()),
-      );
-      const isFSMS =
-        workbook.SheetNames.length === 1 &&
-        workbook.Sheets["Sheet1"] &&
-        JSON.stringify(XLSX.utils.sheet_to_json(workbook.Sheets["Sheet1"])).includes("22000");
-
-      const isGHP = workbook.SheetNames.some(
-        (s) =>
-          s.includes("بقالة") || s.includes("جزارة و اسماك") || s.includes("المبيعات المشتركة"),
-      );
-
-      // ----------------------------------------------------
-      // الحالة 0: تمبلت Checklist_Master الموحد
-      // ----------------------------------------------------
-      if (isChecklistTemplate) {
-        const columnIndex = new Map(templateHeader.map((column, index) => [column, index]));
-        const titleIndex = columnIndex.get("title")!;
-        const departmentIndex = columnIndex.get("department")!;
-        const headerIndex = columnIndex.get("header")!;
-        const itemTextIndex = columnIndex.get("itemtext")!;
-        const maxScoreIndex = columnIndex.get("maxscore")!;
-        const sectionsByName = new Map<string, string>();
-        const headersBySection = new Map<string, string>();
-        let questionOrder = qCounter;
-
-        for (const row of templateRows.slice(1)) {
-          const title = String(row[titleIndex] ?? "").trim();
-          const department = String(row[departmentIndex] ?? "").trim();
-          const header = String(row[headerIndex] ?? "").trim();
-          const itemText = String(row[itemTextIndex] ?? "").trim();
-          if (!department || !itemText) continue;
-
-          let sectionId = sectionsByName.get(department);
-          if (!sectionId) {
-            const { data: section } = await supabase
-              .from("sections")
-              .insert({
-                audit_type_id: typeId,
-                name_ar: department,
-                order_index: secCounter++,
-                is_delivery: false,
-                active: true,
-              } as never)
-              .select("id")
-              .single();
-            if (!section) continue;
-            sectionId = section.id;
-            sectionsByName.set(department, sectionId);
-            totalSections++;
-          }
-
-          const headerKey = `${sectionId}:${header}`;
-          let headerId = headersBySection.get(headerKey) ?? null;
-          if (header && !headerId) {
-            const { data: insertedHeader } = await supabase
-              .from("headers")
-              .insert({
-                section_id: sectionId,
-                label_ar: header,
-                order_index: headersBySection.size,
-              } as never)
-              .select("id")
-              .single();
-            headerId = insertedHeader?.id ?? null;
-            if (headerId) headersBySection.set(headerKey, headerId);
-          }
-
-          const parsedMaxScore = Number(row[maxScoreIndex]);
-          await supabase.from("questions").insert({
-            audit_type_id: typeId,
-            section_id: sectionId,
-            header_id: headerId,
-            item_id: title || `ITEM-${totalQuestions + 1}`,
-            text_ar: itemText,
-            max_score: Number.isFinite(parsedMaxScore) && parsedMaxScore > 0 ? parsedMaxScore : 4,
-            item_order: questionOrder++,
-            active: true,
-          } as never);
-          totalQuestions++;
-        }
-      }
-      // ----------------------------------------------------
-      // الحالة 1: ملف FSMS (المواصفة والدورة المستندية)
-      // ----------------------------------------------------
-      else if (isFSMS) {
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
-
-        const { data: mainSec } = await supabase
-          .from("sections")
-          .insert({
-            audit_type_id: typeId,
-            name_ar: "الدورة المستندية ونظام سلامة الغذاء (FSMS)",
-            order_index: secCounter++,
-            is_delivery: false,
-            active: true,
-          } as never)
-          .select("id")
-          .single();
-
-        if (mainSec) {
-          totalSections++;
-          let currentHeaderId: string | null = null;
-          let hOrder = 0;
-
-          for (let r = 7; r < rows.length; r++) {
-            const row = rows[r];
-            if (!row || row.length === 0) continue;
-            const col0 = row[0] !== null ? String(row[0]).trim() : "";
-            const col1 = row[1] !== null ? String(row[1]).trim() : "";
-            const scoreRef =
-              typeof row[2] === "number" ? row[2] : typeof row[3] === "number" ? row[3] : 4;
-
-            // لو الصف عنوان رئيسي لمواصفة
-            if (col0 && !row[2] && !row[3]) {
-              const { data: hData } = await supabase
-                .from("headers")
-                .insert({
-                  section_id: mainSec.id,
-                  label_ar: `${col0} - ${col1}`,
-                  order_index: hOrder++,
-                } as never)
-                .select("id")
-                .single();
-              currentHeaderId = hData?.id ?? null;
-              continue;
-            }
-
-            const qText = col1 || (isNaN(Number(col0)) ? col0 : "");
-            if (qText && qText.length > 3 && qText !== "بنود المراجعة") {
-              await supabase.from("questions").insert({
-                audit_type_id: typeId,
-                section_id: mainSec.id,
-                header_id: currentHeaderId,
-                item_id: col0 && !isNaN(Number(col0)) ? `ISO-${col0}` : `DOC-${totalQuestions + 1}`,
-                text_ar: qText,
-                max_score: scoreRef,
-                item_order: qCounter++,
-                active: true,
-              } as never);
-              totalQuestions++;
-            }
-          }
-        }
-      }
-      // ----------------------------------------------------
-      // الحالة 2: ملف GHP (الممارسات الصحية والنظافة - جداول متجاورة)
-      // ----------------------------------------------------
-      else if (isGHP) {
-        for (const sheetName of workbook.SheetNames) {
-          const sheet = workbook.Sheets[sheetName];
-          if (!sheet) continue;
-          const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
-          if (!rows || rows.length < 5) continue;
-
-          // البحث عن عناوين الأقسام الموجودة في الشيت (يدعم عمودين متجاورين في الشيت الواحد)
-          let colSets: { startCol: number; name: string }[] = [];
-
-          for (let r = 0; r < 8; r++) {
-            const row = rows[r];
-            if (!row) continue;
-            for (let c = 0; c < row.length; c++) {
-              const val = String(row[c] || "").trim();
-              if (
-                val.includes("قسم ") ||
-                val.includes("النظافة العامة") ||
-                val.includes("التجارة الالكترونية") ||
-                val.includes("المبيعات المشتركة")
-              ) {
-                if (!colSets.some((cs) => cs.name === val)) {
-                  colSets.push({ startCol: c, name: val.replace(/^[\d\s\-–]+/, "").trim() });
-                }
-              }
-            }
-          }
-
-          if (colSets.length === 0) {
-            colSets = [{ startCol: 0, name: sheetName.trim() }];
-          }
-
-          for (const cSet of colSets) {
-            const isDelivery = /توصيل|تجارة الكترونية|الكترونية/i.test(cSet.name);
-            const { data: secData } = await supabase
-              .from("sections")
-              .insert({
-                audit_type_id: typeId,
-                name_ar: cSet.name,
-                order_index: secCounter++,
-                is_delivery: isDelivery,
-                active: true,
-              } as never)
-              .select("id")
-              .single();
-
-            if (!secData) continue;
-            totalSections++;
-            const sectionId = secData.id;
-            let currentHeaderId: string | null = null;
-            let hOrder = 0;
-
-            for (let r = 6; r < rows.length; r++) {
-              const row = rows[r];
-              if (!row) continue;
-              const cellScore = row[cSet.startCol];
-              const cellItem = row[cSet.startCol + 2] || row[cSet.startCol + 1];
-              const cellHeader = row[cSet.startCol + 3] || row[cSet.startCol + 4];
-
-              if (cellHeader && typeof cellHeader === "string" && cellHeader.length > 2) {
-                const { data: hData } = await supabase
-                  .from("headers")
-                  .insert({
-                    section_id: sectionId,
-                    label_ar: cellHeader.trim(),
-                    order_index: hOrder++,
-                  } as never)
-                  .select("id")
-                  .single();
-                currentHeaderId = hData?.id ?? null;
-              }
-
-              const itemText = cellItem ? String(cellItem).trim() : "";
-              if (
-                itemText &&
-                itemText.length > 2 &&
-                itemText !== "البند" &&
-                !itemText.includes("التقييم")
-              ) {
-                const isBadHabit =
-                  itemText.includes("عادات خاطئة") || itemText.includes("العادات الخاطئة");
-                await supabase.from("questions").insert({
-                  audit_type_id: typeId,
-                  section_id: sectionId,
-                  header_id: currentHeaderId,
-                  item_id: isBadHabit ? "GHP-HABIT" : `GHP-${totalQuestions + 1}`,
-                  text_ar: itemText,
-                  max_score: typeof cellScore === "number" ? cellScore : 4,
-                  item_order: qCounter++,
-                  active: true,
-                } as never);
-                totalQuestions++;
-              }
-            }
-          }
-        }
-      }
-      // ----------------------------------------------------
-      // الحالة 3: ملف فحص الفروع العادي (Stores FS)
-      // ----------------------------------------------------
-      else {
-        for (const sheetName of workbook.SheetNames) {
-          if (
-            sheetName.includes("البيانات") ||
-            sheetName.toLowerCase().includes("data") ||
-            sheetName.includes("الملخص")
-          ) {
-            continue;
-          }
-          const sheet = workbook.Sheets[sheetName];
-          if (!sheet) continue;
-          const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
-          if (!rows || rows.length < 2) continue;
-
-          let sectionRawTitle = rows[0]?.[0] ? String(rows[0][0]).trim() : sheetName.trim();
-          const cleanSectionName =
-            sectionRawTitle.replace(/^[\d\s\-–]+/, "").trim() || sheetName.trim();
-          const isDelivery =
-            /delivery|توصيل/i.test(cleanSectionName) || /delivery|توصيل/i.test(sheetName);
-
-          const { data: sectionData } = await supabase
-            .from("sections")
-            .insert({
-              audit_type_id: typeId,
-              name_ar: cleanSectionName,
-              order_index: secCounter++,
-              is_delivery: isDelivery,
-              active: true,
-            } as never)
-            .select("id")
-            .single();
-
-          if (!sectionData) continue;
-          totalSections++;
-          const sectionId = sectionData.id;
-          let currentHeaderId: string | null = null;
-          let headerOrder = 0;
-          let itemIndex = 1;
-
-          for (let r = 1; r < rows.length; r++) {
-            const row = rows[r];
-            if (!row || row.length === 0) continue;
-            const col0 = row[0] !== null && row[0] !== undefined ? String(row[0]).trim() : "";
-            const col1 = row[1] !== null && row[1] !== undefined ? String(row[1]).trim() : "";
-            const col3 = row[3];
-            const col4 = row[4];
-
-            if (
-              col0 === "البند" ||
-              col1 === "البند" ||
-              col0.includes("الاجمالي") ||
-              col0.includes("اجمالي")
-            )
-              continue;
-            if (!col0 && !col1 && typeof col3 === "number" && typeof col4 === "number") continue;
-
-            const isSubHeader =
-              (col0 && !col1 && col3 === null && col4 === null && isNaN(Number(col0))) ||
-              (col1 && !col0 && col3 === null && col4 === null && isNaN(Number(col1)));
-
-            if (isSubHeader) {
-              const headerTitle = (col0 || col1).replace(/[:：]/g, "").trim();
-              if (headerTitle.length > 2 && headerTitle !== "البند") {
-                const { data: headerData } = await supabase
-                  .from("headers")
-                  .insert({
-                    section_id: sectionId,
-                    label_ar: headerTitle,
-                    order_index: headerOrder++,
-                  } as never)
-                  .select("id")
-                  .single();
-                currentHeaderId = headerData?.id ?? null;
-                continue;
-              }
-            }
-
-            let questionText =
-              col1 && col1 !== "البند" ? col1 : col0 && isNaN(Number(col0)) ? col0 : "";
-            let maxScore =
-              typeof col4 === "number" && col4 > 0
-                ? col4
-                : typeof col3 === "number" && col3 > 0
-                  ? col3
-                  : 4;
-
-            if (questionText && questionText.length > 3) {
-              await supabase.from("questions").insert({
-                audit_type_id: typeId,
-                section_id: sectionId,
-                header_id: currentHeaderId,
-                item_id: `FS-${totalSections}-${String(itemIndex++).padStart(2, "0")}`,
-                text_ar: questionText,
-                max_score: maxScore,
-                item_order: qCounter++,
-                active: true,
-              } as never);
-              totalQuestions++;
-            }
-          }
-        }
-      }
+      const { totalSections, totalQuestions } = await importChecklistWorkbook(workbook, {
+        typeId,
+        sectionCount: tree?.sections?.length ?? 0,
+        questionCount: tree?.questions?.length ?? 0,
+      });
 
       toast.success(`تم استيراد ${totalSections} قسماً و ${totalQuestions} بنداً بنجاح!`);
-      refresh();
     } catch (error: any) {
       console.error("Import error:", error);
       toast.error(error instanceof Error ? error.message : "تعذر استيراد ملف الإكسيل");
     } finally {
+      refresh();
       setImporting(false);
     }
   };
@@ -672,11 +351,15 @@ export function ChecklistManager() {
     const label = (newHeader[sectionId] ?? "").trim();
     if (!label) return;
     const order = tree?.headers.filter((header) => header.section_id === sectionId).length ?? 0;
-    await supabase.from("headers").insert({
+    const { error } = await supabase.from("headers").insert({
       section_id: sectionId,
       label_ar: label.slice(0, 160),
       order_index: order,
     } as never);
+    if (error) {
+      toast.error("تعذر إضافة العنوان؛ أعد المحاولة");
+      return;
+    }
     setNewHeader((prev) => ({ ...prev, [sectionId]: "" }));
     refresh();
   };
@@ -686,7 +369,7 @@ export function ChecklistManager() {
     const text = (newQuestion[key] ?? "").trim();
     if (!text) return;
     const order = tree?.questions.length ?? 0;
-    await supabase.from("questions").insert({
+    const { error } = await supabase.from("questions").insert({
       audit_type_id: typeId,
       section_id: sectionId,
       header_id: headerId,
@@ -696,6 +379,10 @@ export function ChecklistManager() {
       item_order: order,
       active: true,
     } as never);
+    if (error) {
+      toast.error("تعذر إضافة البند؛ أعد المحاولة");
+      return;
+    }
     setNewQuestion((prev) => ({ ...prev, [key]: "" }));
     refresh();
   };
@@ -706,21 +393,49 @@ export function ChecklistManager() {
     a: { id: string; order: number },
     b: { id: string; order: number },
   ) => {
-    await Promise.all([
-      supabase
-        .from(table)
-        .update({ [field]: b.order } as never)
-        .eq("id", a.id),
-      supabase
-        .from(table)
-        .update({ [field]: a.order } as never)
-        .eq("id", b.id),
-    ]);
-    refresh();
+    try {
+      const results = await Promise.all([
+        supabase
+          .from(table)
+          .update({ [field]: b.order } as never)
+          .eq("id", a.id),
+        supabase
+          .from(table)
+          .update({ [field]: a.order } as never)
+          .eq("id", b.id),
+      ]);
+      if (results.some((result) => result.error)) throw new Error("تعذر الترتيب");
+    } catch {
+      toast.error("تعذر إكمال تغيير الترتيب؛ راجع ترتيب القائمة بعد التحديث");
+    } finally {
+      refresh();
+    }
   };
 
+  if (typesLoading || (typeId && treeLoading))
+    return (
+      <div role="status" className="surface-card p-6 text-center">
+        جاري تحميل قوائم التفتيش…
+      </div>
+    );
+  if (typesError || treeError)
+    return (
+      <div role="alert" className="surface-card space-y-3 p-6 text-center" dir="rtl">
+        <p>تعذر تحميل قائمة التفتيش كاملة. أعد المحاولة قبل تعديل البنود.</p>
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (typesError) void retryTypes();
+            if (treeError) void retryTree();
+          }}
+        >
+          إعادة المحاولة
+        </Button>
+      </div>
+    );
+
   return (
-    <div className="space-y-4" dir="rtl">
+    <fieldset disabled={importing} aria-busy={importing} className="min-w-0 space-y-4" dir="rtl">
       <div className="surface-card space-y-4 p-5">
         <div className="space-y-2">
           <Label className="font-bold">نوع التدقيق الحالي</Label>
@@ -826,9 +541,7 @@ export function ChecklistManager() {
             <Label htmlFor="tscoring">نظام التقييم</Label>
             <Select
               value={newScoringSystem}
-              onValueChange={(value) =>
-                setNewScoringSystem(value as "4-1-0" | "4-2-0" | "4-2-1-0")
-              }
+              onValueChange={(value) => setNewScoringSystem(value as "4-1-0" | "4-2-0" | "4-2-1-0")}
             >
               <SelectTrigger id="tscoring">
                 <SelectValue />
@@ -979,7 +692,7 @@ export function ChecklistManager() {
                     aria-label="تحريك لأعلى"
                     disabled={sectionIndex === 0}
                     onClick={() => {
-                      const prev = tree.sections[sectionIndex - 1]!;
+                      const prev = tree!.sections[sectionIndex - 1]!;
                       swapOrder(
                         "sections",
                         "order_index",
@@ -995,9 +708,9 @@ export function ChecklistManager() {
                     variant="ghost"
                     className="size-8"
                     aria-label="تحريك لأسفل"
-                    disabled={sectionIndex === tree.sections.length - 1}
+                    disabled={sectionIndex === tree!.sections.length - 1}
                     onClick={() => {
-                      const next = tree.sections[sectionIndex + 1]!;
+                      const next = tree!.sections[sectionIndex + 1]!;
                       swapOrder(
                         "sections",
                         "order_index",
@@ -1142,8 +855,8 @@ export function ChecklistManager() {
                             <QuestionRow
                               key={question.id}
                               question={question}
-                              sections={tree.sections}
-                              headers={tree.headers}
+                              sections={tree!.sections}
+                              headers={tree!.headers}
                               onSaved={refresh}
                               onMove={(direction) => {
                                 const neighbour = groupQuestions[questionIndex + direction];
@@ -1187,7 +900,7 @@ export function ChecklistManager() {
           );
         },
       )}
-    </div>
+    </fieldset>
   );
 }
 
@@ -1223,48 +936,84 @@ function QuestionRow({
   const [sectionId, setSectionId] = useState(question.section_id);
   const [headerId, setHeaderId] = useState(question.header_id ?? "none");
 
+  const [busy, setBusy] = useState(false);
+  const actionLock = useRef(false);
+  const run = async (task: () => Promise<void>) => {
+    if (actionLock.current) return;
+    actionLock.current = true;
+    setBusy(true);
+    try {
+      await task();
+    } catch {
+      toast.error("تعذر حفظ التغيير؛ أعد المحاولة");
+    } finally {
+      actionLock.current = false;
+      setBusy(false);
+    }
+  };
+
   const dirty =
     text !== question.text_ar ||
     Number(maxScore) !== question.max_score ||
     sectionId !== question.section_id ||
     headerId !== (question.header_id ?? "none");
 
-  const save = async () => {
-    const score = Number(maxScore);
-    if (!text.trim() || !Number.isFinite(score) || score <= 0) {
-      toast.error("تحقق من نص السؤال والدرجة القصوى");
-      return;
-    }
-    const { error } = await supabase
-      .from("questions")
-      .update({
-        text_ar: text.trim().slice(0, 500),
-        max_score: score,
-        section_id: sectionId,
-        header_id: headerId === "none" ? null : headerId,
-      })
-      .eq("id", question.id);
-    if (error) {
-      toast.error("تعذر حفظ التعديل");
-      return;
-    }
-    toast.success("تم الحفظ بنجاح");
-    onSaved();
-  };
+  const save = () =>
+    run(async () => {
+      const score = Number(maxScore);
+      if (!text.trim() || !Number.isFinite(score) || score <= 0) {
+        toast.error("تحقق من نص السؤال والدرجة القصوى");
+        return;
+      }
+      if (
+        !sections.some((section) => section.id === sectionId) ||
+        (headerId !== "none" &&
+          !headers.some((header) => header.id === headerId && header.section_id === sectionId))
+      ) {
+        toast.error("اختر قسمًا وعنوانًا تابعًا له قبل الحفظ");
+        return;
+      }
+      const { error } = await supabase
+        .from("questions")
+        .update({
+          text_ar: text.trim().slice(0, 500),
+          max_score: score,
+          section_id: sectionId,
+          header_id: headerId === "none" ? null : headerId,
+        })
+        .eq("id", question.id)
+        .select("id")
+        .single();
+      if (error) {
+        toast.error("تعذر حفظ التعديل");
+        return;
+      }
+      toast.success("تم الحفظ بنجاح");
+      onSaved();
+    });
 
-  const deleteQuestion = async () => {
-    if (!confirm("هل أنت متأكد من حذف هذا السؤال نهائياً؟")) return;
-    const { error } = await supabase.from("questions").delete().eq("id", question.id);
-    if (error) {
-      toast.error("تعذر حذف السؤال لوجود تقييمات سابقة مسجلة له");
-      return;
-    }
-    toast.success("تم حذف السؤال");
-    onSaved();
-  };
+  const deleteQuestion = () =>
+    run(async () => {
+      if (!confirm("هل أنت متأكد من حذف هذا السؤال نهائياً؟")) return;
+      const { error } = await supabase
+        .from("questions")
+        .delete()
+        .eq("id", question.id)
+        .select("id")
+        .single();
+      if (error) {
+        toast.error("تعذر حذف السؤال لوجود تقييمات سابقة مسجلة له");
+        return;
+      }
+      toast.success("تم حذف السؤال");
+      onSaved();
+    });
 
   return (
-    <div className="rounded-xl bg-card border border-border/70 p-3 shadow-xs space-y-2">
+    <fieldset
+      disabled={busy}
+      className="min-w-0 rounded-xl bg-card border border-border/70 p-3 shadow-xs space-y-2"
+    >
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span dir="ltr" className="font-mono font-bold bg-muted px-1.5 py-0.5 rounded text-[11px]">
           {question.item_id}
@@ -1305,10 +1054,18 @@ function QuestionRow({
           <div className="flex items-center gap-1 mr-1">
             <Switch
               checked={question.active}
-              onCheckedChange={async (value) => {
-                await supabase.from("questions").update({ active: value }).eq("id", question.id);
-                onSaved();
-              }}
+              onCheckedChange={(value) =>
+                void run(async () => {
+                  const { error } = await supabase
+                    .from("questions")
+                    .update({ active: value })
+                    .eq("id", question.id)
+                    .select("id")
+                    .single();
+                  if (error) throw error;
+                  onSaved();
+                })
+              }
             />
             <span className="text-[10px]">{question.active ? "مفعل" : "معطل"}</span>
           </div>
@@ -1318,6 +1075,7 @@ function QuestionRow({
       <Textarea
         className="text-xs"
         rows={2}
+        aria-label="نص بند التفتيش"
         value={text}
         onChange={(event) => setText(event.target.value)}
       />
@@ -1330,12 +1088,19 @@ function QuestionRow({
               className="w-16 h-7 text-xs text-center"
               type="number"
               min={1}
+              aria-label="الدرجة القصوى للبند"
               value={maxScore}
               onChange={(event) => setMaxScore(event.target.value)}
             />
           </div>
 
-          <Select value={sectionId} onValueChange={setSectionId}>
+          <Select
+            value={sectionId}
+            onValueChange={(value) => {
+              setSectionId(value);
+              setHeaderId("none");
+            }}
+          >
             <SelectTrigger className="w-36 h-7 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -1371,6 +1136,6 @@ function QuestionRow({
           <Save className="size-3.5" /> حفظ التعديل
         </Button>
       </div>
-    </div>
+    </fieldset>
   );
 }

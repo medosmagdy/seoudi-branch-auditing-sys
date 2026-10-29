@@ -1,26 +1,33 @@
+import { useAuditSharing } from "@/hooks/useAuditSharing";
+import { AuditSummaryScores } from "@/components/audit/AuditSummaryScores";
+import { auditReportFileBase } from "@/lib/audit-report-name";
 import { useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FileDown, FileSpreadsheet, Loader2, PenLine, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { addAuditDeduction, removeAuditDeduction } from "@/lib/audit-deductions";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { loadReportModel } from "@/lib/report-data";
-import { logAuditEdit } from "@/lib/generate-reports";
+import { logAuditEdit } from "@/lib/audit-log";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
 import { useSession } from "@/hooks/useSession";
 import { canEditAudit } from "@/lib/permissions";
+import { finalizeAudit } from "@/lib/finalize-audit";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
   head: () => ({
     meta: [
       { title: "Audit Summary — SQOP" },
-      { name: "description", content: "Review section scores, manage general deductions and submit the audit." },
+      {
+        name: "description",
+        content: "Review section scores, manage general deductions and submit the audit.",
+      },
       { property: "og:title", content: "Audit Summary — SQOP" },
       { property: "og:description", content: "Seoudi branch audit summary before submission." },
       { name: "robots", content: "noindex" },
@@ -34,29 +41,52 @@ function SummaryPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile } = useSession();
+  const sharing = useAuditSharing();
   const reportRef = useRef<HTMLDivElement>(null);
   const [reason, setReason] = useState("");
   const [percentage, setPercentage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [savingDeduction, setSavingDeduction] = useState(false);
+  const mutationLock = useRef(false);
+  const excelLock = useRef(false);
 
-  const { data: model, isLoading } = useQuery({
+  const {
+    data: model,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["audit-summary", id],
     queryFn: () => loadReportModel(id),
   });
 
+  if (isError) {
+    return (
+      <AppShell contentClassName="audit-summary-page" title="تعذر تحميل الفحص">
+        <div className="py-8 text-center" dir="rtl">
+          <p>تعذر تحميل بيانات الفحص كاملة. أعد المحاولة قبل المتابعة.</p>
+          <Button className="mt-3" onClick={() => void refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
   if (isLoading || !model) {
     return (
-      <AppShell title="Audit Summary">
+      <AppShell contentClassName="audit-summary-page" title="Audit Summary">
         <p className="text-sm text-muted-foreground text-center py-8">جاري التحميل…</p>
       </AppShell>
     );
   }
 
-  const { result } = model;
   const isDraft = model.status === "draft";
   const canEdit = profile
     ? canEditAudit({
+        sharedUserIds: sharing.peerIds,
         role: profile.role,
         userId: profile.id,
         createdBy: model.createdBy,
@@ -69,7 +99,7 @@ function SummaryPage() {
     if (!reportRef.current) return;
     try {
       setExportingPdf(true);
-      await downloadElementAsPdf(reportRef.current, `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`);
+      await downloadElementAsPdf(reportRef.current, auditReportFileBase(model));
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
     } catch {
       toast.error("تعذر تصدير تقرير الـ PDF");
@@ -88,17 +118,55 @@ function SummaryPage() {
       toast.error("أدخل سبب الخصم ونسبة بين 1 و 100%");
       return;
     }
-    const { error } = await supabase
-      .from("audit_general_deductions")
-      .insert({ audit_id: id, reason_text: reason.trim().slice(0, 300), percentage: value } as never);
-    if (error) {
-      toast.error("تعذر إضافة الخصم العام");
-      return;
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setSavingDeduction(true);
+    try {
+      await addAuditDeduction({ auditId: id }, reason, value);
+      await logAuditEdit(id, "general_deduction_added", `${reason.trim()} — ${value}%`).catch(() =>
+        toast.error("تم حفظ الخصم، لكن تعذر حفظ سجل التعديل"),
+      );
+      setReason("");
+      setPercentage("");
+      await queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
+    } catch {
+      toast.error("تعذر إضافة الخصم العام؛ بياناتك ما زالت موجودة لإعادة المحاولة");
+    } finally {
+      mutationLock.current = false;
+      setSavingDeduction(false);
     }
-    await logAuditEdit(id, "general_deduction_added", `${reason.trim()} — ${value}%`);
-    setReason("");
-    setPercentage("");
-    queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
+  };
+
+  const removeGeneralDeduction = async (deductionId: string, reasonText: string) => {
+    if (!canEdit || mutationLock.current) return;
+    mutationLock.current = true;
+    setSavingDeduction(true);
+    try {
+      await removeAuditDeduction({ auditId: id }, deductionId);
+      await logAuditEdit(id, "general_deduction_removed", reasonText).catch(() =>
+        toast.error("تم حذف الخصم، لكن تعذر حفظ سجل التعديل"),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
+    } catch {
+      toast.error("تعذر حذف الخصم العام؛ أعد المحاولة");
+    } finally {
+      mutationLock.current = false;
+      setSavingDeduction(false);
+    }
+  };
+
+  const exportSummaryExcel = async () => {
+    if (excelLock.current) return;
+    excelLock.current = true;
+    setExportingExcel(true);
+    try {
+      await exportAuditToExcel(id);
+    } catch {
+      toast.error("تعذر تصدير تقرير الإكسيل؛ أعد المحاولة");
+    } finally {
+      excelLock.current = false;
+      setExportingExcel(false);
+    }
   };
 
   const submitAudit = async () => {
@@ -106,81 +174,68 @@ function SummaryPage() {
       toast.error("لا تملك صلاحية اعتماد هذا الفحص");
       return;
     }
+    if (mutationLock.current) return;
+    mutationLock.current = true;
     setSubmitting(true);
 
     try {
-      // 1. جلب الأسئلة المسجلة في جدول الإجابات
-      const [allQuestionsRes, existingAnswersRes] = await Promise.all([
-        supabase.from("questions").select("id, max_score, section_id").eq("active", true),
-        supabase.from("audit_answers").select("question_id").eq("audit_id", id),
-      ]);
+      const submittedResult = await finalizeAudit(id);
 
-      const existingQuestionIds = new Set((existingAnswersRes.data ?? []).map((a) => a.question_id));
-      const excludedSectionIds = new Set(
-        model.sections.filter((sec) => sec.excluded).map((sec) => sec.id)
-      );
-
-      // 2. تجميع كل الأسئلة التي لم تُلمس لحفظها بقيمتها الافتراضية (4)
-      const defaultAnswersToInsert = (allQuestionsRes.data ?? [])
-        .filter((q) => !existingQuestionIds.has(q.id) && !excludedSectionIds.has(q.section_id))
-        .map((q) => ({
-          audit_id: id,
-          question_id: q.id,
-          score: q.max_score ?? 4,
-          is_na: false,
-          comment: null,
-        }));
-
-      if (defaultAnswersToInsert.length > 0) {
-        await supabase
-          .from("audit_answers")
-          .upsert(defaultAnswersToInsert, { onConflict: "audit_id,question_id" });
-      }
-
-      // 3. اعتماد الفحص وتغيير حالته إلى submitted
-      const { error } = await supabase
-        .from("audits")
-        .update({
-          status: "submitted",
-          submitted_at: new Date().toISOString(),
-          score: result.finalPercentage,
-          overall_score: result.overallPercentage,
-        } as never)
-        .eq("id", id);
-
-      if (error) throw error;
-
-      await logAuditEdit(id, "submitted", `النتيجة النهائية ${result.finalPercentage}%`);
+      await logAuditEdit(
+        id,
+        "submitted",
+        `النتيجة النهائية ${submittedResult.finalPercentage}%`,
+      ).catch(() => toast.error("تم اعتماد الفحص، لكن تعذر حفظ سجل التعديل"));
       toast.success("تم إنهاء واعتماد الفحص بنجاح!");
-      queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["audit-summary", id] }),
+        queryClient.invalidateQueries({ queryKey: ["audit-report", id] }),
+        queryClient.invalidateQueries({ queryKey: ["audit", id] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-data-full"] }),
+        queryClient.invalidateQueries({ queryKey: ["audits"] }),
+      ]);
 
       // الانتقال المباشر لتقرير الفحص
       navigate({ to: "/audits/$id/report", params: { id } });
-    } catch {
-      toast.error("تعذر إنهاء واعتماد الفحص");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر إنهاء واعتماد الفحص");
     } finally {
+      mutationLock.current = false;
       setSubmitting(false);
     }
   };
 
   return (
     <AppShell
+      contentClassName="audit-summary-page"
       title="ملخص الفحص والتقييم"
       subtitle={`${model.branchName} · ${model.auditDate} · v${model.version}`}
       action={
-        <div className="flex items-center gap-2">
+        <div className="summary-actions flex flex-wrap items-center gap-2">
           <Badge variant={isDraft ? "outline" : "default"}>
             {isDraft ? "مسودة (Draft)" : "معتمد (Completed)"}
           </Badge>
 
           {/* زر تصدير الإكسيل المباشر */}
-          <Button size="sm" variant="outline" onClick={exportSummaryPdf} disabled={exportingPdf} className="gap-1.5 font-bold border-blue-300 text-blue-700">
-            {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />} تحميل PDF
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={exportSummaryPdf}
+            disabled={exportingPdf}
+            className="gap-1.5 font-bold border-blue-300 text-blue-700"
+          >
+            {exportingPdf ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileDown className="size-4" />
+            )}{" "}
+            تحميل PDF
           </Button>
 
           <Button
             size="sm"
-            onClick={() => exportAuditToExcel(id)}
+            onClick={() => void exportSummaryExcel()}
+            disabled={exportingExcel}
             className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
           >
             <FileSpreadsheet className="size-4" /> تقرير الإكسيل (Excel)
@@ -194,125 +249,101 @@ function SummaryPage() {
         </div>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-3" dir="rtl">
-        <MetricCard label="النسبة قبل الخصم العام" value={`${result.overallPercentage}%`} />
-        <MetricCard label="الخصومات العامة على الفرع" value={`${result.generalDeductionPercentage}%`} />
-        <div className="brand-banner rounded-2xl p-5 text-center">
-          <div className="text-xs opacity-80">النتيجة النهائية</div>
-          <div className="text-4xl font-extrabold">{result.finalPercentage}%</div>
-        </div>
-      </div>
+      <AuditSummaryScores model={model} canEdit={canEdit} />
 
-      <div className="surface-card mt-4 overflow-x-auto p-0" dir="rtl">
-        <table className="w-full text-sm text-right">
-          <thead className="bg-muted">
-            <tr>
-              <th className="p-3">القسم</th>
-              <th className="p-3">الدرجة</th>
-              <th className="p-3">خصم القسم</th>
-              <th className="p-3">النسبة المئوية</th>
-              <th className="p-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.sections.map((entry, index) => (
-              <tr key={entry.sectionId} className="border-t border-border">
-                <td className="p-3">
-                  <Link
-                    to="/audits/$id"
-                    params={{ id }}
-                    search={{ section: index }}
-                    className="text-primary hover:underline font-semibold"
-                  >
-                    {entry.nameAr}
-                  </Link>
-                  {entry.isDelivery && (
-                    <span className="mr-2 text-xs text-muted-foreground">
-                      (توصيل — تقييم منفصل)
-                    </span>
-                  )}
-                </td>
-<td className="p-3 font-mono">
-                    {entry.excluded ? "N/A" : <span dir="ltr">{entry.finalScore} / {entry.max}</span>}
-                  </td>
-                <td className="p-3 font-mono text-destructive">
-                  {entry.excluded ? "—" : `${entry.deductionPercentage}%`}
-                </td>
-                <td className="p-3 font-bold font-mono">
-                  {entry.excluded ? "—" : `${entry.percentage}%`}
-                </td>
-                <td className="p-3 text-left">
-                  <Button asChild size="sm" variant="ghost">
-                    <Link to="/audits/$id" params={{ id }} search={{ section: index }}>
-                      تعديل
-                    </Link>
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="surface-card mt-4 p-4" dir="rtl">
-        <h3 className="text-sm font-bold">الخصومات العامة على الفرع (General deductions)</h3>
+      <div className="summary-deductions surface-card mt-6 p-5 sm:p-6" dir="rtl">
+        <h2 className="font-bold">الخصومات العامة على الفرع</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          أسباب الخصم ونسبته المطبقة على النتيجة الإجمالية.
+        </p>
         <div className="mt-3 space-y-2">
           {model.generalDeductions.length === 0 && (
             <p className="text-xs text-muted-foreground">لا توجد أي خصومات عامة مطبقة.</p>
           )}
           {model.generalDeductions.map((deduction) => (
-            <div key={deduction.id} className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm">
+            <div
+              key={deduction.id}
+              className="flex items-center gap-2 rounded-md bg-muted px-3 py-2 text-sm"
+            >
               <span>{deduction.reasonText}</span>
-              <strong className="mr-auto font-mono text-destructive">-{deduction.percentage}%</strong>
+              <strong className="mr-auto font-mono text-destructive">
+                -{deduction.percentage}%
+              </strong>
               <button
                 aria-label="حذف الخصم"
-                onClick={async () => {
-                  await supabase.from("audit_general_deductions").delete().eq("id", deduction.id);
-                  await logAuditEdit(id, "general_deduction_removed", deduction.reasonText);
-                  queryClient.invalidateQueries({ queryKey: ["audit-summary", id] });
-                }}
+                disabled={!canEdit || savingDeduction || submitting}
+                onClick={() => void removeGeneralDeduction(deduction.id, deduction.reasonText)}
               >
                 <Trash2 className="size-4 text-destructive hover:opacity-80" />
               </button>
             </div>
           ))}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px_auto]">
           <Input
             className="flex-1 text-xs"
+            aria-label="سبب الخصم العام"
             placeholder="سبب الخصم العام (مثال: عدم ارتداء الزي، تدخين، نظافة الفرع الخارجى)..."
             maxLength={300}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
+            disabled={!canEdit || savingDeduction || submitting}
           />
           <Input
-            className="w-24 text-xs font-mono"
+            aria-label="نسبة الخصم العام"
+            className="w-full text-xs font-mono"
             type="number"
             min={0}
             max={100}
             placeholder="%"
             value={percentage}
             onChange={(event) => setPercentage(event.target.value)}
+            disabled={!canEdit || savingDeduction || submitting}
           />
-          <Button variant="outline" size="sm" onClick={addGeneralDeduction}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={addGeneralDeduction}
+            disabled={!canEdit || savingDeduction || submitting}
+          >
             إضافة خصم
           </Button>
         </div>
       </div>
 
-      <div ref={reportRef} className="pointer-events-none absolute -left-[10000px] top-0 w-[900px] bg-white p-4 text-black">
-        <ReportDocument model={model} />
+      <div className="mt-5 text-xs text-muted-foreground">
+        <p>اسم ملف التقرير عند التحميل</p>
+        <p className="mt-1 break-words" dir="ltr">
+          {auditReportFileBase(model)}
+        </p>
+      </div>
+      <div
+        className="summary-pdf-stage pointer-events-none fixed left-0 top-0 h-0 w-0 overflow-hidden"
+        aria-hidden="true"
+        inert
+      >
+        <div ref={reportRef} className="w-[900px] bg-white p-4 text-black">
+          <ReportDocument model={model} />
+        </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2" dir="rtl">
+      <div
+        className="summary-footer surface-card mt-6 flex flex-wrap items-center gap-3 p-5"
+        dir="rtl"
+      >
         {isDraft && canEdit && (
-          <Button disabled={submitting} onClick={submitAudit} className="gap-2 font-bold">
+          <Button
+            disabled={submitting || savingDeduction}
+            onClick={submitAudit}
+            className="gap-2 font-bold"
+          >
             {submitting && <Loader2 className="size-4 animate-spin" />} اعتماد وإنهاء الفحص
           </Button>
         )}
 
         <Button
-          onClick={() => exportAuditToExcel(id)}
+          onClick={() => void exportSummaryExcel()}
+          disabled={exportingExcel}
           className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
         >
           <FileSpreadsheet className="size-4" /> تصدير تقرير إكسيل (Excel)
@@ -325,14 +356,5 @@ function SummaryPage() {
         </Button>
       </div>
     </AppShell>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="surface-card p-5 text-center">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-3xl font-extrabold">{value}</div>
-    </div>
   );
 }

@@ -23,7 +23,10 @@ export function downloadBlob(blob: Blob, filename: string) {
 }
 
 /** Renders both files, archives them in storage and records them against the audit. */
-export async function generateReports(model: ReportModel, node: HTMLElement): Promise<GeneratedReport> {
+export async function generateReports(
+  model: ReportModel,
+  node: HTMLElement,
+): Promise<GeneratedReport> {
   const base = reportFileBase(model);
   const [pdf, docx] = await Promise.all([nodeToPdfBlob(node), buildReportDocx(model)]);
 
@@ -40,11 +43,15 @@ export async function generateReports(model: ReportModel, node: HTMLElement): Pr
     }),
   ]);
   if (pdfUpload.error || docxUpload.error) {
-    console.error("report upload failed", pdfUpload.error, docxUpload.error);
+    throw new Error("تم تجهيز الملفات، لكن تعذر أرشفتها في التخزين");
   } else {
-    await supabase.from("reports").insert({ audit_id: model.auditId, pdf_path: pdfPath, docx_path: docxPath });
+    const { error } = await supabase
+      .from("reports")
+      .insert({ audit_id: model.auditId, pdf_path: pdfPath, docx_path: docxPath })
+      .select("id")
+      .single();
+    if (error) throw error;
   }
-
 
   return {
     base,
@@ -63,13 +70,4 @@ export async function zipReports(report: GeneratedReport): Promise<Blob> {
   return zip.generateAsync({ type: "blob" });
 }
 
-export async function logAuditEdit(auditId: string, action: string, detail: string) {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) return;
-  await supabase.from("audit_edit_logs").insert({
-    audit_id: auditId,
-    user_id: data.user.id,
-    action: action.slice(0, 80),
-    detail: detail.slice(0, 500),
-  });
-}
+export { logAuditEdit } from "@/lib/audit-log";

@@ -13,7 +13,7 @@ export const Route = createFileRoute("/_authenticated/admin")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  beforeLoad: async () => { },
+  beforeLoad: async () => {},
   component: AdminPage,
 });
 
@@ -22,8 +22,11 @@ function AdminPage() {
 
   if (isLoading) {
     return (
-      <AppShell>
-        <div className="flex h-72 items-center justify-center text-xs text-muted-foreground" dir="rtl">
+      <AppShell contentClassName="admin-page">
+        <div
+          className="flex h-72 items-center justify-center text-xs text-muted-foreground"
+          dir="rtl"
+        >
           جاري التحقق من صلاحيات المدير...
         </div>
       </AppShell>
@@ -32,11 +35,17 @@ function AdminPage() {
 
   if (!isAdmin) {
     return (
-      <AppShell>
-        <div className="surface-card p-8 text-center space-y-2 rounded-2xl border border-border max-w-xl mx-auto my-12" dir="rtl">
-          <h2 className="text-base font-bold text-destructive">هذه الصفحة مخصصة لمديري النظام فقط.</h2>
+      <AppShell contentClassName="admin-page">
+        <div
+          className="surface-card p-8 text-center space-y-2 rounded-2xl border border-border max-w-xl mx-auto my-12"
+          dir="rtl"
+        >
+          <h2 className="text-base font-bold text-destructive">
+            هذه الصفحة مخصصة لمديري النظام فقط.
+          </h2>
           <p className="text-xs text-muted-foreground">
-            حسابك الحالي مسجل بصلاحية مفتش (Auditor). يرجى مراجعة مسؤول النظام لترقية الحساب.
+            حسابك الحالي لا يملك صلاحية إدارة النظام. راجع مسؤول النظام لو كنت تحتاج الوصول لهذه
+            الصفحة.
           </p>
         </div>
       </AppShell>
@@ -44,7 +53,7 @@ function AdminPage() {
   }
 
   return (
-    <AppShell>
+    <AppShell contentClassName="admin-page">
       <div className="space-y-6 max-w-7xl mx-auto" dir="rtl">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
           <div className="space-y-1">
@@ -59,12 +68,15 @@ function AdminPage() {
         </div>
 
         <Tabs defaultValue="users" className="space-y-6">
-          <TabsList className="bg-muted/40 p-1 rounded-xl border border-border/60 inline-flex">
+          <TabsList className="bg-muted/40 p-1 rounded-xl border border-border/60 inline-flex h-auto flex-wrap gap-1">
             <TabsTrigger value="users" className="text-xs font-bold gap-2 py-2 px-4 rounded-lg">
               <Users className="size-4" />
               المستخدمين والصلاحيات
             </TabsTrigger>
-            <TabsTrigger value="checklists" className="text-xs font-bold gap-2 py-2 px-4 rounded-lg">
+            <TabsTrigger
+              value="checklists"
+              className="text-xs font-bold gap-2 py-2 px-4 rounded-lg"
+            >
               <CheckSquare className="size-4" />
               قوائم وبنود التفتيش
             </TabsTrigger>

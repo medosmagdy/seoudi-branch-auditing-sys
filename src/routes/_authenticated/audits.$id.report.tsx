@@ -1,3 +1,6 @@
+import { useAuditSharing } from "@/hooks/useAuditSharing";
+import { auditReportFileBase } from "@/lib/audit-report-name";
+import { invalidateDashboard } from "@/lib/dashboard/cache";
 import { useState, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { loadReportModel } from "@/lib/report-data";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
-import { logAuditEdit } from "@/lib/generate-reports";
+import { logAuditEdit } from "@/lib/audit-log";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
 import { useSession } from "@/hooks/useSession";
@@ -32,34 +35,47 @@ function ReportPage() {
   const queryClient = useQueryClient();
   const reportRef = useRef<HTMLDivElement>(null);
   const { profile } = useSession();
+  const sharing = useAuditSharing();
 
   const [reopening, setReopening] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
 
   // 1. جلب بيانات التقرير والـ NCRs
-  const { data: model, isLoading, error } = useQuery({
+  const {
+    data: model,
+    isLoading,
+    error,
+    refetch,
+    isFetching,
+  } = useQuery({
     queryKey: ["audit-report", id],
     queryFn: () => loadReportModel(id),
   });
 
   // 2. جلب سجل التعديلات
-  const { data: logs } = useQuery({
+  const {
+    data: logs,
+    isLoading: loadingLogs,
+    isError: logsError,
+    refetch: retryLogs,
+  } = useQuery({
     queryKey: ["audit-logs", id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("audit_edit_logs")
         .select("*")
         .eq("audit_id", id)
         .order("created_at", { ascending: false })
         .limit(20);
+      if (error) throw error;
       return data ?? [];
     },
   });
 
   if (isLoading) {
     return (
-      <AppShell title="جاري تجهيز تقرير الفحص">
+      <AppShell contentClassName="audit-report-page" title="جاري تجهيز تقرير الفحص">
         <p className="text-sm text-muted-foreground text-center py-10" dir="rtl">
           جاري استخراج بيانات عدم المطابقة والخصومات...
         </p>
@@ -69,18 +85,32 @@ function ReportPage() {
 
   if (error || !model) {
     return (
-      <AppShell title="تعذر فتح تقرير الفحص">
-        <div className="mx-auto max-w-xl rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center" dir="rtl">
+      <AppShell contentClassName="audit-report-page" title="تعذر فتح تقرير الفحص">
+        <div
+          className="mx-auto max-w-xl rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center"
+          dir="rtl"
+        >
           <p className="font-semibold text-destructive">تعذر تحميل بيانات هذا التقرير.</p>
-          <p className="mt-2 text-sm text-muted-foreground">تأكد من صلاحيات القراءة في Supabase ثم أعد المحاولة.</p>
-          <Button className="mt-4" onClick={() => window.location.reload()}>إعادة المحاولة</Button>
+          <p className="mt-2 text-sm text-muted-foreground">
+            تحقق من الاتصال ثم أعد المحاولة. لو المشكلة مستمرة، تواصل مع المسؤول.
+          </p>
+          <Button className="mt-4" disabled={isFetching} onClick={() => void refetch()}>
+            إعادة المحاولة
+          </Button>
         </div>
       </AppShell>
     );
   }
 
   const canEdit = profile
-    ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: model.createdBy, auditorId: model.auditorId, status: model.status })
+    ? canEditAudit({
+        sharedUserIds: sharing.peerIds,
+        role: profile.role,
+        userId: profile.id,
+        createdBy: model.createdBy,
+        auditorId: model.auditorId,
+        status: model.status,
+      })
     : false;
 
   // تصدير الإكسيل المباشر
@@ -104,7 +134,7 @@ function ReportPage() {
     try {
       setExportingPdf(true);
       toast.info("جاري تجهيز وتنسيق ملف الـ PDF...");
-      const fileName = `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`;
+      const fileName = auditReportFileBase(model);
       await downloadElementAsPdf(reportRef.current, fileName);
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
     } catch (err: any) {
@@ -121,32 +151,39 @@ function ReportPage() {
       toast.error("يمكنك عرض التقرير فقط؛ لا تملك صلاحية تعديله");
       return;
     }
+    if (reopening) return;
     setReopening(true);
-    const nextVersion = (model.version ?? 1) + 1;
-    const { error } = await supabase
-      .from("audits")
-      .update({
-        status: "draft",
-        version: nextVersion,
-        edited_at: new Date().toISOString(),
-      } as never)
-      .eq("id", id);
-
-    setReopening(false);
-
-    if (error) {
-      toast.error("تعذر إعادة فتح الفحص للتعديل");
-      return;
+    try {
+      const nextVersion = (model.version ?? 1) + 1;
+      const { data, error } = await supabase
+        .from("audits")
+        .update({
+          status: "draft",
+          version: nextVersion,
+          edited_at: new Date().toISOString(),
+        } as never)
+        .eq("id", id)
+        .select("id")
+        .single();
+      if (error) throw error;
+      if (!data) throw new Error("لم يتم تأكيد إعادة فتح الفحص");
+      await logAuditEdit(id, "reopened", `Reopened for editing as version ${nextVersion}`).catch(
+        () => toast.error("تم فتح الفحص، لكن تعذر حفظ سجل التعديل"),
+      );
+      void queryClient.invalidateQueries({ queryKey: ["audit-report", id] });
+      void invalidateDashboard(queryClient);
+      toast.success(`تم فتح الفحص كمسودة جديدة الإصدار ${nextVersion}`);
+      void navigate({ to: "/audits/$id", params: { id } });
+    } catch {
+      toast.error("تعذر إعادة فتح الفحص للتعديل. أعد المحاولة");
+    } finally {
+      setReopening(false);
     }
-
-    await logAuditEdit(id, "reopened", `Reopened for editing as version ${nextVersion}`);
-    queryClient.invalidateQueries({ queryKey: ["audit-report", id] });
-    toast.success(`تم فتح الفحص كمسودة جديدة الإصدار ${nextVersion}`);
-    navigate({ to: "/audits/$id", params: { id } });
   };
 
   return (
     <AppShell
+      contentClassName="audit-report-page"
       title={`تقرير عدم المطابقة والخصومات — ${model.branchName}`}
       subtitle={`${model.auditTypeName} • ${model.auditDate} • الإصدار v${model.version}`}
       action={
@@ -167,7 +204,11 @@ function ReportPage() {
             disabled={exportingPdf}
             className="gap-1.5 font-bold shadow-sm border-blue-300 text-blue-700 hover:bg-blue-50"
           >
-            {exportingPdf ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4 text-blue-600" />}
+            {exportingPdf ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileDown className="size-4 text-blue-600" />
+            )}
             {exportingPdf ? "جاري التجهيز..." : "تحميل PDF"}
           </Button>
 
@@ -178,7 +219,11 @@ function ReportPage() {
             disabled={exportingExcel}
             className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
           >
-            {exportingExcel ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+            {exportingExcel ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="size-4" />
+            )}
             تصدير تقرير إكسيل (Excel)
           </Button>
 
@@ -190,7 +235,11 @@ function ReportPage() {
               onClick={handleReopen}
               className="gap-1.5"
             >
-              {reopening ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
+              {reopening ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RotateCcw className="size-4" />
+              )}
               إعادة الفتح
             </Button>
           )}
@@ -220,7 +269,20 @@ function ReportPage() {
           سجل التعديلات والتغييرات
         </h3>
         <div className="mt-3 space-y-1.5 text-xs">
-          {(logs?.length ?? 0) === 0 && (
+          {loadingLogs && (
+            <p role="status" className="text-muted-foreground">
+              جاري تحميل سجل التعديلات…
+            </p>
+          )}
+          {logsError && (
+            <div role="alert" className="flex flex-wrap items-center gap-2">
+              <p>تعذر تحميل سجل التعديلات.</p>
+              <Button variant="outline" size="sm" onClick={() => void retryLogs()}>
+                إعادة المحاولة
+              </Button>
+            </div>
+          )}
+          {!loadingLogs && !logsError && (logs?.length ?? 0) === 0 && (
             <p className="text-muted-foreground">لا توجد تعديلات مسجلة.</p>
           )}
           {logs?.map((entry: any) => (

@@ -259,6 +259,8 @@ export type Database = {
           created_by: string;
           edited_at: string | null;
           id: string;
+          score: number | null;
+          overall_score: number | null;
           status: string;
           submitted_at: string | null;
           updated_at: string;
@@ -274,6 +276,8 @@ export type Database = {
           created_by?: string;
           edited_at?: string | null;
           id?: string;
+          score?: number | null;
+          overall_score?: number | null;
           status?: string;
           submitted_at?: string | null;
           updated_at?: string;
@@ -289,6 +293,8 @@ export type Database = {
           created_by?: string;
           edited_at?: string | null;
           id?: string;
+          score?: number | null;
+          overall_score?: number | null;
           status?: string;
           submitted_at?: string | null;
           updated_at?: string;
