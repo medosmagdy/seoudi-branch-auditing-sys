@@ -1,3 +1,6 @@
+import { auditReportFileBase } from "./audit-report-name";
+import { loadAuditNaDefaults, mergeAuditDefaults } from "./audit-na";
+import { loadAuditAnswers } from "@/lib/audit-answers";
 import { supabase } from "@/integrations/supabase/client";
 import { signedPhotoUrls } from "@/lib/photos";
 import { computeAudit, type AuditResult, type ScoringSection } from "@/lib/scoring";
@@ -9,6 +12,7 @@ export interface ReportPhoto {
 }
 
 export interface ReportQuestion {
+  unresolvedScore?: boolean;
   id: string;
   itemId: string;
   textAr: string;
@@ -56,6 +60,9 @@ export interface ReportModel {
   auditTypeName: string;
   auditTypeNameEn: string;
   branchName: string;
+  branchNameEn?: string | null;
+  auditTypeCode?: string | null;
+  branchCode?: string | null;
   branchManager: string;
   auditorName: string;
   auditDate: string;
@@ -74,11 +81,14 @@ export interface ReportModel {
   }[];
 }
 
-export async function loadReportModel(auditId: string): Promise<ReportModel> {
+export async function loadReportModel(
+  auditId: string,
+  options: { includePhotos?: boolean } = {},
+): Promise<ReportModel> {
   const { data: audit, error } = await supabase
     .from("audits")
     .select(
-      "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar), audit_types(name_ar, name_en)",
+      "id, status, version, audit_date, created_at, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar, name_en, code), audit_types(code, name_ar, name_en)",
     )
     .eq("id", auditId)
     .single();
@@ -109,11 +119,13 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       .eq("audit_type_id", audit.audit_type_id)
       .eq("active", true)
       .order("item_order"),
-    supabase.from("audit_answers").select("*").eq("audit_id", auditId),
+    loadAuditAnswers(auditId, audit.audit_type_id),
     supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
     supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
     supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
-    supabase.from("photos").select("*").eq("audit_id", auditId),
+    options.includePhotos === false
+      ? Promise.resolve({ data: [], error: null })
+      : supabase.from("photos").select("*").eq("audit_id", auditId),
     supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
     // التعديل هنا: جلب الفحوصات التاريخية مع درجاتها المحفوظة مسبقاً وتصفيتها حسب نوع التفتيش
     supabase
@@ -125,13 +137,31 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
       .order("audit_date", { ascending: true }),
   ]);
 
+  // Never calculate or submit a score from a partially failed load.
+  for (const response of [
+    sections,
+    headers,
+    questions,
+    statuses,
+    sectionDeductions,
+    generalDeductions,
+    photos,
+    auditor,
+    pastAudits,
+  ]) {
+    if (response.error) throw response.error;
+  }
+
   const sectionRows = sections.data ?? [];
   const headerRows = headers.data ?? [];
   const questionRows = questions.data ?? [];
-  const answerRows = answers.data ?? [];
+  const inherited = await loadAuditNaDefaults(audit);
+  const answerRows = mergeAuditDefaults(inherited.answers, answers, (row) => row.question_id);
   const photoRows = photos.data ?? [];
   const naSections = new Set(
-    (statuses.data ?? []).filter((row) => row.is_na).map((row) => row.section_id),
+    mergeAuditDefaults(inherited.statuses, statuses.data ?? [], (row) => row.section_id)
+      .filter((row) => row.is_na)
+      .map((row) => row.section_id),
   );
 
   const urls = await signedPhotoUrls(photoRows.map((photo) => photo.storage_path));
@@ -149,8 +179,9 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   // 2. دمج الإجابات مع القيمة الافتراضية (4 أو max_score) إذا لم يتم الإجابة عليها
   const answerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
   questionRows.forEach((q) => {
-    if (rawAnswerMap[q.id]) {
-      answerMap[q.id] = rawAnswerMap[q.id];
+    const savedAnswer = rawAnswerMap[q.id];
+    if (savedAnswer) {
+      answerMap[q.id] = savedAnswer;
     } else {
       answerMap[q.id] = {
         score: q.max_score ?? 4,
@@ -287,6 +318,7 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
               itemId: question.item_id,
               textAr: question.text_ar,
               maxScore: max,
+              unresolvedScore: answer?.score === null && !isNa,
               score: earned,
               isNa,
               comment,
@@ -314,13 +346,16 @@ export async function loadReportModel(auditId: string): Promise<ReportModel> {
   });
 
   return {
-  auditId,
-  createdBy: audit.created_by ?? null,
-  auditorId: audit.auditor_id ?? null,
-  status: audit.status,
+    auditId,
+    createdBy: audit.created_by ?? null,
+    auditorId: audit.auditor_id ?? null,
+    status: audit.status,
     version: audit.version ?? 1,
+    branchCode: (audit.branches as { code?: string | null } | null)?.code ?? null,
     auditTypeName: (audit.audit_types as { name_ar: string } | null)?.name_ar ?? "",
     auditTypeNameEn: (audit.audit_types as { name_en: string | null } | null)?.name_en ?? "",
+    branchNameEn: (audit.branches as { name_en?: string | null } | null)?.name_en ?? null,
+    auditTypeCode: (audit.audit_types as { code?: string | null } | null)?.code ?? null,
     branchName: (audit.branches as { name_ar: string } | null)?.name_ar ?? "",
     branchManager: audit.branch_manager ?? "",
     auditorName: auditor.data?.full_name || auditor.data?.email || "",
@@ -341,7 +376,5 @@ export function scoreLabel(question: { score: number | null; isNa: boolean }): s
 }
 
 export function reportFileBase(model: ReportModel): string {
-  const type = (model.auditTypeNameEn || "Audit").replace(/[^A-Za-z0-9]+/g, "");
-  const branch = (model.branchName || "Branch").replace(/[\\/:*?"<>|\s]+/g, "_");
-  return `NCR_Report_${type || "Audit"}_${branch}_${model.auditDate}`;
+  return auditReportFileBase(model);
 }

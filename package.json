@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/check-public-build.mjs",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "check": "tsc --noEmit",
+    "verify": "npm run check && npm test && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

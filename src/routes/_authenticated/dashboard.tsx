@@ -1,8 +1,24 @@
-import { useState, useMemo } from "react";
+import { useAuditSharing } from "@/hooks/useAuditSharing";
+import { dashboardMonthInterval, trackingIntervalMonths } from "@/lib/dashboard/month-interval";
+import { toast } from "sonner";
+import { buildTrackingRows, mergeTrackingAudits } from "@/lib/dashboard/tracking-model";
+import { fetchMonthlyTracking, updateMonthlyTracking } from "@/lib/dashboard/tracking";
+import { buildDashboardDetails, buildBranchProgramsTree } from "@/lib/dashboard/detail-model";
+import { currentMonthBounds } from "@/lib/dashboard/dates";
+import { MonthlyTrackingCard, type TrackingRow } from "@/components/dashboard/MonthlyTrackingCard";
+import { SectionCard } from "@/components/dashboard/SectionCard";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { z } from "zod";
 import { type LocationScope } from "@/lib/location-scope";
-import { fetchDashboardData } from "@/lib/dashboard/data";
-import { applyMonthlyAudits, findTrackingRow, type TrackingRow } from "@/lib/dashboard/monthly-tracking";
+import { dashboardSnapshotOptions, dashboardDetailOptions } from "@/lib/dashboard/queries";
+import {
+  aggregateDashboard,
+  dashboardErrorMessage,
+  dashboardMonthRange,
+} from "@/lib/dashboard/snapshot";
+import { DashboardFilterBar } from "@/components/DashboardFilterBar";
+import { DashboardRanking } from "@/components/DashboardRanking";
+import { DashboardScoreDetails } from "@/components/DashboardScoreDetails";
 import { supabase } from "@/integrations/supabase/client";
 import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -33,7 +49,6 @@ import { useSession } from "@/hooks/useSession";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -49,24 +64,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  DASHBOARD_PROGRAM_IDS,
-  auditMonthKey,
-  cleanSectionName,
-  compliancePercentage,
-  formatAuditComment,
-  maxQuestionScore,
-  numericScore,
-  programFromAuditType,
-} from "@/lib/dashboard/metrics";
-
-const { FS: FS_TYPE_ID, GHP: GHP_TYPE_ID, FSMS: FSMS_TYPE_ID } = DASHBOARD_PROGRAM_IDS;
-
-const PROGRAM_LABELS = {
-  FS: "مؤشرات أقسام سلامة الغذاء",
-  GHP: "مؤشرات أقسام النظافة والممارسات الصحية — GHP",
-  FSMS: "مؤشرات أقسام أنظمة سلامة الغذاء — FSMS",
-} as const;
 
 const dashboardSearchSchema = z.object({
   scope: z.enum(["branches", "warehouses"]).default("branches"),
@@ -83,70 +80,70 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
       { name: "robots", content: "noindex" },
     ],
   }),
-  component: ExecutiveDashboard,
+  component: DashboardGate,
 });
 
-const trackingStatus = {
-  not_started: { label: "لم يبدأ", className: "bg-muted text-muted-foreground", icon: Circle },
-  in_progress: { label: "غير مكتمل", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300", icon: Clock3 },
-  completed: { label: "مكتمل", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", icon: CheckCircle2 },
-} as const;
-
-const trackingGroups = [
-  { name: "د. ماجد", tone: "border-sky-500/30 bg-sky-500/5", branches: ["الشروق", "مدينتي", "شيراتون", "روكسي", "الدقي", "الحكمة", "الحجاز", "هايد", "ديستركت", "الجامعة"] },
-  { name: "د. محمد حسن", tone: "border-violet-500/30 bg-violet-500/5", branches: ["دريم", "سوديك", "المعادي 1", "المعادي 2", "دارك ستور المعادي", "التجمع", "واترواي", "سوديك ايست", "ميفيدا"] },
-  { name: "د. مصطفي علي", tone: "border-amber-500/30 bg-amber-500/5", branches: ["الطيران", "حسنين", "سيتي", "مكرم", "زايد", "دارك ستور زايد", "مول العرب", "سفنكس", "الكيت كات"] },
-  { name: "فروع مشتركة", tone: "border-emerald-500/30 bg-emerald-500/5", branches: ["العلمين", "مراسي", "سوديك سيزر", "المخازن المركزية"] },
-] as const;
-
-function MonthlyTrackingCard({ rows, onUpdate, canEdit }: { rows: TrackingRow[]; onUpdate: (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => Promise<void>; canEdit: boolean }) {
-  const cycle = (row: TrackingRow, field: "fs_status" | "ghp_status" | "fsms_status") => {
-    const values = ["not_started", "in_progress", "completed"] as const;
-    return onUpdate(row.id, field, values[(values.indexOf(row[field]) + 1) % values.length]);
-  };
-  return (
-    <section className="mt-4 overflow-hidden rounded-xl border border-border bg-card shadow-sm" dir="rtl">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-3">
-        <div><h2 className="font-bold">شيت المتابعة الشهري</h2><p className="text-xs text-muted-foreground">اضغط على الحالة للتبديل: لم يبدأ ← غير مكتمل ← مكتمل</p></div>
-        <Badge variant="outline">{new Intl.DateTimeFormat("ar-EG", { month: "long", year: "numeric" }).format(new Date())}</Badge>
-      </div>
-      <div className="grid gap-4 p-4 md:grid-cols-2">
-        {trackingGroups.map((group) => {
-          const groupRows = group.branches.map((name) => {
-            const compatible = findTrackingRow(rows, name) ?? rows.find((row) => row.branch_name.trim().includes(name) && !["سوديك", "زايد", "المعادي 1", "المعادي 2", "سوديك ايست"].includes(name));
-            return compatible ?? {
-              id: `missing-${group.name}-${name}`,
-              branch_name: name,
-              fs_status: "not_started",
-              ghp_status: "not_started",
-              fsms_status: "not_started",
-            } satisfies TrackingRow;
-          });
-          return <div key={group.name} className={`overflow-hidden rounded-xl border ${group.tone}`}>
-            <div className="border-b border-inherit px-4 py-3"><h3 className="font-bold">{group.name}</h3><p className="text-xs text-muted-foreground">{group.branches.length} فروع</p></div>
-            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-sm"><thead className="bg-background/50 text-xs text-muted-foreground"><tr><th className="px-3 py-2 text-right">الفرع</th><th className="px-3 py-2">FS</th><th className="px-3 py-2">GHP</th><th className="px-3 py-2">FSMS</th></tr></thead><tbody>
-              {groupRows.map((row) => <tr key={row.id} className="border-t border-border/60"><td className="px-3 py-2 font-medium">{row.branch_name}</td>{(["fs_status", "ghp_status", "fsms_status"] as const).map((field) => { const config = trackingStatus[row[field]]; const Icon = config.icon; return <td key={field} className="px-2 py-2 text-center"><button type="button" onClick={() => canEdit && !row.id.startsWith("missing-") && void cycle(row, field)} disabled={!canEdit || row.id.startsWith("missing-")} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-75 ${config.className}`}><Icon className="size-3.5" />{config.label}</button></td>; })}</tr>)}
-            </tbody></table></div>
-          </div>;
-        })}
-        {rows.length === 0 && <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground md:col-span-2">لا توجد بيانات متابعة لهذا الشهر بعد.</div>}
-      </div>
-    </section>
-  );
+function DashboardGate() {
+  const { profile, isLoading } = useSession();
+  if (isLoading)
+    return (
+      <AppShell title="لوحة التحكم">
+        <p>جاري التحقق من الحساب…</p>
+      </AppShell>
+    );
+  if (!profile?.active || !["admin", "manager"].includes(profile.role)) {
+    return (
+      <AppShell title="لوحة التحكم">
+        <p dir="rtl">لوحة التحكم متاحة للإدارة والمشرفين فقط.</p>
+        <Link to="/audits">سجل فحوصاتي</Link>
+      </AppShell>
+    );
+  }
+  return <ExecutiveDashboard />;
 }
 
 function ExecutiveDashboard() {
   const { profile, isAdmin } = useSession();
+  const sharing = useAuditSharing();
+  const branchAccessReady = profile?.role === "admin" || sharing.isSuccess;
+  const allowedBranchIds = profile?.role === "manager" ? sharing.visibleBranchIds : null;
+  const showDrafts = profile?.role !== "manager";
   const canViewAll = profile?.role === "admin" || profile?.role === "manager";
   const { scope, tab } = useSearch({ from: "/_authenticated/dashboard" });
 
-  const [startDate, setStartDate] = useState<string>(() => {
-    const enteredAt = new Date();
-    return `${enteredAt.getFullYear()}-${String(enteredAt.getMonth() + 1).padStart(2, "0")}-01`;
-  });
-  const [endDate, setEndDate] = useState<string>("");
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const exportLock = useRef(false);
+  const [fromMonth, setFromMonth] = useState(() => currentMonthBounds().start.slice(0, 7));
+  const [toMonth, setToMonth] = useState(() => currentMonthBounds().start.slice(0, 7));
+  const [automaticPeriod, setAutomaticPeriod] = useState(true);
+  const resetPeriod = () => {
+    const month = currentMonthBounds().start.slice(0, 7);
+    setFromMonth(month);
+    setToMonth(month);
+    setAutomaticPeriod(true);
+  };
+  useEffect(() => {
+    if (!automaticPeriod) return;
+    const updateCurrentMonth = () => {
+      const month = currentMonthBounds().start.slice(0, 7);
+      setFromMonth((previous) => (previous === month ? previous : month));
+      setToMonth((previous) => (previous === month ? previous : month));
+    };
+    updateCurrentMonth();
+    const timer = window.setInterval(updateCurrentMonth, 60_000);
+    window.addEventListener("focus", updateCurrentMonth);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", updateCurrentMonth);
+    };
+  }, [automaticPeriod]);
+  const [programFilter, setProgramFilter] = useState<"all" | "FS" | "GHP" | "FSMS">("all");
+  const {
+    start: startDate,
+    end: endDate,
+    valid: dateRangeValid,
+  } = dashboardMonthInterval(fromMonth, toMonth);
   const [branchFilter, setBranchFilter] = useState("all");
-  const [branchSearch, setBranchSearch] = useState("");
 
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
@@ -163,360 +160,166 @@ function ExecutiveDashboard() {
     setExpandedNodes((prev) => ({ ...prev, [nodeKey]: !prev[nodeKey] }));
   };
 
+  const snapshotFilters = useMemo(
+    () => ({
+      scope: scope as LocationScope,
+      start: startDate,
+      end: endDate,
+      branch: branchFilter,
+      program: programFilter,
+      submittedOnly: !showDrafts,
+      allowedBranchIds,
+    }),
+    [scope, startDate, endDate, branchFilter, programFilter, showDrafts, allowedBranchIds],
+  );
+  const trackingMonths = useMemo(
+    () => trackingIntervalMonths(fromMonth, toMonth, currentMonthBounds().start.slice(0, 7)),
+    [fromMonth, toMonth],
+  );
+  const trackingRange = {
+    start: trackingMonths.length ? `${trackingMonths[0]}-01` : "",
+    end: trackingMonths.length
+      ? dashboardMonthRange(trackingMonths[trackingMonths.length - 1]!).end
+      : "",
+  };
+  const snapshotQuery = useQuery({
+    ...dashboardSnapshotOptions(profile?.id, snapshotFilters),
+    enabled: canViewAll && branchAccessReady && tab === "overview" && dateRangeValid,
+  });
+  const summary = useMemo(
+    () => (snapshotQuery.data ? aggregateDashboard(snapshotQuery.data, snapshotFilters) : null),
+    [snapshotQuery.data, snapshotFilters],
+  );
   const {
     data,
-    isLoading,
+    isPending: isLoading,
     isError,
     error,
     refetch,
   } = useQuery({
-    queryKey: ["dashboard-data-full", scope],
-    queryFn: () => fetchDashboardData(scope as LocationScope),
-    retry: 1,
+    ...dashboardDetailOptions(
+      profile?.id,
+      scope as LocationScope,
+      tab,
+      tab === "tracking"
+        ? {
+            ...trackingRange,
+            branch: "all",
+            includeAnswers: false,
+            allowedBranchIds,
+            submittedOnly: !showDrafts,
+          }
+        : {
+            start: startDate,
+            end: endDate,
+            branch: branchFilter,
+            program: programFilter,
+            submittedOnly: !showDrafts,
+            allowedBranchIds,
+          },
+    ),
+    enabled: canViewAll && branchAccessReady && dateRangeValid,
+    refetchOnWindowFocus: tab === "tracking",
   });
+  const refreshDashboard = () =>
+    tab === "tracking"
+      ? Promise.all([trackingQuery.refetch(), refetch()])
+      : Promise.all([snapshotQuery.refetch(), refetch()]);
+  const summaryCount = (value: number | undefined) =>
+    snapshotQuery.isError || !dateRangeValid
+      ? "—"
+      : snapshotQuery.isPending || value === undefined
+        ? "…"
+        : value;
 
-  const trackingMonth = new Date().toISOString().slice(0, 7) + "-01";
-  const trackingQuery = useQuery({
-    queryKey: ["monthly-branch-tracking", trackingMonth, scope],
-    queryFn: async () => {
-      const branches = data?.branches ?? [];
-      if (branches.length) {
-        const { error: seedError } = await supabase.from("monthly_branch_tracking").upsert(
-          branches.map((branch) => ({ branch_id: branch.id, branch_name: branch.name_ar, tracking_month: trackingMonth })),
-          { onConflict: "branch_name,tracking_month", ignoreDuplicates: true },
-        );
-        if (seedError) throw seedError;
-      }
-      const { data: rows, error } = await supabase
-        .from("monthly_branch_tracking")
-        .select("*")
-        .eq("tracking_month", trackingMonth)
-        .order("branch_name");
-      if (error) throw error;
-
-      return rows ?? [];
+  const dashboardFilterProps = {
+    locations: snapshotQuery.data?.locations ?? data?.branches ?? [],
+    branch: branchFilter,
+    fromMonth,
+    toMonth,
+    program: programFilter,
+    onBranch: setBranchFilter,
+    onFromMonth: (value: string) => {
+      setAutomaticPeriod(false);
+      setFromMonth(value);
     },
-    enabled: Boolean(data?.branches?.length),
-  });
-
-  const trackingRows = useMemo(
-    () => applyMonthlyAudits(trackingQuery.data ?? [], data?.audits ?? [], trackingMonth),
-    [trackingQuery.data, data?.audits, trackingMonth],
-  );
-
-  const updateTracking = async (id: string, field: "fs_status" | "ghp_status" | "fsms_status", value: string) => {
-    await supabase.from("monthly_branch_tracking").update({ [field]: value, [`${field.replace("_status", "")}_updated_at`]: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", id);
-    await trackingQuery.refetch();
+    onToMonth: (value: string) => {
+      setAutomaticPeriod(false);
+      setToMonth(value);
+    },
+    onResetPeriod: resetPeriod,
+    onProgram: setProgramFilter,
   };
 
-  const filteredData = useMemo(() => {
-    if (!data || !profile) return null;
-
-    const userScopedAudits = data.audits.filter((a) => {
-      if (canViewAll) return true;
-      return a.auditor_id === profile.id;
-    });
-
-    const filteredAudits = userScopedAudits.filter((a) => {
-      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
-      if (!a.audit_date) return true;
-      if (startDate && a.audit_date < startDate) return false;
-      if (endDate && a.audit_date > endDate) return false;
-      return true;
-    });
-
-    const userSubmittedAudits = filteredAudits.filter((a) => a.status === "submitted");
-    const draftsAudits = filteredAudits.filter((a) => a.status === "draft");
-    const allowedBranchIds = new Set(filteredAudits.map((a) => a.branch_id));
-
-    const allScopedAudits = data.audits.filter((a) => {
-      if (branchFilter !== "all" && a.branch_id !== branchFilter) return false;
-      if (!a.audit_date) return true;
-      if (startDate && a.audit_date < startDate) return false;
-      if (endDate && a.audit_date > endDate) return false;
-      return true;
-    });
-
-    const allSubmittedAudits = allScopedAudits.filter((a) => a.status === "submitted");
-    const allSubmittedAuditIds = new Set(allSubmittedAudits.map((a) => a.id));
-
-    const auditMap = new Map(data.audits.map((a) => [a.id, a]));
-    const questionMap = new Map(data.questions.map((q) => [q.id, q]));
-    const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
-
-    const sectionDataMap: Record<
-      string,
-      {
-        id: string;
-        nameAr: string;
-        program: "FS" | "GHP" | "FSMS";
-        auditTypeId: string;
-        earned: number;
-        possible: number;
-        criticalCount: number;
-        months: Record<
-          string,
-          {
-            earned: number;
-            possible: number;
-            branches: Record<
-              string,
-              {
-                branchId: string;
-                branchName: string;
-                earned: number;
-                possible: number;
-                auditId: string;
-                items: Array<{
-                  auditId: string;
-                  date: string;
-                  itemId: string;
-                  questionText: string;
-                  comment: string;
-                  score: number | null;
-                  maxScore: number;
-                  sectionName: string;
-                }>;
-              }
-            >;
-          }
-        >;
-      }
-    > = {};
-
-    data.sections
-      .filter((s) => data.auditTypes.some((type) => type.id === s.audit_type_id))
-      .forEach((s) => {
-        const program = programFromAuditType(data.auditTypes.find((type) => type.id === s.audit_type_id));
-        const key = `${program}__${s.id}`;
-
-        sectionDataMap[key] = {
-          id: s.id,
-          nameAr: cleanSectionName(s.name_ar),
-          program,
-          auditTypeId: s.audit_type_id,
-          earned: 0,
-          possible: 0,
-          criticalCount: 0,
-          months: {},
-        };
-      });
-
-    let totalNonCompliantItems = 0;
-    let totalCritical = 0;
-
-    data.answers.forEach((ans) => {
-      if (!allSubmittedAuditIds.has(ans.audit_id)) return;
-      if (ans.is_na) return;
-
-      const audit = auditMap.get(ans.audit_id);
-      if (!audit) return;
-
-      const q = questionMap.get(ans.question_id);
-      if (!q || !q.section_id) return;
-
-      const sec = sectionMap.get(q.section_id);
-      if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
-
-      const program = programFromAuditType(
-        data.auditTypes.find((type) => type.id === sec.audit_type_id),
-      );
-      const key = `${program}__${sec.id}`;
-
-      const secEntry = sectionDataMap[key];
-      if (!secEntry) return;
-
-      const maxScore = maxQuestionScore(q.max_score, q.text_ar);
-      const score = numericScore(ans.score);
-
-      secEntry.earned += score;
-      secEntry.possible += maxScore;
-
-      const auditDate = audit.audit_date || "—";
-      const monthKey = auditMonthKey(audit.audit_date);
-      const branchId = audit.branch_id || "unknown";
-      const branchName = audit.branchName || "فرع غير مسجل";
-
-      if (!secEntry.months[monthKey]) {
-        secEntry.months[monthKey] = { earned: 0, possible: 0, branches: {} };
-      }
-      const mObj = secEntry.months[monthKey];
-      mObj.earned += score;
-      mObj.possible += maxScore;
-
-      if (!mObj.branches[branchId]) {
-        mObj.branches[branchId] = {
-          branchId,
-          branchName,
-          earned: 0,
-          possible: 0,
-          auditId: audit.id,
-          items: [],
-        };
-      }
-      const bObj = mObj.branches[branchId];
-      bObj.earned += score;
-      bObj.possible += maxScore;
-
-      if (score < maxScore) {
-        totalNonCompliantItems += 1;
-        if (score === 0) {
-          secEntry.criticalCount += 1;
-          totalCritical += 1;
-        }
-
-        bObj.items.push({
-          auditId: audit.id,
-          date: auditDate,
-          itemId: q.item_id || "—",
-          questionText: q.text_ar || "بند الفحص",
-          comment: formatAuditComment(ans.comment),
-          score: ans.score,
-          maxScore,
-          sectionName: cleanSectionName(sec.name_ar),
-        });
-      }
-    });
-
-    const formatSections = (programType: "FS" | "GHP" | "FSMS") => {
-      return Object.values(sectionDataMap)
-        .filter((s) => s.program === programType)
-        .map((s) => {
-          const complianceRate = compliancePercentage(s.earned, s.possible);
-          let notesCount = 0;
-
-          const monthsList = Object.entries(s.months)
-            .map(([monthKey, mVal]) => {
-              const monthRate = compliancePercentage(mVal.earned, mVal.possible);
-              const branchesList = Object.values(mVal.branches).map((b) => {
-                const bRate = compliancePercentage(b.earned, b.possible);
-                notesCount += b.items.length;
-                return {
-                  ...b,
-                  complianceRate: bRate,
-                };
-              });
-
-              return {
-                monthKey,
-                complianceRate: monthRate,
-                branches: branchesList,
-              };
-            })
-            .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-
-          return {
-            id: s.id,
-            nameAr: s.nameAr,
-            program: s.program,
-            complianceRate,
-            criticalCount: s.criticalCount,
-            commentsCount: notesCount,
-            months: monthsList,
-          };
-        });
-    };
-
-    const fsSections = formatSections("FS");
-    const ghpSections = formatSections("GHP");
-    const fsmsSections = formatSections("FSMS");
-
-    const issueRecords = [...fsSections, ...ghpSections, ...fsmsSections].flatMap((section) =>
-      section.months.flatMap((month) =>
-        month.branches.flatMap((branch) =>
-          branch.items.map((item) => ({
-            ...item,
-            branchId: branch.branchId,
-            branchName: branch.branchName,
-            monthKey: month.monthKey,
-            program: section.program,
-            sectionName: section.nameAr,
-            sectionRate: section.complianceRate,
-            branchRate: branch.complianceRate,
-            critical: item.score === 0,
-          })),
-        ),
+  const trackingQuery = useQuery({
+    queryKey: ["monthly-branch-tracking", profile?.id, scope, trackingMonths],
+    queryFn: ({ signal }) =>
+      Promise.all(
+        trackingMonths.map(async (month) => ({
+          month: `${month}-01`,
+          rows: await fetchMonthlyTracking(`${month}-01`, signal),
+        })),
       ),
-    );
+    enabled: canViewAll && branchAccessReady && tab === "tracking" && dateRangeValid,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+  const trackingGroups = useMemo(
+    () =>
+      trackingMonths.map((month) => ({
+        month: `${month}-01`,
+        rows: mergeTrackingAudits(
+          buildTrackingRows(
+            data?.branches ?? [],
+            trackingQuery.data?.find((group) => group.month === `${month}-01`)?.rows ?? [],
+            `${month}-01`,
+          ),
+          data?.audits ?? [],
+          `${month}-01`,
+        ),
+      })),
+    [data, trackingQuery.data, trackingMonths],
+  );
+  const [trackingPendingKey, setTrackingPendingKey] = useState<string | null>(null);
+  const trackingWrite = useRef(false);
+  const updateTracking = async (
+    trackingMonth: string,
+    id: string,
+    field: "fs_status" | "ghp_status" | "fsms_status",
+    value: string,
+  ) => {
+    if (!isAdmin || trackingWrite.current) return;
+    const row = trackingGroups
+      .find((group) => group.month === trackingMonth)
+      ?.rows.find((row) => row.id === id);
+    if (!row) return;
+    trackingWrite.current = true;
+    setTrackingPendingKey(`${trackingMonth}:${id}:${field}`);
+    try {
+      await updateMonthlyTracking(row, field, value, trackingMonth);
+      await trackingQuery.refetch({ throwOnError: true });
+      toast.success("تم حفظ حالة المتابعة");
+    } catch (error) {
+      toast.error(`تعذر تحديث المتابعة: ${dashboardErrorMessage(error)}`);
+    } finally {
+      trackingWrite.current = false;
+      setTrackingPendingKey(null);
+    }
+  };
 
-    const fsmsBranchScores = data.branches
-      .filter((b) => canViewAll || allowedBranchIds.has(b.id))
-      .map((b) => {
-    const branchFsmsAudits = allSubmittedAudits.filter(
-      (a) =>
-        a.branch_id === b.id &&
-        programFromAuditType(data.auditTypes.find((type) => type.id === a.audit_type_id)) === "FSMS",
-    );
-        const latestAudit = branchFsmsAudits[0];
-        return {
-          branchId: b.id,
-          branchName: b.name_ar,
-          branchCode: b.code || "—",
-          score:
-            (latestAudit as any)?.score != null
-              ? Number((latestAudit as any).score)
-              : (latestAudit as any)?.final_score != null
-                ? Number((latestAudit as any).final_score)
-                : null,
-          auditDate: latestAudit?.audit_date || null,
-          auditId: latestAudit?.id || null,
-        };
-      })
-      .filter((item) => item.score !== null);
-
-    const branchesToDisplay = canViewAll
-      ? data.branches
-      : data.branches.filter((b) => allowedBranchIds.has(b.id));
-    const branchAuditsMap: Record<string, any[]> = {};
-    branchesToDisplay.forEach((b) => {
-      branchAuditsMap[b.id] = [];
-    });
-
-    filteredAudits.forEach((a) => {
-      if (a.branch_id && branchAuditsMap[a.branch_id]) {
-        branchAuditsMap[a.branch_id]!.push(a);
-      }
-    });
-
-    const branchesSummary = branchesToDisplay
-      .map((b) => {
-        const bAudits = branchAuditsMap[b.id] || [];
-        return {
-          id: b.id,
-          nameAr: b.name_ar,
-          code: b.code || "—",
-          total: bAudits.length,
-          completed: bAudits.filter((a) => a.status === "submitted").length,
-          drafts: bAudits.filter((a) => a.status === "draft").length,
-          audits: bAudits,
-        };
-      })
-      .sort((a, b) => b.total - a.total);
-
-    const totalEarned = Object.values(sectionDataMap).reduce((a, c) => a + c.earned, 0);
-    const totalPossible = Object.values(sectionDataMap).reduce((a, c) => a + c.possible, 0);
-    const overallScore =
-      totalPossible > 0 ? Number(((totalEarned / totalPossible) * 100).toFixed(2)) : 100;
-
-    return {
-      audits: filteredAudits,
-      submittedCount: userSubmittedAudits.length,
-      draftsCount: draftsAudits.length,
-      totalAudits: filteredAudits.length,
-      totalBranches: branchesToDisplay.length,
-      totalComments: totalNonCompliantItems,
-      totalCritical,
-      overallScore,
-      fsSections,
-      ghpSections,
-      fsmsSections,
-      issueRecords,
-      allSections: [...fsSections, ...ghpSections, ...fsmsSections],
-      fsmsBranchScores,
-      branchesSummary,
-      submittedAuditIds: allSubmittedAuditIds,
-    };
-  }, [data, profile, canViewAll, startDate, endDate, branchFilter, scope]);
+  const filteredData = useMemo(
+    () =>
+      buildDashboardDetails({
+        data,
+        profile,
+        snapshot: snapshotQuery.data,
+        canViewAll,
+        startDate,
+        endDate,
+        branchFilter,
+      }),
+    [data, profile, canViewAll, startDate, endDate, branchFilter, snapshotQuery.data],
+  );
 
   const activeSection = useMemo(() => {
     if (!activeSectionId || !filteredData) return null;
@@ -538,620 +341,40 @@ function ExecutiveDashboard() {
     );
   }, [filteredData, issueBranchFilter, issueProgramFilter, issueMonthFilter]);
 
-  const branchProgramsTree = useMemo(() => {
-    if (!activeBranch || !filteredData || !data) return { foodSafety: [], ghp: [], fsms: [] };
+  const branchProgramsTree = useMemo(
+    () => buildBranchProgramsTree(activeBranch, filteredData, data, snapshotQuery.data),
+    [activeBranch, filteredData, data, snapshotQuery.data],
+  );
 
-    const branchSubmittedAudits = (activeBranch.audits || []).filter(
-      (a: any) => a.status === "submitted",
-    );
-    const branchAuditMap = new Map(branchSubmittedAudits.map((a: any) => [a.id, a]));
-    const branchAuditIds = new Set(branchSubmittedAudits.map((a: any) => a.id));
-
-    const questionMap = new Map(data.questions.map((q) => [q.id, q]));
-    const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
-
-    const buildTreeForProgram = (targetProgram: "FS" | "GHP" | "FSMS") => {
-      const monthsMap: Record<
-        string,
-        {
-          monthKey: string;
-          earned: number;
-          possible: number;
-          auditId: string;
-          sections: Record<
-            string,
-            {
-              sectionName: string;
-              earned: number;
-              possible: number;
-              items: any[];
-            }
-          >;
-        }
-      > = {};
-
-      data.answers.forEach((ans) => {
-        if (!branchAuditIds.has(ans.audit_id)) return;
-        if (ans.is_na) return;
-
-        const audit = branchAuditMap.get(ans.audit_id);
-        if (!audit) return;
-
-        const q = questionMap.get(ans.question_id);
-        if (!q) return;
-        const sec = sectionMap.get(q.section_id);
-        if (!sec || sec.audit_type_id !== audit.audit_type_id) return;
-
-        const sectionProgram = programFromAuditType(
-          data.auditTypes.find((type) => type.id === sec.audit_type_id),
-        );
-        if (sectionProgram !== targetProgram) return;
-
-        const cleanSecName = cleanSectionName(sec.name_ar);
-        const monthKey = auditMonthKey(audit.audit_date);
-        const maxScore = maxQuestionScore(q.max_score, q.text_ar);
-        const score = numericScore(ans.score);
-
-        if (!monthsMap[monthKey]) {
-          monthsMap[monthKey] = {
-            monthKey,
-            earned: 0,
-            possible: 0,
-            auditId: audit.id,
-            sections: {},
-          };
-        }
-        const mObj = monthsMap[monthKey];
-        mObj.earned += score;
-        mObj.possible += maxScore;
-
-        if (!mObj.sections[cleanSecName]) {
-          mObj.sections[cleanSecName] = {
-            sectionName: cleanSecName,
-            earned: 0,
-            possible: 0,
-            items: [],
-          };
-        }
-        const sObj = mObj.sections[cleanSecName];
-        sObj.earned += score;
-        sObj.possible += maxScore;
-
-        if (score < maxScore) {
-          sObj.items.push({
-            auditId: audit.id,
-            date: audit.audit_date,
-            itemId: q.item_id || "—",
-            questionText: q.text_ar || "بند الفحص",
-            comment: formatAuditComment(ans.comment),
-            score: ans.score,
-            maxScore,
-          });
-        }
-      });
-
-      return Object.values(monthsMap)
-        .map((m) => {
-          const monthRate = compliancePercentage(m.earned, m.possible);
-          const sectionsList = Object.values(m.sections).map((s) => {
-            const secRate = compliancePercentage(s.earned, s.possible);
-            return {
-              ...s,
-              complianceRate: secRate,
-            };
-          });
-
-          return {
-            monthKey: m.monthKey,
-            complianceRate: monthRate,
-            auditId: m.auditId,
-            sections: sectionsList,
-          };
-        })
-        .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-    };
-
-    return {
-      foodSafety: buildTreeForProgram("FS"),
-      ghp: buildTreeForProgram("GHP"),
-      fsms: buildTreeForProgram("FSMS"),
-    };
-  }, [activeBranch, filteredData, data]);
-
-  const displayedBranches = useMemo(() => {
-    if (!filteredData) return [];
-    if (!branchSearch.trim()) return filteredData.branchesSummary;
-    const term = branchSearch.toLowerCase();
-    return filteredData.branchesSummary.filter(
-      (b) =>
-        (b.nameAr || "").toLowerCase().includes(term) ||
-        (b.code || "").toLowerCase().includes(term),
-    );
-  }, [filteredData, branchSearch]);
+  const displayedBranches = filteredData?.branchesSummary ?? [];
 
   const exportToExcel = async () => {
-    if (!filteredData || !data) return;
-
-    const XLSX = await import("xlsx-js-style");
-
-    const [genDeductionsRes, secDeductionsRes] = await Promise.all([
-      supabase.from("audit_general_deductions").select("*"),
-      supabase.from("audit_section_deductions").select("*"),
-    ]);
-
-    const genDeductions = genDeductionsRes.data ?? [];
-    const secDeductions = secDeductionsRes.data ?? [];
-
-    const wb = XLSX.utils.book_new();
-    (wb as any).Workbook = {
-      Views: [{ RTL: true }],
-      Sheets: [],
-    };
-
-    const headerBlueStyle = {
-      font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
-      fill: { fgColor: { rgb: "003366" } },
-      alignment: { horizontal: "center", vertical: "center", wrapText: true },
-      border: {
-        top: { style: "thin", color: { rgb: "002244" } },
-        bottom: { style: "thin", color: { rgb: "002244" } },
-        left: { style: "thin", color: { rgb: "FFFFFF" } },
-        right: { style: "thin", color: { rgb: "FFFFFF" } },
-      },
-    };
-
-    const monthSeparatorStyle = {
-      font: { name: "Calibri", sz: 13, bold: true, color: { rgb: "FFFFFF" } },
-      fill: { fgColor: { rgb: "1F497D" } },
-      alignment: { horizontal: "right", vertical: "center" },
-      border: {
-        top: { style: "medium", color: { rgb: "002244" } },
-        bottom: { style: "medium", color: { rgb: "002244" } },
-      },
-    };
-
-    const cellCenter = {
-      font: { name: "Calibri", sz: 10, color: { rgb: "000000" } },
-      alignment: { horizontal: "center", vertical: "center" },
-      border: {
-        top: { style: "thin", color: { rgb: "E0E0E0" } },
-        bottom: { style: "thin", color: { rgb: "E0E0E0" } },
-        left: { style: "thin", color: { rgb: "E0E0E0" } },
-        right: { style: "thin", color: { rgb: "E0E0E0" } },
-      },
-    };
-
-    const cellLeft = {
-      font: { name: "Calibri", sz: 10, color: { rgb: "000000" } },
-      alignment: { horizontal: "right", vertical: "center" },
-      border: cellCenter.border,
-    };
-
-    const cellCode = {
-      font: { name: "Calibri", sz: 10, bold: true, color: { rgb: "003366" } },
-      alignment: { horizontal: "center", vertical: "center" },
-      fill: { fgColor: { rgb: "F4F8FC" } },
-      border: cellCenter.border,
-    };
-
-    const dynamicSections = [
-      "الأسماك",
-      "الجزارة",
-      "الجبن",
-      "المخبوزات",
-      "الخضروات و الفاكهة",
-      "الوجبات الجاهزة",
-      "المبردات",
-      "المجمدات",
-      "البقالة الجافة",
-      "الاستلامات",
-      "عام",
-      "التوصيل",
-    ];
-
-    const branchHeaders = [
-      "Title (كود الفحص)",
-      "Branch (الفرع)",
-      "AuditDate (التاريخ)",
-      "AuditType (نوع الفحص)",
-      "Auditor (المراجع)",
-      "BranchManager (مدير الفرع)",
-      "Status (الحالة)",
-      "FinalPercentage (النسبة)",
-      "GeneralDeduction (الخصم العام %)",
-      "General Deduction Reason (سبب الخصم)",
-      ...dynamicSections.map((s) => `قسم ${s}`),
-    ];
-
-    const wsBranchesData: Record<string, any> = {};
-    const questionMap = new Map(data.questions.map((q) => [q.id, q]));
-    const sectionMap = new Map(data.sections.map((s) => [s.id, s]));
-
-    const auditScoresMap: Record<
-      string,
-      {
-        earned: number;
-        possible: number;
-        secScores: Record<string, { earned: number; possible: number }>;
-      }
-    > = {};
-
-    const discrepancyLog: Array<{
-      auditCode: string;
-      branchName: string;
-      date: string;
-      auditType: string;
-      auditorName: string;
-      sectionName: string;
-      itemId: string;
-      questionText: string;
-      comment: string;
-      score: number;
-      maxScore: number;
-    }> = [];
-
-    data.answers.forEach((ans) => {
-      if (!ans.audit_id || ans.is_na || ans.score === null) return;
-      const q = questionMap.get(ans.question_id);
-      if (!q) return;
-      const sec = sectionMap.get(q.section_id);
-      const secName = (sec?.name_ar || "عام").replace(/^قسم\s+/i, "").trim();
-
-      if (!auditScoresMap[ans.audit_id]) {
-        auditScoresMap[ans.audit_id] = { earned: 0, possible: 0, secScores: {} };
-      }
-      const aObj = auditScoresMap[ans.audit_id];
-      const max = Number(q.max_score || 4);
-      const scr = Number(ans.score);
-
-      aObj.earned += scr;
-      aObj.possible += max;
-
-      if (!aObj.secScores[secName]) {
-        aObj.secScores[secName] = { earned: 0, possible: 0 };
-      }
-      aObj.secScores[secName].earned += scr;
-      aObj.secScores[secName].possible += max;
-
-      if (scr < max) {
-        const audit = data.audits.find((a) => a.id === ans.audit_id);
-        const bCode = audit?.branchCode && audit.branchCode !== "—" ? audit.branchCode : "BR";
-        const auditCode = `AUD-${bCode}-${(audit?.audit_date || "").replace(/-/g, "")}`;
-        discrepancyLog.push({
-          auditCode,
-          branchName: audit?.branchName || "—",
-          date: audit?.audit_date || "—",
-          auditType: audit?.typeName || "سلامة الغذاء",
-          auditorName: audit?.auditorName || "—",
-          sectionName: secName,
-          itemId: q.item_id || "—",
-          questionText: q.text_ar || "بند الفحص",
-          comment: ans.comment?.trim() || "خصم درجات (عدم مطابقة)",
-          score: scr,
-          maxScore: max,
-        });
-      }
-    });
-
-    const genDeductionMap: Record<string, { pct: number; reasons: string[] }> = {};
-    genDeductions.forEach((gd) => {
-      if (!genDeductionMap[gd.audit_id]) {
-        genDeductionMap[gd.audit_id] = { pct: 0, reasons: [] };
-      }
-      genDeductionMap[gd.audit_id].pct += Number(gd.percentage || 0);
-      if (gd.reason_text?.trim()) {
-        genDeductionMap[gd.audit_id].reasons.push(gd.reason_text.trim());
-      }
-    });
-
-    const sectionIndicatorRows = (typeId: string) => {
-      const submittedAudits = filteredData.audits.filter(
-        (audit: any) => audit.status === "submitted" && audit.audit_type_id === typeId,
+    if (exportLock.current) return;
+    if (!filteredData || !data || !summary) {
+      toast.error("انتظر اكتمال تحميل بيانات التقرير قبل التصدير");
+      return;
+    }
+    exportLock.current = true;
+    setExportingExcel(true);
+    try {
+      const { downloadDashboardWorkbook, loadDashboardDeductions } =
+        await import("@/lib/dashboard/download");
+      const deductions = await loadDashboardDeductions(
+        filteredData.audits.map((audit) => audit.id),
       );
-      const auditIds = new Set(submittedAudits.map((audit: any) => audit.id));
-      const bySection: Record<string, { name: string; earned: number; possible: number }> = {};
-
-      data.sections
-        .filter((section: any) => section.audit_type_id === typeId)
-        .forEach((section: any) => {
-          bySection[section.id] = {
-            name: (section.name_ar || "قسم غير مسمى").replace(/^قسم\\s+/i, "").trim(),
-            earned: 0,
-            possible: 0,
-          };
-        });
-
-      data.answers.forEach((answer: any) => {
-        if (
-          !answer.audit_id ||
-          !auditIds.has(answer.audit_id) ||
-          answer.is_na ||
-          answer.score === null
-        )
-          return;
-        const question = questionMap.get(answer.question_id);
-        const section = question ? sectionMap.get(question.section_id) : null;
-        if (!section || section.audit_type_id !== typeId || !bySection[section.id]) return;
-        const maxScore = Number(question?.max_score || 4);
-        bySection[section.id].earned += Number(answer.score);
-        bySection[section.id].possible += maxScore;
-      });
-
-      return Object.values(bySection).map((row) => ({
-        ...row,
-        percentage: row.possible > 0 ? Number(((row.earned / row.possible) * 100).toFixed(2)) : 0,
-      }));
-    };
-
-    const programSectionSheets = [
-      { code: "FS", typeId: FS_TYPE_ID },
-      { code: "GHP", typeId: GHP_TYPE_ID },
-      { code: "FSMS", typeId: FSMS_TYPE_ID },
-    ];
-
-    programSectionSheets.forEach(({ code, typeId }) => {
-      const rows = sectionIndicatorRows(typeId);
-      const sheetRows = [
-        [PROGRAM_LABELS[code as keyof typeof PROGRAM_LABELS]],
-        ["النسب محسوبة من التدقيقات المعتمدة فقط"],
-        ["القسم", "نسبة القسم"],
-        ...rows.map((row) => [row.name, `${row.percentage}%`]),
-      ];
-      const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
-      sheet["!cols"] = [{ wch: 38 }, { wch: 18 }];
-      sheet["!freeze"] = { xSplit: 0, ySplit: 3 };
-      const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:B1");
-      for (let row = range.s.r; row <= range.e.r; row += 1) {
-        for (let col = range.s.c; col <= range.e.c; col += 1) {
-          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: col })];
-          if (cell)
-            cell.s = row < 3 ? monthSeparatorStyle : row === 2 ? headerBlueStyle : cellCenter;
-        }
-      }
-      XLSX.utils.book_append_sheet(wb, sheet, `${code} - أقسام`);
-    });
-
-    const auditsByMonth: Record<string, any[]> = {};
-    filteredData.audits.forEach((audit: any) => {
-      const mKey = audit.audit_date ? audit.audit_date.slice(0, 7) : "غير محدد";
-      if (!auditsByMonth[mKey]) auditsByMonth[mKey] = [];
-      auditsByMonth[mKey].push(audit);
-    });
-
-    const sortedMonths = Object.keys(auditsByMonth).sort((a, b) => b.localeCompare(a));
-    let bRowIdx = 1;
-    const branchesMerges: any[] = [];
-
-    sortedMonths.forEach((mKey) => {
-      const monthAudits = auditsByMonth[mKey]!;
-      const monthTitle = ` 📅 شهر: ${mKey} (إجمالي ${monthAudits.length} زيارة) `;
-
-      wsBranchesData[`A${bRowIdx}`] = { v: monthTitle, t: "s", s: monthSeparatorStyle };
-      for (let c = 1; c < branchHeaders.length; c++) {
-        wsBranchesData[`${XLSX.utils.encode_col(c)}${bRowIdx}`] = { v: "", s: monthSeparatorStyle };
-      }
-      branchesMerges.push({
-        s: { r: bRowIdx - 1, c: 0 },
-        e: { r: bRowIdx - 1, c: branchHeaders.length - 1 },
-      });
-      bRowIdx++;
-
-      branchHeaders.forEach((hText, cIdx) => {
-        const colLetter = XLSX.utils.encode_col(cIdx);
-        wsBranchesData[`${colLetter}${bRowIdx}`] = { v: hText, t: "s", s: headerBlueStyle };
-      });
-      bRowIdx++;
-
-      monthAudits.forEach((audit: any) => {
-        const calc = auditScoresMap[audit.id] || { earned: 0, possible: 0, secScores: {} };
-        const rawPct = calc.possible > 0 ? (calc.earned / calc.possible) * 100 : null;
-        const finalPct =
-          rawPct === null
-            ? null
-            : audit.score !== null && audit.score !== undefined
-              ? Number(audit.score)
-              : Math.round(rawPct);
-
-        const isPassed = finalPct !== null && finalPct >= 85;
-        const scoreStyle = {
-          ...cellCenter,
-          font: { ...cellCenter.font, bold: true, color: { rgb: isPassed ? "006600" : "CC0000" } },
-          fill: { fgColor: { rgb: isPassed ? "EBF7EB" : "FDEEEE" } },
-        };
-
-        const gDed = genDeductionMap[audit.id] || { pct: 0, reasons: [] };
-        const bCode = audit.branchCode && audit.branchCode !== "—" ? audit.branchCode : "BR";
-        const auditCode = `AUD-${bCode}-${(audit.audit_date || "").replace(/-/g, "")}-${String(audit.id).slice(0, 4).toUpperCase()}`;
-
-        const rowValues: any[] = [
-          { v: auditCode, s: cellCode },
-          { v: audit.branchName || "—", s: cellLeft },
-          { v: audit.audit_date || "—", s: cellCenter },
-          { v: audit.typeName || "سلامة الغذاء", s: cellCenter },
-          { v: audit.auditorName || "—", s: cellLeft },
-          { v: audit.branch_manager || "—", s: cellLeft },
-          { v: audit.status === "submitted" ? "Approved (معتمد)" : "Draft (مسودة)", s: cellCenter },
-          { v: finalPct === null ? "N/A" : `${finalPct}%`, s: scoreStyle },
-          {
-            v: gDed.pct > 0 ? `${gDed.pct}%` : "0%",
-            s: {
-              ...cellCenter,
-              font: {
-                ...cellCenter.font,
-                bold: gDed.pct > 0,
-                color: { rgb: gDed.pct > 0 ? "CC0000" : "000000" },
-              },
-            },
-          },
-          { v: gDed.reasons.length > 0 ? gDed.reasons.join(" | ") : "—", s: cellLeft },
-        ];
-
-        dynamicSections.forEach((secTarget) => {
-          const sData = Object.entries(calc.secScores).find(
-            ([name]) => name.includes(secTarget) || secTarget.includes(name),
-          );
-          if (sData && sData[1].possible > 0) {
-            const sPct = Number(((sData[1].earned / sData[1].possible) * 100).toFixed(2));
-            rowValues.push({
-              v: `${sPct}%`,
-              s: {
-                ...cellCenter,
-                font: {
-                  ...cellCenter.font,
-                  bold: true,
-                  color: { rgb: sPct >= 85 ? "006600" : "CC0000" },
-                },
-              },
-            });
-          } else {
-            rowValues.push({ v: "N/A", s: cellCenter });
-          }
-        });
-
-        rowValues.forEach((valObj, cIdx) => {
-          const colLetter = XLSX.utils.encode_col(cIdx);
-          wsBranchesData[`${colLetter}${bRowIdx}`] = {
-            v: valObj.v,
-            t: typeof valObj.v === "number" ? "n" : "s",
-            s: valObj.s,
-          };
-        });
-
-        bRowIdx++;
-      });
-
-      bRowIdx++;
-    });
-
-    wsBranchesData["!ref"] = `A1:${XLSX.utils.encode_col(branchHeaders.length - 1)}${bRowIdx}`;
-    wsBranchesData["!cols"] = [
-      { wch: 25 },
-      { wch: 18 },
-      { wch: 13 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 14 },
-      { wch: 18 },
-      { wch: 32 },
-      ...dynamicSections.map(() => ({ wch: 13 })),
-    ];
-    wsBranchesData["!merges"] = branchesMerges;
-    wsBranchesData["!views"] = [{ rightToLeft: true, RTL: true }];
-
-    XLSX.utils.book_append_sheet(wb, wsBranchesData as any, "الفروع والزيارات");
-    (wb as any).Workbook.Sheets.push({ name: "الفروع والزيارات", RTL: true });
-
-    const executiveRows = [
-      ["المؤشر", "القيمة"],
-      ["إجمالي الزيارات", filteredData.totalAudits],
-      ["الفحوصات المعتمدة", filteredData.submittedCount],
-      ["المسودات", filteredData.draftsCount],
-      ["متوسط الامتثال العام", `${filteredData.overallScore}%`],
-      ["حالات عدم المطابقة", filteredData.totalComments],
-      ["المخالفات الحرجة", filteredData.totalCritical],
-      ["عدد الفروع", filteredData.totalBranches],
-    ];
-    const wsExecutive = XLSX.utils.aoa_to_sheet(executiveRows);
-    wsExecutive["!cols"] = [{ wch: 30 }, { wch: 22 }];
-    wsExecutive["!freeze"] = { xSplit: 0, ySplit: 1 };
-    wsExecutive["!autofilter"] = { ref: "A1:B8" };
-    wsExecutive["!views"] = [{ rightToLeft: true }];
-    for (const address of ["A1", "B1"]) wsExecutive[address]!.s = headerBlueStyle;
-    for (let row = 2; row <= executiveRows.length; row += 1) {
-      wsExecutive[`A${row}`]!.s = cellLeft;
-      wsExecutive[`B${row}`]!.s = cellCenter;
+      downloadDashboardWorkbook(
+        { data, filteredData, summary, ...deductions, scope: scope as LocationScope },
+        `${scope === "warehouses" ? "Warehouses" : "Branches"}_Quality_Dashboard_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+      toast.success("تم تجهيز ملف التجميعة للتنزيل");
+    } catch (error) {
+      toast.error(
+        `تعذر تصدير التجميعة: ${error instanceof Error ? error.message : "تحقق من الاتصال وأعد المحاولة"}`,
+      );
+    } finally {
+      exportLock.current = false;
+      setExportingExcel(false);
     }
-    XLSX.utils.book_append_sheet(wb, wsExecutive, "الملخص التنفيذي");
-    (wb as any).Workbook.Sheets.push({ name: "الملخص التنفيذي", RTL: true });
-
-    const sectionRows = [
-      ["البرنامج", "القسم", "عدد الزيارات", "نسبة الامتثال", "حالات عدم المطابقة", "مخالفات حرجة"],
-    ];
-    filteredData.allSections.forEach((section) => {
-      const visits = section.months.reduce((sum, month) => sum + month.branches.length, 0);
-      sectionRows.push([
-        section.program,
-        section.nameAr,
-        visits,
-        `${section.complianceRate}%`,
-        section.commentsCount,
-        section.criticalCount,
-      ]);
-    });
-    const wsSections = XLSX.utils.aoa_to_sheet(sectionRows);
-    wsSections["!cols"] = [
-      { wch: 14 },
-      { wch: 32 },
-      { wch: 15 },
-      { wch: 16 },
-      { wch: 22 },
-      { wch: 18 },
-    ];
-    wsSections["!freeze"] = { xSplit: 0, ySplit: 1 };
-    wsSections["!autofilter"] = { ref: `A1:F${sectionRows.length}` };
-    wsSections["!views"] = [{ rightToLeft: true }];
-    for (let col = 0; col < 6; col += 1)
-      wsSections[XLSX.utils.encode_cell({ r: 0, c: col })]!.s = headerBlueStyle;
-    for (let row = 1; row < sectionRows.length; row += 1) {
-      for (let col = 0; col < 6; col += 1)
-        wsSections[XLSX.utils.encode_cell({ r: row, c: col })]!.s =
-          col === 1 ? cellLeft : cellCenter;
-    }
-    XLSX.utils.book_append_sheet(wb, wsSections, "مؤشرات الأقسام");
-    (wb as any).Workbook.Sheets.push({ name: "مؤشرات الأقسام", RTL: true });
-
-    const wsIssues = XLSX.utils.json_to_sheet(
-      discrepancyLog.map((row) => ({
-        "كود الفحص": row.auditCode,
-        الفرع: row.branchName,
-        التاريخ: row.date,
-        البرنامج: row.auditType,
-        المراجع: row.auditorName,
-        القسم: row.sectionName,
-        "كود البند": row.itemId,
-        "نص البند": row.questionText,
-        الملاحظة: row.comment,
-        الدرجة: row.score,
-        "الدرجة القصوى": row.maxScore,
-        "نسبة البند": row.maxScore ? `${Math.round((row.score / row.maxScore) * 100)}%` : "0%",
-      })),
-    );
-    wsIssues["!cols"] = [
-      { wch: 24 },
-      { wch: 20 },
-      { wch: 14 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 28 },
-      { wch: 16 },
-      { wch: 45 },
-      { wch: 36 },
-      { wch: 12 },
-      { wch: 16 },
-      { wch: 14 },
-    ];
-    wsIssues["!freeze"] = { xSplit: 0, ySplit: 1 };
-    wsIssues["!views"] = [{ rightToLeft: true }];
-    if (wsIssues["!ref"]) {
-      wsIssues["!autofilter"] = { ref: wsIssues["!ref"] };
-      const range = XLSX.utils.decode_range(wsIssues["!ref"]);
-      for (let col = range.s.c; col <= range.e.c; col += 1) {
-        wsIssues[XLSX.utils.encode_cell({ r: 0, c: col })]!.s = headerBlueStyle;
-      }
-      for (let row = 1; row <= range.e.r; row += 1) {
-        for (let col = range.s.c; col <= range.e.c; col += 1) {
-          const cell = wsIssues[XLSX.utils.encode_cell({ r: row, c: col })];
-          if (cell) cell.s = col === 7 || col === 8 ? cellLeft : cellCenter;
-        }
-      }
-    }
-    XLSX.utils.book_append_sheet(wb, wsIssues, "سجل الملاحظات");
-    (wb as any).Workbook.Sheets.push({ name: "سجل الملاحظات", RTL: true });
-
-    const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `Executive_Quality_Dashboard_${dateStr}.xlsx`);
   };
 
   return (
@@ -1163,66 +386,20 @@ function ExecutiveDashboard() {
           : "الملخص العام ومؤشرات الأداء"
       }
     >
-      <div
-        className="surface-card mb-5 p-3.5 rounded-xl border border-border flex flex-wrap items-center justify-between gap-3 print:hidden"
-        dir="rtl"
-      >
-        <div className="flex items-center gap-2">
-          <Calendar className="size-4 text-primary" />
-          <span className="text-xs font-bold">فلترة الفترة الزمنية:</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="font-semibold text-muted-foreground">الفرع:</span>
-            <Select value={branchFilter} onValueChange={setBranchFilter}>
-              <SelectTrigger className="h-7 w-44 text-xs">
-                <SelectValue placeholder="كل الفروع" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all">كل الفروع</SelectItem>
-                {data?.branches.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name_ar}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">من:</span>
-            <Input
-              type="date"
-              className="h-7 w-32 text-xs"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-muted-foreground">إلى:</span>
-            <Input
-              type="date"
-              className="h-7 w-32 text-xs"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          {(startDate || endDate) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setStartDate("");
-                setEndDate("");
-              }}
-              className="h-7 px-2 text-xs text-destructive"
-            >
-              <X className="size-3 ml-1" /> مسح
-            </Button>
-          )}
-        </div>
+      {profile?.role === "manager" && sharing.isError && (
+        <p role="alert">
+          تعذر تحميل صلاحيات الفروع.{" "}
+          <Button onClick={() => void sharing.refetch()}>إعادة المحاولة</Button>
+        </p>
+      )}
+      <div className="dashboard-filter-panel surface-card mb-5 rounded-xl border p-5 sm:p-6 print:hidden">
+        <h2 className="mb-3 text-sm font-bold" dir="rtl">
+          فلترة الفترة الزمنية
+        </h2>
+        <DashboardFilterBar {...dashboardFilterProps} />
       </div>
 
-      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
+      <div className="dashboard-actions grid gap-3 sm:grid-cols-2 lg:grid-cols-4 print:hidden">
         <Button
           asChild
           size="sm"
@@ -1235,29 +412,45 @@ function ExecutiveDashboard() {
             <span className="text-[11px] opacity-80">تسجيل</span>
           </Link>
         </Button>
-        <Button
-          asChild
-          variant="outline"
-          size="sm"
-          className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
-        >
-          <Link to="/audits" search={{ status: "draft" as const }}>
-            <span className="font-bold flex items-center gap-1.5 text-xs">
-              <ClipboardList className="size-4 text-amber-600" /> مسودات المتابعة
-            </span>
-            <Badge variant="secondary" className="text-xs px-2 py-0">
-              {filteredData?.draftsCount ?? 0}
-            </Badge>
-          </Link>
-        </Button>
+        {(showDrafts || profile?.role === "manager") && (
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
+          >
+            <Link to="/audits" search={{ status: "draft" as const }}>
+              <span className="font-bold flex items-center gap-1.5 text-xs">
+                <ClipboardList className="size-4 text-amber-600" />{" "}
+                {profile?.role === "manager" ? "مسوداتي" : "مسودات المتابعة"}
+              </span>
+              {showDrafts && (
+                <Badge variant="secondary" className="text-xs px-2 py-0">
+                  {summaryCount(summary?.draftsCount)}
+                </Badge>
+              )}
+            </Link>
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
           onClick={exportToExcel}
+          disabled={
+            !dateRangeValid ||
+            exportingExcel ||
+            !data ||
+            !summary ||
+            isLoading ||
+            isError ||
+            snapshotQuery.isFetching ||
+            tab !== "overview"
+          }
           className="h-auto py-2.5 flex justify-between border-border rounded-lg bg-card"
         >
           <span className="font-bold flex items-center gap-1.5 text-xs">
-            <FileSpreadsheet className="size-4 text-emerald-600" /> تصدير Excel
+            <FileSpreadsheet className="size-4 text-emerald-600" />{" "}
+            {exportingExcel ? "جاري تجهيز التجميعة…" : "تصدير Excel"}
           </span>
           <span className="text-[11px] text-muted-foreground">تحميل</span>
         </Button>
@@ -1272,95 +465,204 @@ function ExecutiveDashboard() {
               <FileCheck2 className="size-4 text-emerald-600" /> الفحوصات المعتمدة
             </span>
             <Badge variant="secondary" className="text-xs px-2 py-0">
-              {filteredData?.submittedCount ?? 0}
+              {summaryCount(summary?.submittedCount)}
             </Badge>
           </Link>
         </Button>
       </div>
 
-      <div className="mb-6 flex items-center gap-2 border-b border-border pb-3 pt-2 print:hidden">
+      <div className="dashboard-tabs mb-6 mt-5 flex flex-wrap items-center gap-2 print:hidden">
         <Button asChild size="sm" variant={tab === "overview" ? "default" : "ghost"}>
-          <Link to="/dashboard" search={{ scope, tab: "overview" }}>نظرة عامة</Link>
+          <Link to="/dashboard" search={{ scope, tab: "overview" }}>
+            نظرة عامة
+          </Link>
         </Button>
-        {canViewAll && <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
-          <Link to="/dashboard" search={{ scope, tab: "tracking" }}>المتابعة الشهرية</Link>
-        </Button>}
+        {canViewAll && (
+          <Button asChild size="sm" variant={tab === "tracking" ? "default" : "ghost"}>
+            <Link to="/dashboard" search={{ scope, tab: "tracking" }}>
+              المتابعة الشهرية
+            </Link>
+          </Button>
+        )}
       </div>
 
-      {canViewAll && tab === "tracking" ? (
-        <MonthlyTrackingCard rows={trackingRows} onUpdate={updateTracking} canEdit={isAdmin} />
+      {canViewAll && tab === "tracking" && dateRangeValid ? (
+        <div className="space-y-6">
+          {!fromMonth && !toMonth && (
+            <p className="text-sm text-muted-foreground">
+              المتابعة الشهرية تعرض الشهر الحالي عند مسح الفترة.
+            </p>
+          )}
+          {trackingGroups.map((group) => (
+            <MonthlyTrackingCard
+              key={group.month}
+              rows={group.rows.filter(
+                (row) => branchFilter === "all" || row.branch_id === branchFilter,
+              )}
+              month={group.month}
+              program={programFilter}
+              loading={isLoading || trackingQuery.isPending}
+              error={
+                isError
+                  ? dashboardErrorMessage(error)
+                  : trackingQuery.isError
+                    ? dashboardErrorMessage(trackingQuery.error)
+                    : null
+              }
+              onRetry={() => void refreshDashboard()}
+              pendingKey={
+                trackingPendingKey?.startsWith(`${group.month}:`)
+                  ? trackingPendingKey.slice(group.month.length + 1)
+                  : null
+              }
+              onUpdate={(id, field, value) => updateTracking(group.month, id, field, value)}
+              canEdit={isAdmin}
+            />
+          ))}
+        </div>
       ) : null}
 
-      {tab === "overview" ? <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
-        <button
-          type="button"
-          onClick={() => setActiveMetric("compliance")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">متوسط الامتثال العام</span>
-          <div className="mt-1 text-xl font-black text-primary">
-            {filteredData?.overallScore ?? 0}%
-          </div>
-        </button>
+      {!dateRangeValid && (
+        <p className="mt-4 text-sm text-destructive" dir="rtl">
+          اختر شهر البداية وشهر النهاية، على أن تكون النهاية بعد البداية أو في نفس الشهر.
+        </p>
+      )}
+      {tab === "overview" && snapshotQuery.isError && (
+        <div className="mt-4 rounded-xl border border-destructive/30 p-4 text-sm" dir="rtl">
+          <p>تعذر تحميل ملخص الداشبورد. أعد المحاولة أو تواصل مع مسؤول النظام.</p>
+          <details className="mt-3 text-xs">
+            <summary className="cursor-pointer">عرض تفاصيل الخطأ للدعم</summary>
+            <pre
+              dir="ltr"
+              className="mt-2 whitespace-pre-wrap break-words rounded border p-3 text-left select-text"
+            >
+              {dashboardErrorMessage(snapshotQuery.error)}
+            </pre>
+          </details>
+          <Button className="mt-2" size="sm" onClick={() => void refreshDashboard()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      )}
+      {summary?.provisional && tab === "overview" && (
+        <p className="mt-4 text-xs text-muted-foreground" dir="rtl">
+          مؤشر مبدئي من الفحوصات المتاحة. اضغط على الامتثال لتصفية التفاصيل ومعرفة الأوديتس التي لم
+          تُسجل.
+        </p>
+      )}
+      {!!summary?.unknownPrograms.length && (
+        <p className="mt-3 text-xs text-destructive" dir="rtl">
+          أوديتس تحتاج تعريفًا قبل احتسابها: {summary.unknownPrograms.join("، ")}
+        </p>
+      )}
 
-        <button
-          type="button"
-          onClick={() => setActiveMetric("visits")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">إجمالي الزيارات</span>
-          <div className="mt-1 text-xl font-black">{filteredData?.totalAudits ?? 0}</div>
-        </button>
+      {tab === "overview" ? (
+        <div className="dashboard-metrics mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          <button
+            type="button"
+            onClick={() => setActiveMetric("compliance")}
+            className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground">متوسط الفروع بعد الخصومات</span>
+            <div className="mt-1 text-xl font-black text-primary">
+              {snapshotQuery.isError
+                ? "تعذر التحميل"
+                : snapshotQuery.isPending
+                  ? "…"
+                  : summary?.after == null
+                    ? "لا توجد فحوصات"
+                    : `${summary.after}%`}
+            </div>
+            {summary?.before != null && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                قبل الخصومات: {summary.before}%
+              </p>
+            )}
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveMetric("visits")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-emerald-500/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">فحوصات معتمدة</span>
-          <div className="mt-1 text-xl font-black text-emerald-600">
-            {filteredData?.submittedCount ?? 0}
-          </div>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveMetric("visits")}
+            className="surface-card p-3 text-center rounded-xl border border-border hover:border-primary/50 hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground">إجمالي الزيارات</span>
+            <div className="mt-1 text-xl font-black">{summaryCount(summary?.totalAudits)}</div>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveMetric("visits")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-amber-500/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">قيد التنفيذ (مسودات)</span>
-          <div className="mt-1 text-xl font-black text-amber-600">
-            {filteredData?.draftsCount ?? 0}
-          </div>
-        </button>
+          <button
+            type="button"
+            onClick={() => setActiveMetric("visits")}
+            className="surface-card p-3 text-center rounded-xl border border-border hover:border-emerald-500/50 hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground">فحوصات معتمدة</span>
+            <div className="mt-1 text-xl font-black text-emerald-600">
+              {summaryCount(summary?.submittedCount)}
+            </div>
+          </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveMetric("nonCompliance")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-indigo-500/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">حالات عدم مطابقة</span>
-          <div className="mt-1 text-xl font-black text-indigo-600">
-            {filteredData?.totalComments ?? 0}
-          </div>
-        </button>
+          {showDrafts && (
+            <button
+              type="button"
+              onClick={() => setActiveMetric("visits")}
+              className="surface-card p-3 text-center rounded-xl border border-border hover:border-amber-500/50 hover:bg-muted/30 transition-colors"
+            >
+              <span className="text-[11px] text-muted-foreground">قيد التنفيذ (مسودات)</span>
+              <div className="mt-1 text-xl font-black text-amber-600">
+                {summaryCount(summary?.draftsCount)}
+              </div>
+            </button>
+          )}
 
-        <button
-          type="button"
-          onClick={() => setActiveMetric("critical")}
-          className="surface-card p-3 text-center rounded-xl border border-border hover:border-destructive/50 hover:bg-muted/30 transition-colors"
-        >
-          <span className="text-[11px] text-muted-foreground">مخالفات صريحة (حرجة)</span>
-          <div className="mt-1 text-xl font-black text-destructive">
-            {filteredData?.totalCritical ?? 0}
-          </div>
-        </button>
-      </div> : null}
+          <button
+            type="button"
+            onClick={() => setActiveMetric("nonCompliance")}
+            className="surface-card p-3 text-center rounded-xl border border-border hover:border-indigo-500/50 hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground">حالات عدم مطابقة</span>
+            <div className="mt-1 text-xl font-black text-indigo-600">
+              {summaryCount(summary?.nonCompliant)}
+            </div>
+          </button>
 
-      {canViewAll ? (
+          <button
+            type="button"
+            onClick={() => setActiveMetric("critical")}
+            className="surface-card p-3 text-center rounded-xl border border-border hover:border-destructive/50 hover:bg-muted/30 transition-colors"
+          >
+            <span className="text-[11px] text-muted-foreground">مخالفات صريحة (حرجة)</span>
+            <div className="mt-1 text-xl font-black text-destructive">
+              {summaryCount(summary?.critical)}
+            </div>
+          </button>
+        </div>
+      ) : null}
+
+      {tab === "overview" && snapshotQuery.isSuccess && (
+        <div className="mt-4 flex items-center justify-between gap-3" dir="rtl">
+          <p className="text-xs text-muted-foreground">
+            {isLoading
+              ? "ظهرت المؤشرات؛ جاري تحميل تفاصيل الفترة المختارة في الخلفية…"
+              : "المؤشرات محسوبة من البيانات الحالية عند آخر تحديث."}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={snapshotQuery.isFetching}
+            onClick={() => void refreshDashboard()}
+          >
+            تحديث المؤشرات
+          </Button>
+        </div>
+      )}
+      {tab === "overview" && snapshotQuery.isSuccess && isError && (
+        <Button className="mt-4" onClick={() => void refetch()}>
+          تعذر تحميل التفاصيل — إعادة المحاولة
+        </Button>
+      )}
+      {canViewAll && tab === "overview" && snapshotQuery.isSuccess && !isLoading && !isError ? (
         <>
           <div className="mt-6 space-y-6">
-            <div className="surface-card p-4 rounded-xl border border-border">
+            <div className="dashboard-panel surface-card p-4 rounded-xl border border-border">
               <div
                 className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
                 dir="rtl"
@@ -1371,7 +673,7 @@ function ExecutiveDashboard() {
                     مؤشرات أقسام سلامة الغذاء
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                    اضغط على أي قسم لعرض نسب الشهور والفروع والملاحظات بالتفصيل
+                    النسب بعد خصم القسم وقبل الخصم العام. اضغط لعرض الشهور والفروع والملاحظات
                   </p>
                 </div>
                 <Badge
@@ -1382,17 +684,11 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-        {isLoading ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">
-            جاري تحميل البيانات...
-          </p>
-        ) : isError ? (
-          <div className="space-y-3 py-6 text-center" dir="rtl">
-            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
-            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
-            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
-          </div>
-        ) : (
+              {isLoading ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  جاري تحميل البيانات...
+                </p>
+              ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.fsSections.map((sec) => (
                     <SectionCard
@@ -1405,7 +701,7 @@ function ExecutiveDashboard() {
               )}
             </div>
 
-            <div className="surface-card p-4 rounded-xl border border-border">
+            <div className="dashboard-panel surface-card p-4 rounded-xl border border-border">
               <div
                 className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
                 dir="rtl"
@@ -1413,7 +709,7 @@ function ExecutiveDashboard() {
                 <div>
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700">
                     <BarChart3 className="size-4" />
-                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمد�� فقط)
+                    مؤشرات أقسام النظافة والممارسات الصحية — GHP (المعتمدة فقط)
                   </h3>
                   <p className="text-[11px] text-muted-foreground mt-0.5">
                     مؤشرات الأقسام التابعة لتدقيق الـ GHP
@@ -1427,17 +723,11 @@ function ExecutiveDashboard() {
                 </Badge>
               </div>
 
-        {isLoading ? (
-          <p className="text-xs text-muted-foreground py-6 text-center">
-            جاري تحميل البيانات...
-          </p>
-        ) : isError ? (
-          <div className="space-y-3 py-6 text-center" dir="rtl">
-            <p className="text-sm text-destructive">تعذر تحميل بيانات الداشبورد.</p>
-            <p className="text-xs text-muted-foreground">{error instanceof Error ? error.message : "تحقق من صلاحيات القراءة في Supabase."}</p>
-            <Button size="sm" variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
-          </div>
-        ) : (
+              {isLoading ? (
+                <p className="text-xs text-muted-foreground py-6 text-center">
+                  جاري تحميل البيانات...
+                </p>
+              ) : (
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {filteredData?.ghpSections.map((sec) => (
                     <SectionCard
@@ -1450,7 +740,7 @@ function ExecutiveDashboard() {
               )}
             </div>
 
-            <div className="surface-card p-4 rounded-xl border border-border">
+            <div className="dashboard-panel surface-card p-4 rounded-xl border border-border">
               <div
                 className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
                 dir="rtl"
@@ -1493,7 +783,7 @@ function ExecutiveDashboard() {
               )}
             </div>
 
-            <div className="surface-card p-4 rounded-xl border border-border">
+            <div className="dashboard-panel surface-card p-4 rounded-xl border border-border">
               <div
                 className="mb-3 flex items-center justify-between border-b border-border pb-2.5"
                 dir="rtl"
@@ -1555,7 +845,7 @@ function ExecutiveDashboard() {
             </div>
           </div>
 
-          <div className="surface-card mt-6 p-4 rounded-xl border border-border">
+          <div className="dashboard-panel dashboard-activity surface-card mt-6 p-4 rounded-xl border border-border">
             <div
               className="mb-3.5 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2.5"
               dir="rtl"
@@ -1564,20 +854,15 @@ function ExecutiveDashboard() {
                 <h3 className="text-sm font-bold flex items-center gap-1.5">
                   <Store className="size-4 text-primary" />
                   {scope === "warehouses"
-                    ? "متابعة نشاط المخازن المركزية (اضغط لعرض البرامج والملاحظات بالشهور)"
-                    : "متابعة نشاط الفروع (اضغط لعرض البرامج والملاحظات بالشهور)"}
+                    ? "متابعة نشاط المخازن المركزية (اضغط لعرض الأوديتس والملاحظات بالشهور)"
+                    : "متابعة نشاط الفروع (اضغط لعرض الأوديتس والملاحظات بالشهور)"}
                 </h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
-                  تقسيم برامج الفحص والنسب والملاحظات
+                  تقسيم الأوديتس والنسب والملاحظات
                 </p>
               </div>
-              <div className="w-48 print:hidden">
-                <Input
-                  placeholder={scope === "warehouses" ? "بحث عن مخزن مركزي..." : "بحث عن فرع..."}
-                  className="h-7 text-xs"
-                  value={branchSearch}
-                  onChange={(e) => setBranchSearch(e.target.value)}
-                />
+              <div className="w-full print:hidden">
+                <DashboardFilterBar {...dashboardFilterProps} />
               </div>
             </div>
 
@@ -1608,9 +893,11 @@ function ExecutiveDashboard() {
                       {branch.completed} معتمد
                     </span>
 
-                    <span className="text-amber-700 font-bold text-[10px]">
-                      {branch.drafts} مسودة
-                    </span>
+                    {showDrafts && (
+                      <span className="text-amber-700 font-bold text-[10px]">
+                        {branch.drafts} مسودة
+                      </span>
+                    )}
 
                     <span className="text-primary text-[10px] flex items-center font-bold">
                       تفاصيل <ChevronLeft className="size-3" />
@@ -1621,7 +908,7 @@ function ExecutiveDashboard() {
             </div>
           </div>
         </>
-      ) : (
+      ) : !canViewAll ? (
         <div
           className="mt-8 surface-card p-6 rounded-xl border border-dashed border-border text-center"
           dir="rtl"
@@ -1633,6 +920,10 @@ function ExecutiveDashboard() {
             الفروع مقتصرة على حسابات الإدارة (Administrators).
           </p>
         </div>
+      ) : null}
+
+      {tab === "overview" && summary && (
+        <DashboardRanking summary={summary} filters={dashboardFilterProps} />
       )}
 
       <Dialog open={!!activeMetric} onOpenChange={(open) => !open && setActiveMetric(null)}>
@@ -1641,7 +932,7 @@ function ExecutiveDashboard() {
             <DialogTitle className="text-base font-bold flex items-center gap-2 text-primary">
               <BarChart3 className="size-4" />
               {activeMetric === "compliance"
-                ? "تفاصيل متوسط الامتثال حسب البرامج"
+                ? "تفاصيل متوسط الامتثال حسب الأوديتس"
                 : activeMetric === "visits"
                   ? "تفاصيل جميع الزيارات"
                   : activeMetric === "critical"
@@ -1653,39 +944,19 @@ function ExecutiveDashboard() {
             </DialogDescription>
           </DialogHeader>
 
-          {activeMetric === "compliance" && (
-            <div className="grid gap-3 sm:grid-cols-3 pt-3">
-              {[
-                { code: "FS", label: "Food Safety", sections: filteredData?.fsSections },
-                { code: "GHP", label: "GHP", sections: filteredData?.ghpSections },
-                { code: "FSMS", label: "FSMS", sections: filteredData?.fsmsSections },
-              ].map((program) => {
-                const sections = program.sections ?? [];
-                const score = sections.length
-                  ? Math.round(
-                      sections.reduce((sum, section) => sum + section.complianceRate, 0) /
-                        sections.length,
-                    )
-                  : 0;
-                return (
-                  <div
-                    key={program.code}
-                    className="rounded-xl border border-border bg-muted/20 p-4 text-center"
-                  >
-                    <p className="text-xs font-bold">{program.label}</p>
-                    <p className="mt-2 text-3xl font-black text-primary">{score}%</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      متوسط {sections.length} قسم
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
+          {activeMetric === "compliance" && summary && (
+            <DashboardScoreDetails summary={summary} filters={dashboardFilterProps} />
+          )}
+          {(activeMetric === "nonCompliance" || activeMetric === "critical") && isLoading && (
+            <p className="py-4 text-sm">جاري تحميل التفاصيل…</p>
+          )}
+          {(activeMetric === "nonCompliance" || activeMetric === "critical") && isError && (
+            <Button onClick={() => void refetch()}>تعذر تحميل التفاصيل — إعادة المحاولة</Button>
           )}
 
           {activeMetric === "visits" && (
             <div className="space-y-2 pt-3">
-              {(filteredData?.audits ?? []).map((audit) => (
+              {(snapshotQuery.data?.audits ?? []).map((audit) => (
                 <div
                   key={audit.id}
                   className="flex items-center justify-between rounded-lg border border-border bg-card p-3 text-xs"
@@ -1693,9 +964,14 @@ function ExecutiveDashboard() {
                   <div>
                     <p className="font-bold">{audit.branchName}</p>
                     <p className="text-muted-foreground">
-                      {audit.audit_date || "غير محدد"} · {audit.typeName}
+                      {audit.date} · {audit.type.name_ar || audit.type.code}
                     </p>
                   </div>
+                  <Button asChild size="sm" variant="outline">
+                    <Link to="/audits/$id" params={{ id: audit.id }}>
+                      فتح الفحص
+                    </Link>
+                  </Button>
                   <Badge variant={audit.status === "submitted" ? "default" : "outline"}>
                     {audit.status === "submitted" ? "مكتمل" : "مسودة"}
                   </Badge>
@@ -1713,7 +989,7 @@ function ExecutiveDashboard() {
                   </SelectTrigger>
                   <SelectContent dir="rtl">
                     <SelectItem value="all">كل الفروع</SelectItem>
-                    {data?.branches.map((branch) => (
+                    {(snapshotQuery.data?.locations ?? data?.branches ?? []).map((branch) => (
                       <SelectItem key={branch.id} value={branch.id}>
                         {branch.name_ar}
                       </SelectItem>
@@ -1725,7 +1001,7 @@ function ExecutiveDashboard() {
                     <SelectValue placeholder="البرنامج" />
                   </SelectTrigger>
                   <SelectContent dir="rtl">
-                    <SelectItem value="all">كل البرامج</SelectItem>
+                    <SelectItem value="all">كل الأوديتس</SelectItem>
                     <SelectItem value="FS">Food Safety</SelectItem>
                     <SelectItem value="GHP">GHP</SelectItem>
                     <SelectItem value="FSMS">FSMS</SelectItem>
@@ -1763,7 +1039,7 @@ function ExecutiveDashboard() {
                       </div>
                     </div>
                   ))}
-                {activeIssues.length === 0 && (
+                {!isLoading && !isError && activeIssues.length === 0 && (
                   <p className="py-8 text-center text-xs text-muted-foreground">
                     لا توجد نتائج مطابقة للفلاتر.
                   </p>
@@ -2108,49 +1384,5 @@ function ExecutiveDashboard() {
         </DialogContent>
       </Dialog>
     </AppShell>
-  );
-}
-
-function SectionCard({ sec, onSelect }: { sec: any; onSelect: () => void }) {
-  return (
-    <div
-      onClick={onSelect}
-      className="cursor-pointer rounded-lg border border-border bg-card p-3 shadow-xs hover:border-primary hover:shadow-sm transition-all active:scale-[0.99]"
-      dir="rtl"
-    >
-      <div className="flex justify-between items-start mb-1.5">
-        <span className="font-bold text-xs text-foreground">{sec.nameAr}</span>
-        <span
-          className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
-            sec.complianceRate >= 90
-              ? "bg-emerald-100 text-emerald-800"
-              : sec.complianceRate >= 75
-                ? "bg-amber-100 text-amber-800"
-                : "bg-destructive/10 text-destructive"
-          }`}
-        >
-          {sec.complianceRate}% امتثال
-        </span>
-      </div>
-
-      <div className="my-2">
-        <Progress value={sec.complianceRate} className="h-1.5" />
-      </div>
-
-      <div className="flex justify-between items-center text-[11px] pt-1.5 border-t border-border/50">
-        <span className="flex items-center gap-1 text-muted-foreground font-semibold">
-          <MessageSquare className="size-3 text-primary" /> {sec.commentsCount} عدم مطابقة
-        </span>
-        {sec.criticalCount > 0 ? (
-          <span className="flex items-center gap-1 text-destructive font-semibold text-[10px]">
-            <AlertTriangle className="size-3" /> {sec.criticalCount} حرجة
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 text-emerald-600 text-[10px]">
-            <CheckCircle2 className="size-3" /> ممتثل
-          </span>
-        )}
-      </div>
-    </div>
   );
 }

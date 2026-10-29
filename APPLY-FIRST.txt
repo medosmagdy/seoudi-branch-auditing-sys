@@ -1,0 +1,5 @@
+Monthly tracking hotfix only. Apply over sqop-dashboard-refactor-performance.zip (base b0a74f4).
+No SQL, schema change, new dependency, or storage-secret setup is required for this hotfix.
+Fixes Maadi 1/2 and Sodic East name matching, selected month, submitted-over-draft priority, reactive status derivation, loading/error states and manual save failures.
+Page loading is read-only. Existing database rows are not automatically changed.
+Test in Preview before publishing. Broader security/UI review is separate and not included in this ZIP.

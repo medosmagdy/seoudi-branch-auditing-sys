@@ -18,3 +18,8 @@ export type DashboardAudit = AuditRow & {
 export type DashboardAuditScore = DashboardAudit & {
   score: number | null;
 };
+
+export type DashboardAnswer = Pick<
+  AuditAnswerRow,
+  "id" | "audit_id" | "question_id" | "score" | "is_na" | "comment"
+>;

@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useAuditSharing } from "@/hooks/useAuditSharing";
+import { loadAuditNaDefaults, mergeAuditDefaults, saveAuditNaDefaults } from "@/lib/audit-na";
+import { addAuditDeduction, removeAuditDeduction } from "@/lib/audit-deductions";
+import { invalidateDashboard } from "@/lib/dashboard/cache";
+import { editAnswer, AnswerWrites } from "@/lib/answer-edit";
+import { loadAuditAnswers } from "@/lib/audit-answers";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createFileRoute, useNavigate, useBlocker } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Camera, ChevronLeft, ChevronRight, FolderOpen, Trash2, Award } from "lucide-react";
@@ -82,18 +88,61 @@ function AuditRunner() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { profile } = useSession();
+  const sharing = useAuditSharing();
   const [stepIndex, setStepIndex] = useState(search.section ?? 0);
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [sectionNa, setSectionNa] = useState<Record<string, boolean>>({});
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const localAnswers = useRef<Record<string, AnswerState>>({});
+  const [savingSummary, setSavingSummary] = useState(false);
+  const [savingSection, setSavingSection] = useState(false);
+  const sectionLock = useRef(false);
+  const writer = useMemo(
+    () =>
+      new AnswerWrites<AnswerState>(async (questionId, state) => {
+        const { error } = await supabase.from("audit_answers").upsert(
+          {
+            audit_id: id,
+            question_id: questionId,
+            score: state.isNa ? null : state.score,
+            is_na: state.isNa,
+            comment: state.comment.slice(0, 1000) || null,
+          },
+          { onConflict: "audit_id,question_id" },
+        );
+        if (error) throw error;
+        void invalidateDashboard(queryClient);
+      }),
+    [id, queryClient],
+  );
+  const unsavedAnswers = useSyncExternalStore(writer.subscribe, writer.getPendingCount, () => 0);
+  useBlocker({
+    enableBeforeUnload: () => writer.getPendingCount() > 0 || sectionLock.current,
+    shouldBlockFn: async ({ current, next }) => {
+      if (current.pathname === next.pathname) return false;
+      if (sectionLock.current) {
+        toast.error("انتظر انتهاء حفظ تعديل القسم قبل الخروج");
+        return true;
+      }
+      try {
+        await writer.flush();
+        return false;
+      } catch {
+        toast.error("تعذر حفظ الإجابات؛ تم إيقاف الخروج لحماية تعديلاتك");
+        return true;
+      }
+    },
+  });
+  useEffect(() => {
+    localAnswers.current = {};
+  }, [id]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["audit", id],
     queryFn: async () => {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
-          "id, status, version, audit_date, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
+          "id, status, version, audit_date, created_at, audit_type_id, branch_id, branch_manager, auditor_id, created_by, branches(name_ar, code), audit_types(name_ar, code, scoring_system)",
         )
         .eq("id", id)
         .single();
@@ -122,47 +171,39 @@ function AuditRunner() {
           .eq("audit_type_id", audit.audit_type_id)
           .eq("active", true)
           .order("item_order"),
-        supabase.from("audit_answers").select("*").eq("audit_id", id),
+        loadAuditAnswers(id, audit.audit_type_id),
         supabase.from("audit_section_status").select("*").eq("audit_id", id),
         supabase.from("audit_section_deductions").select("*").eq("audit_id", id),
         supabase.from("audit_general_deductions").select("*").eq("audit_id", id),
         supabase.from("photos").select("*").eq("audit_id", id),
       ]);
 
-  let inheritedStatuses: any[] = [];
-  let inheritedAnswers: any[] = [];
-  if (audit.branch_id) {
-        const { data: previousAudit } = await supabase
-          .from("audits")
-          .select("id")
-          .eq("branch_id", audit.branch_id)
-          .eq("audit_type_id", audit.audit_type_id)
-          .neq("id", id)
-          .order("audit_date", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (previousAudit?.id) {
-          const { data: previousStatuses } = await supabase
-            .from("audit_section_status")
-            .select("section_id, is_na")
-            .eq("audit_id", previousAudit.id)
-            .eq("is_na", true);
-          inheritedStatuses = previousStatuses ?? [];
-          const { data: previousAnswers } = await supabase
-            .from("audit_answers")
-            .select("question_id, score, is_na, comment")
-            .eq("audit_id", previousAudit.id)
-            .eq("is_na", true);
-          inheritedAnswers = previousAnswers ?? [];
-        }
+      for (const response of [
+        sections,
+        headers,
+        questions,
+        statuses,
+        sectionDeductions,
+        generalDeductions,
+        photos,
+      ]) {
+        if (response.error) throw response.error;
       }
+
+      const inherited = await loadAuditNaDefaults(audit);
+      const inheritedStatuses = inherited.statuses.filter((row) =>
+        (sections.data ?? []).some((section) => section.id === row.section_id),
+      );
+      const inheritedAnswers = inherited.answers.filter((row) =>
+        (questions.data ?? []).some((question) => question.id === row.question_id),
+      );
 
       return {
         audit,
         sections: sections.data ?? [],
         headers: headers.data ?? [],
         questions: questions.data ?? [],
-        savedAnswers: savedAnswers.data ?? [],
+        savedAnswers,
         statuses: statuses.data ?? [],
         inheritedStatuses,
         inheritedAnswers,
@@ -183,12 +224,10 @@ function AuditRunner() {
     [auditType],
   );
   const isFsmsAudit = useMemo(
-    () =>
-      /fsms/i.test(auditType?.name_ar || "") ||
-      /fsms/i.test(auditType?.code || ""),
+    () => /fsms/i.test(auditType?.name_ar || "") || /fsms/i.test(auditType?.code || ""),
     [auditType],
   );
-  
+
   useEffect(() => {
     if (search.section !== undefined && search.section !== stepIndex) {
       setStepIndex(search.section);
@@ -220,7 +259,11 @@ function AuditRunner() {
     const isFsms =
       /fsms/i.test(auditTypeName.name_ar || "") || /fsms/i.test(auditTypeName.code || "");
     const nextAnswers: Record<string, AnswerState> = {};
-    const answerRows = data.savedAnswers.length ? data.savedAnswers : data.inheritedAnswers;
+    const answerRows = mergeAuditDefaults(
+      data.inheritedAnswers,
+      data.savedAnswers,
+      (row) => row.question_id,
+    );
     answerRows.forEach((answer) => {
       nextAnswers[answer.question_id] = {
         score: answer.score,
@@ -228,13 +271,17 @@ function AuditRunner() {
         comment: answer.comment ?? "",
       };
     });
-    setAnswers(nextAnswers);
+    setAnswers({ ...nextAnswers, ...localAnswers.current });
     const nextStatus: Record<string, boolean> = {};
-  const statusRows = data.statuses.length ? data.statuses : data.inheritedStatuses;
-  statusRows.forEach((status) => {
-    nextStatus[status.section_id] = status.is_na;
-  });
-  setSectionNa(nextStatus);
+    const statusRows = mergeAuditDefaults(
+      data.inheritedStatuses,
+      data.statuses,
+      (row) => row.section_id,
+    );
+    statusRows.forEach((status) => {
+      nextStatus[status.section_id] = status.is_na;
+    });
+    setSectionNa(nextStatus);
   }, [data]);
 
   const changeStep = (newIndex: number) => {
@@ -282,7 +329,7 @@ function AuditRunner() {
 
     data.questions.forEach((q) => {
       if (answers[q.id]) {
-        map[q.id] = answers[q.id];
+        map[q.id] = answers[q.id]!;
       } else {
         map[q.id] = {
           score: q.max_score ?? 4,
@@ -303,8 +350,8 @@ function AuditRunner() {
         (data?.generalDeductions ?? []).map((deduction) => ({
           reasonText: deduction.reason_text,
           percentage: Number(deduction.percentage),
-          })),
-          (data?.audit.branches as { name_ar?: string } | null)?.name_ar,
+        })),
+        (data?.audit.branches as { name_ar?: string } | null)?.name_ar,
       ),
     [scoringSections, effectiveAnswers, data],
   );
@@ -321,9 +368,22 @@ function AuditRunner() {
     };
   }, [data, result]);
 
+  if (isError) {
+    return (
+      <AppShell contentClassName="audit-runner-page" title="تعذر تحميل الفحص">
+        <div className="py-8 text-center" dir="rtl">
+          <p>تعذر تحميل بيانات الفحص كاملة. أعد المحاولة قبل المتابعة.</p>
+          <Button className="mt-3" onClick={() => void refetch()}>
+            إعادة المحاولة
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+
   if (isLoading || !data) {
     return (
-      <AppShell title="Run Audit">
+      <AppShell contentClassName="audit-runner-page" title="Run Audit">
         <p className="text-sm text-muted-foreground text-center py-8">جاري التحميل…</p>
       </AppShell>
     );
@@ -331,7 +391,11 @@ function AuditRunner() {
 
   if (data.sections.length === 0) {
     return (
-      <AppShell title="Run Audit" subtitle="No checklist available">
+      <AppShell
+        contentClassName="audit-runner-page"
+        title="Run Audit"
+        subtitle="No checklist available"
+      >
         <div className="surface-card p-8 text-center text-sm text-muted-foreground">
           لم يتم استيراد أو إعداد قائمة تفتيش لهذا التدقيق بعد. اذهب إلى الإدارة واستورد ملف الفحص
           أولاً.
@@ -351,6 +415,7 @@ function AuditRunner() {
   const disabledScore = isFsmsAudit ? null : getDisabledScore(branchName);
   const readOnly = profile
     ? !canEditAudit({
+        sharedUserIds: sharing.peerIds,
         role: profile.role,
         userId: profile.id,
         createdBy: data.audit.created_by,
@@ -359,62 +424,98 @@ function AuditRunner() {
       })
     : true;
 
-  const persistAnswer = (questionId: string, state: AnswerState) => {
-    clearTimeout(timers.current[questionId]);
-    timers.current[questionId] = setTimeout(async () => {
-      const { error } = await supabase.from("audit_answers").upsert(
-        {
-          audit_id: id,
-          question_id: questionId,
-          score: state.isNa ? null : state.score,
-          is_na: state.isNa,
-          comment: state.comment.slice(0, 1000) || null,
-        },
-        { onConflict: "audit_id,question_id" },
-      );
-      if (error) toast.error("تعذر حفظ الإجابة");
-    }, 400);
+  const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
+    if (readOnly || savingSummary) return;
+    const question = data.questions.find((entry) => entry.id === questionId);
+    const current = localAnswers.current[questionId] ?? answers[questionId];
+    const next = editAnswer(current, patch, question?.max_score ?? 4);
+    localAnswers.current[questionId] = next;
+    setAnswers((previous) => ({ ...previous, [questionId]: next }));
+    void writer
+      .enqueue(questionId, next)
+      .catch(() => toast.error("تعذر حفظ الإجابة؛ أعد المحاولة قبل الخروج"));
   };
 
-  const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
-    if (readOnly) return;
-    setAnswers((previous) => {
-      const current = previous[questionId] ?? { score: null, isNa: false, comment: "" };
-      const next = { ...current, ...patch };
-      persistAnswer(questionId, next);
-      return { ...previous, [questionId]: next };
-    });
+  const openSummary = async () => {
+    if (savingSummary || sectionLock.current) return;
+    setSavingSummary(true);
+    try {
+      await writer.flush();
+      if (!readOnly)
+        await saveAuditNaDefaults(id, {
+          answers: data.inheritedAnswers,
+          statuses: data.inheritedStatuses,
+        });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["audit", id] }),
+        queryClient.invalidateQueries({ queryKey: ["audit-summary", id] }),
+        queryClient.invalidateQueries({ queryKey: ["audit-report", id] }),
+      ]);
+      await navigate({ to: "/audits/$id/summary", params: { id } });
+    } catch {
+      toast.error("تعذر حفظ جميع الإجابات؛ لم يتم فتح الملخص. أعد المحاولة");
+    } finally {
+      setSavingSummary(false);
+    }
   };
 
   const toggleSectionNa = async (value: boolean) => {
-    if (readOnly) return;
-    setSectionNa((previous) => ({ ...previous, [section.id]: value }));
-    const { error } = await supabase
-      .from("audit_section_status")
-      .upsert(
-        { audit_id: id, section_id: section.id, is_na: value },
-        { onConflict: "audit_id,section_id" },
-      );
-    if (error) toast.error("تعذر تحديث حالة القسم");
+    if (readOnly || savingSummary || sectionLock.current) return;
+    sectionLock.current = true;
+    setSavingSection(true);
+    const sectionId = section.id;
+    const previous = !!sectionNa[sectionId];
+    setSectionNa((state) => ({ ...state, [sectionId]: value }));
+    try {
+      const { error } = await supabase
+        .from("audit_section_status")
+        .upsert(
+          { audit_id: id, section_id: sectionId, is_na: value },
+          { onConflict: "audit_id,section_id" },
+        );
+      if (error) throw error;
+      void invalidateDashboard(queryClient);
+    } catch {
+      setSectionNa((state) => ({ ...state, [sectionId]: previous }));
+      toast.error("تعذر تحديث حالة القسم؛ تم الاحتفاظ بالحالة السابقة");
+    } finally {
+      sectionLock.current = false;
+      setSavingSection(false);
+    }
   };
 
   const addSectionDeduction = async (reason: string, percentage: number) => {
-    const { error } = await supabase.from("audit_section_deductions").insert({
-      audit_id: id,
-      section_id: section.id,
-      reason_text: reason.slice(0, 300),
-      percentage,
-    });
-    if (error) {
-      toast.error("تعذر إضافة الخصم");
-      return;
+    if (readOnly || savingSummary || sectionLock.current) return false;
+    sectionLock.current = true;
+    setSavingSection(true);
+    try {
+      await addAuditDeduction({ auditId: id, sectionId: section.id }, reason, percentage);
+      await queryClient.invalidateQueries({ queryKey: ["audit", id] });
+      void invalidateDashboard(queryClient);
+      return true;
+    } catch {
+      toast.error("تعذر إضافة الخصم؛ أعد المحاولة");
+      return false;
+    } finally {
+      sectionLock.current = false;
+      setSavingSection(false);
     }
-    queryClient.invalidateQueries({ queryKey: ["audit", id] });
   };
 
   const removeSectionDeduction = async (deductionId: string) => {
-    await supabase.from("audit_section_deductions").delete().eq("id", deductionId);
-    queryClient.invalidateQueries({ queryKey: ["audit", id] });
+    if (readOnly || savingSummary || sectionLock.current) return;
+    sectionLock.current = true;
+    setSavingSection(true);
+    try {
+      await removeAuditDeduction({ auditId: id, sectionId: section.id }, deductionId);
+      await queryClient.invalidateQueries({ queryKey: ["audit", id] });
+      void invalidateDashboard(queryClient);
+    } catch {
+      toast.error("تعذر حذف الخصم؛ أعد المحاولة");
+    } finally {
+      sectionLock.current = false;
+      setSavingSection(false);
+    }
   };
 
   const handlePhotos = async (questionId: string, files: File[]) => {
@@ -435,21 +536,53 @@ function AuditRunner() {
 
   return (
     <AppShell
+      contentClassName="audit-runner-page"
       title={branchName}
       subtitle={`${data.audit.audit_date} · القسم ${stepIndex + 1} من ${data.sections.length}`}
       action={
         <div className="flex items-center gap-2">
-          <Badge variant={readOnly ? "default" : "outline"}>{readOnly ? "معتمد" : "مسودة"}</Badge>
+          <Badge variant={data.audit.status === "submitted" ? "default" : "outline"}>
+            {data.audit.status === "submitted" ? "معتمد" : "مسودة"}
+          </Badge>
+          {readOnly && <Badge variant="secondary">عرض فقط</Badge>}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => navigate({ to: "/audits/$id/summary", params: { id } })}
+            disabled={savingSummary || savingSection}
+            onClick={() => void openSummary()}
           >
             الملخص
           </Button>
         </div>
       }
     >
+      <div
+        role="status"
+        aria-live="polite"
+        className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+        dir="rtl"
+      >
+        <span>
+          {unsavedAnswers
+            ? `إجابات لم يتأكد حفظها بعد: ${unsavedAnswers}`
+            : "كل تغييرات الإجابات محفوظة"}
+        </span>
+        {unsavedAnswers > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={savingSummary}
+            onClick={() =>
+              void writer
+                .flush()
+                .catch(() => toast.error("تعذر حفظ الإجابات؛ تحقق من الاتصال وأعد المحاولة"))
+            }
+          >
+            إعادة محاولة الحفظ
+          </Button>
+        )}
+        {savingSection && <span>جاري حفظ تعديل القسم…</span>}
+      </div>
       <div className="mb-4 h-2 w-full overflow-hidden rounded-full bg-muted">
         <div
           className="h-full bg-primary transition-all"
@@ -473,7 +606,10 @@ function AuditRunner() {
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/10 p-4 shadow-sm" dir="rtl">
+      <div
+        className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary/20 bg-primary/10 p-4 shadow-sm"
+        dir="rtl"
+      >
         <div className="text-right">
           <h2 className="text-lg font-bold">{section.name_ar}</h2>
           {section.is_delivery && (
@@ -488,7 +624,7 @@ function AuditRunner() {
             id="section-na"
             checked={isNaSection}
             onCheckedChange={toggleSectionNa}
-            disabled={readOnly}
+            disabled={readOnly || savingSection || savingSummary}
           />
         </div>
       </div>
@@ -535,7 +671,9 @@ function AuditRunner() {
               >
                 <div dir="rtl" className="text-right">
                   {header && (
-                    <div className="mb-2 rounded-lg border-r-4 border-primary/60 bg-muted/70 px-3 py-2 text-sm font-bold text-foreground shadow-sm">{header.label_ar}</div>
+                    <div className="mb-2 rounded-lg border-r-4 border-primary/60 bg-muted/70 px-3 py-2 text-sm font-bold text-foreground shadow-sm">
+                      {header.label_ar}
+                    </div>
                   )}
                   <div className="mt-1 text-[11px] text-muted-foreground font-mono" dir="ltr">
                     {question.item_id}
@@ -545,29 +683,35 @@ function AuditRunner() {
                   </p>
                 </div>
 
+                {!answer.isNa && answer.score === null && (
+                  <p className="mt-3 text-sm text-destructive" dir="rtl">
+                    درجة هذا البند غير محفوظة. اختر الدرجة الصحيحة أو غير منطبق قبل الاعتماد.
+                  </p>
+                )}
+
                 <div className="mt-3 flex flex-wrap gap-2" dir="rtl">
                   {scoreOptions.map((option) => {
                     const isOptionDisabled =
                       readOnly || (disabledScore !== null && option.value === disabledScore);
 
-                      return (
-                        <Button
-                          key={option.value}
-                          size="sm"
-                          variant={
-                            !answer.isNa && answer.score === option.value ? "default" : "outline"
-                          }
-                          disabled={isOptionDisabled}
-                          onClick={() =>
-                            updateAnswer(question.id, { score: option.value, isNa: false })
-                          }
-                          className={
-                            isOptionDisabled && !readOnly ? "opacity-30 cursor-not-allowed" : ""
-                          }
-                        >
-                          {option.label}
-                        </Button>
-                      );
+                    return (
+                      <Button
+                        key={option.value}
+                        size="sm"
+                        variant={
+                          !answer.isNa && answer.score === option.value ? "default" : "outline"
+                        }
+                        disabled={isOptionDisabled}
+                        onClick={() =>
+                          updateAnswer(question.id, { score: option.value, isNa: false })
+                        }
+                        className={
+                          isOptionDisabled && !readOnly ? "opacity-30 cursor-not-allowed" : ""
+                        }
+                      >
+                        {option.label}
+                      </Button>
+                    );
                   })}
                   <Button
                     size="sm"
@@ -653,8 +797,12 @@ function AuditRunner() {
                               className="absolute -top-1.5 -right-1.5 grid size-4 place-items-center rounded-full bg-destructive text-destructive-foreground"
                               aria-label="Delete photo"
                               onClick={async () => {
-                                await deletePhoto(photo.id, photo.storage_path);
-                                queryClient.invalidateQueries({ queryKey: ["audit", id] });
+                                try {
+                                  await deletePhoto(photo.id, photo.storage_path);
+                                  await queryClient.invalidateQueries({ queryKey: ["audit", id] });
+                                } catch {
+                                  toast.error("تعذر حذف الصورة؛ أعد المحاولة");
+                                }
                               }}
                             >
                               <Trash2 className="size-2.5" />
@@ -672,6 +820,7 @@ function AuditRunner() {
           <SectionDeductions
             deductions={currentDeductions}
             readOnly={readOnly}
+            busy={savingSection || savingSummary}
             onAdd={addSectionDeduction}
             onRemove={removeSectionDeduction}
           />
@@ -691,10 +840,12 @@ function AuditRunner() {
             التالي <ChevronRight className="size-4 mr-1" />
           </Button>
         ) : (
-          <Button asChild className="mr-auto font-bold">
-            <Link to="/audits/$id/summary" params={{ id }}>
-              مراجعة ملخص الفحص <ChevronRight className="size-4 mr-1" />
-            </Link>
+          <Button
+            disabled={savingSummary || savingSection}
+            onClick={() => void openSummary()}
+            className="mr-auto font-bold"
+          >
+            مراجعة ملخص الفحص <ChevronRight className="size-4 mr-1" />
           </Button>
         )}
       </div>
@@ -709,14 +860,14 @@ function AuditRunner() {
               <Award className="size-4 text-emerald-600" />
               <span className="text-[11px] sm:text-xs">المجموع الكلي:</span>
             </div>
-<div className="flex items-baseline gap-1 font-mono" dir="ltr">
-                <span className="text-base sm:text-lg font-black text-foreground">
-                  {liveStats.earned}
-                </span>
-                <span className="text-[10px] sm:text-xs text-muted-foreground">
-                  / {liveStats.max}
-                </span>
-              </div>
+            <div className="flex items-baseline gap-1 font-mono" dir="ltr">
+              <span className="text-base sm:text-lg font-black text-foreground">
+                {liveStats.earned}
+              </span>
+              <span className="text-[10px] sm:text-xs text-muted-foreground">
+                / {liveStats.max}
+              </span>
+            </div>
             <Badge
               variant={Number(liveStats.pct) >= 85 ? "default" : "destructive"}
               className="text-[10px] sm:text-xs font-mono font-bold px-1.5 py-0.5"
@@ -754,10 +905,12 @@ function SectionDeductions({
   readOnly,
   onAdd,
   onRemove,
+  busy,
 }: {
   deductions: { id: string; reason_text: string; percentage: number }[];
   readOnly: boolean;
-  onAdd: (reason: string, percentage: number) => void;
+  onAdd: (reason: string, percentage: number) => Promise<boolean>;
+  busy: boolean;
   onRemove: (id: string) => void;
 }) {
   const [reason, setReason] = useState("");
@@ -775,7 +928,7 @@ function SectionDeductions({
             <span>{deduction.reason_text}</span>
             <strong className="mr-auto font-mono text-destructive">-{deduction.percentage}%</strong>
             {!readOnly && (
-              <button aria-label="Delete deduction" onClick={() => onRemove(deduction.id)}>
+              <button disabled={busy} aria-label="حذف الخصم" onClick={() => onRemove(deduction.id)}>
                 <Trash2 className="size-4 text-destructive" />
               </button>
             )}
@@ -790,6 +943,7 @@ function SectionDeductions({
             maxLength={300}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
+            disabled={busy}
           />
           <Input
             className="w-20 text-xs font-mono"
@@ -799,19 +953,22 @@ function SectionDeductions({
             placeholder="%"
             value={percentage}
             onChange={(event) => setPercentage(event.target.value)}
+            disabled={busy}
           />
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
+            disabled={busy}
+            onClick={async () => {
               const value = Number(percentage);
               if (!reason.trim() || !Number.isFinite(value) || value <= 0 || value > 100) {
                 toast.error("أدخل سبب الخصم ونسبة بين 1 و 100%");
                 return;
               }
-              onAdd(reason.trim(), value);
-              setReason("");
-              setPercentage("");
+              if (await onAdd(reason.trim(), value)) {
+                setReason("");
+                setPercentage("");
+              }
             }}
           >
             إضافة خصم

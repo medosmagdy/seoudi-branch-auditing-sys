@@ -1,0 +1,67 @@
+export const slaughterChecklist = [
+  {
+    title: "1. Ante-mortem examination",
+    rows: [
+      { label: "Rough handling", total: 5 },
+      { label: "Over capacity", total: 5 },
+      { label: "Animal identification", total: 1 },
+      { label: "Age", total: 5 },
+      { label: "Animals hygienic conditions", total: 3 },
+      { label: "General health condition", total: 1 },
+      { label: "Lymph nodes", total: 1 },
+      { label: "Skin diseases", total: 1 },
+      { label: "External parasites", total: 1 },
+      { label: "Body condition scores", total: 2 },
+    ],
+  },
+  {
+    title: "2. Slaughterhouse hygienic condition",
+    rows: [
+      { label: "Facilities", total: 1 },
+      { label: "Tools", total: 2 },
+      { label: "Employee", total: 2 },
+    ],
+  },
+  {
+    title: "3. Post-mortem examination",
+    rows: [
+      { label: "Proper killing", total: 3 },
+      { label: "Completely dead before cutting spinal cord", total: 3 },
+      { label: "Bleeding", total: 5 },
+      { label: "Flaying process", total: 1 },
+      { label: "Bruises", total: 5 },
+      { label: "Urinary bladder", total: 1 },
+      { label: "Intestine", total: 1 },
+      { label: "Rumen", total: 2 },
+      { label: "Gall bladder", total: 1 },
+      { label: "Examination of carcass L.N.", total: 5 },
+      { label: "Examination of head", total: 1 },
+      { label: "Lung", total: 2 },
+      { label: "Liver", total: 2 },
+      { label: "Kidney", total: 2 },
+      { label: "Heart", total: 2 },
+      { label: "Jaundice", total: 3 },
+      { label: "Contamination", total: 5 },
+      { label: "Condemnation", total: 5 },
+      { label: "Stamp", total: 1 },
+    ],
+  },
+  {
+    title: "4. Meat quality score",
+    rows: [
+      { label: "Meat Color", total: 5 },
+      { label: "Fat color", total: 3 },
+      { label: "Marbling", total: 1 },
+      { label: "Firmness", total: 1 },
+    ],
+  },
+  {
+    title: "5. Meat transportation",
+    rows: [
+      { label: "Cleaning and sanitation", total: 3 },
+      { label: "Proper food grade packaging material", total: 3 },
+      { label: "Cooling", total: 2 },
+      { label: "Capacity", total: 2 },
+    ],
+  },
+];

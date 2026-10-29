@@ -1,3 +1,7 @@
+import { auditOwnerFilter } from "@/lib/audit-sharing";
+import { useAuditSharing } from "@/hooks/useAuditSharing";
+import { auditReportFileBase } from "@/lib/audit-report-name";
+import { invalidateDashboard } from "@/lib/dashboard/cache";
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import {
@@ -17,13 +21,17 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { logAuditEdit } from "@/lib/generate-reports";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { loadReportModel } from "@/lib/report-data";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { useSession } from "@/hooks/useSession";
-import { canEditAudit, canViewAllAudits } from "@/lib/permissions";
+import {
+  canReadAudit,
+  canEditAudit,
+  canViewAllAudits,
+  canViewDraftAudits,
+} from "@/lib/permissions";
 
 const searchSchema = z.object({
   status: z.enum(["all", "draft", "submitted"]).default("all"),
@@ -53,8 +61,15 @@ function AuditsList() {
   const { status, type, scope } = useSearch({ from: "/_authenticated/audits/" });
   const queryClient = useQueryClient();
   const { profile } = useSession();
+  const sharing = useAuditSharing();
+  const showDrafts = !!profile && canViewDraftAudits(profile.role);
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
+  const [exportingExcelId, setExportingExcelId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const pdfLock = useRef(false);
+  const excelLock = useRef(false);
+  const deleteLock = useRef(false);
   const [monthFrom, setMonthFrom] = useState(() => {
     const enteredAt = new Date();
     return `${enteredAt.getFullYear()}-${String(enteredAt.getMonth() + 1).padStart(2, "0")}`;
@@ -62,44 +77,48 @@ function AuditsList() {
   const [monthTo, setMonthTo] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
 
-  // 1. جلب المستخدم الحالي ودوره من جدول user_roles
-  const { data: userProfile } = useQuery({
-    queryKey: ["current-user-role"],
-    queryFn: async () => {
-      const { data: authData, error: authErr } = await supabase.auth.getUser();
-      const user = authData?.user;
-      if (authErr || !user) return null;
-
-      // الاستعلام عن الدور من جدول user_roles الفعلي
-      const { data: roleRecord } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const userRole = (roleRecord?.role || "").toLowerCase();
-      const isAdmin = userRole === "admin";
-
-      return { user, role: userRole, isAdmin };
-    },
-  });
+  // Use the verified session role; do not reuse an independently cached role after an account change.
+  const userProfile = profile
+    ? { user: { id: profile.id }, role: profile.role, isAdmin: profile.role === "admin" }
+    : null;
 
   // 2. جلب الفحوصات مع الفلترة حسب الصلاحية
   const { data: audits, isLoading } = useQuery({
-    queryKey: ["audits", userProfile?.user?.id, userProfile?.isAdmin],
+    queryKey: [
+      "audits",
+      userProfile?.user?.id,
+      userProfile?.role,
+      sharing.peerIds,
+      sharing.visibleBranchIds,
+    ],
     queryFn: async () => {
       let auditsQuery = supabase
         .from("audits")
         .select("*")
-        .order("audit_date", { ascending: false });
+        .order("audit_date", { ascending: false })
+        .order("id");
 
-      // لو مراجع فقط، نحصر النتائج على فحوصاته
-      if (userProfile && !canViewAllAudits(userProfile.role as "admin" | "manager" | "auditor") && userProfile.user?.id) {
-        auditsQuery = auditsQuery.eq("auditor_id", userProfile.user.id);
-      }
+      if (userProfile && userProfile.role !== "admin")
+        auditsQuery = auditsQuery.or(
+          auditOwnerFilter(
+            userProfile.user.id,
+            sharing.peerIds,
+            userProfile.role === "manager",
+            sharing.visibleBranchIds,
+          ),
+        );
 
       const [auditsRes, branchesRes, typesRes, profilesRes] = await Promise.all([
-        auditsQuery,
+        (async () => {
+          const rows: any[] = [];
+          for (let offset = 0; ; offset += 500) {
+            const result = await auditsQuery.range(offset, offset + 499);
+            if (result.error) throw result.error;
+            rows.push(...(result.data ?? []));
+            if ((result.data?.length ?? 0) < 500) break;
+          }
+          return { data: [...new Map(rows.map((row) => [row.id, row])).values()], error: null };
+        })(),
         supabase.from("branches").select("*"),
         supabase.from("audit_types").select("*"),
         supabase.from("profiles").select("id, full_name, email"),
@@ -136,34 +155,18 @@ function AuditsList() {
         auditorName: profileMap.get(audit.auditor_id) || "مراجع غير محدد",
       }));
     },
-    enabled: userProfile !== undefined,
+    enabled: !!userProfile?.user?.id && sharing.isSuccess,
   });
 
-  const reopen = async (auditId: string, version: number) => {
-    const nextVersion = (version ?? 1) + 1;
-    const { error } = await supabase
-      .from("audits")
-      .update({
-        status: "draft",
-        version: nextVersion,
-        edited_at: new Date().toISOString(),
-      } as never)
-      .eq("id", auditId);
-
-    if (error) {
-      toast.error("تعذر إعادة فتح الفحص للتعديل");
-      return;
-    }
-    await logAuditEdit(auditId, "reopened", `Reopened for editing as version ${nextVersion}`);
-    queryClient.invalidateQueries({ queryKey: ["audits"] });
-    navigate({ to: "/audits/$id", params: { id: auditId } });
-  };
-
   const exportAuditPdf = async (auditId: string) => {
+    if (pdfLock.current) return;
+    pdfLock.current = true;
+    let container: HTMLDivElement | undefined;
+    let reportRoot: import("react-dom/client").Root | undefined;
     try {
       setExportingPdfId(auditId);
       const model = await loadReportModel(auditId);
-      const container = document.createElement("div");
+      container = document.createElement("div");
       container.style.position = "fixed";
       container.style.left = "-100000px";
       container.style.top = "0";
@@ -173,40 +176,80 @@ function AuditsList() {
       const root = document.createElement("div");
       container.appendChild(root);
       const { createRoot } = await import("react-dom/client");
-      const reportRoot = createRoot(root);
+      reportRoot = createRoot(root);
       reportRoot.render(<ReportDocument model={model} />);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      await downloadElementAsPdf(
-        root,
-        `تقرير_${model.branchName || "الفرع"}_${model.auditDate || "فحص"}`,
-      );
-      reportRoot.unmount();
-      container.remove();
+      await downloadElementAsPdf(root, auditReportFileBase(model));
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
     } catch (error) {
       console.error("PDF export error", error);
       toast.error("تعذر تصدير تقرير الـ PDF");
     } finally {
+      reportRoot?.unmount();
+      container?.remove();
+      pdfLock.current = false;
       setExportingPdfId(null);
     }
   };
 
-  const removeAudit = async (auditId: string) => {
-    if (!confirm("هل أنت متأكد من حذف هذا الفحص بالكامل؟")) return;
-    const { error } = await supabase.from("audits").delete().eq("id", auditId);
-    if (error) {
-      toast.error("تعذر حذف الفحص");
-      return;
+  const exportExcel = async (auditId: string) => {
+    if (excelLock.current) return;
+    excelLock.current = true;
+    setExportingExcelId(auditId);
+    try {
+      await exportAuditToExcel(auditId);
+    } catch {
+      toast.error("تعذر تصدير تقرير الإكسيل؛ أعد المحاولة");
+    } finally {
+      excelLock.current = false;
+      setExportingExcelId(null);
     }
-    toast.success("تم حذف الفحص بنجاح");
-    queryClient.invalidateQueries({ queryKey: ["audits"] });
+  };
+
+  const removeAudit = async (auditId: string) => {
+    if (deleteLock.current || !confirm("هل أنت متأكد من حذف هذا الفحص بالكامل؟")) return;
+    deleteLock.current = true;
+    setDeletingId(auditId);
+    try {
+      const { data, error } = await supabase
+        .from("audits")
+        .delete()
+        .eq("id", auditId)
+        .select("id")
+        .single();
+      if (error || !data) throw error ?? new Error("لم يتم تأكيد الحذف");
+      toast.success("تم حذف الفحص بنجاح");
+      void queryClient.invalidateQueries({ queryKey: ["audits"] });
+      void invalidateDashboard(queryClient);
+    } catch {
+      toast.error("تعذر حذف الفحص؛ أعد المحاولة");
+    } finally {
+      deleteLock.current = false;
+      setDeletingId(null);
+    }
   };
 
   const scopedAudits = useMemo(
     () =>
       (audits || []).filter((audit) => {
+        if (
+          !profile ||
+          sharing.isError ||
+          !canReadAudit({
+            role: profile.role,
+            userId: profile.id,
+            createdBy: audit.created_by,
+            auditorId: audit.auditor_id,
+            status: audit.status,
+            sharedUserIds: sharing.peerIds,
+            branchId: audit.branch_id,
+            managerBranchIds: sharing.visibleBranchIds,
+          })
+        )
+          return false;
         const branch = { name_ar: audit.branchName };
         const statusMatches =
+          !showDrafts ||
           status === "all" ||
           (status === "submitted"
             ? audit.status === "submitted" || audit.status === "approved"
@@ -220,7 +263,20 @@ function AuditsList() {
           (!monthTo || audit.audit_date?.slice(0, 7) <= monthTo)
         );
       }),
-    [audits, scope, status, type, branchFilter, monthFrom, monthTo],
+    [
+      audits,
+      scope,
+      status,
+      type,
+      branchFilter,
+      monthFrom,
+      monthTo,
+      showDrafts,
+      profile,
+      sharing.peerIds,
+      sharing.visibleBranchIds,
+      sharing.isError,
+    ],
   );
 
   const completedAudits = scopedAudits.filter(
@@ -232,85 +288,103 @@ function AuditsList() {
 
   const renderAuditCard = (audit: any, isDraft: boolean) => {
     const canEdit = profile
-      ? canEditAudit({ role: profile.role, userId: profile.id, createdBy: audit.created_by, auditorId: audit.auditor_id, status: audit.status })
+      ? canEditAudit({
+          sharedUserIds: sharing.peerIds,
+          role: profile.role,
+          userId: profile.id,
+          createdBy: audit.created_by,
+          auditorId: audit.auditor_id,
+          status: audit.status,
+        })
       : false;
 
     return (
-    <div key={audit.id} className="surface-card flex flex-wrap items-center gap-3 p-4">
-      <div className="min-w-40" dir="rtl">
-        <div className="text-base font-bold text-foreground">{audit.branchName}</div>
-        <div className="text-xs text-muted-foreground">
-          {audit.typeName} · <span dir="ltr">{audit.audit_date}</span>
+      <div key={audit.id} className="surface-card flex flex-wrap items-center gap-3 p-4">
+        <div className="min-w-40" dir="rtl">
+          <div className="text-base font-bold text-foreground">{audit.branchName}</div>
+          <div className="text-xs text-muted-foreground">
+            {audit.typeName} · <span dir="ltr">{audit.audit_date}</span>
+          </div>
+          <div className="mt-1 text-xs font-medium text-primary">المراجع: {audit.auditorName}</div>
+          <div className="mt-1 text-xs text-muted-foreground" dir="ltr">
+            ID: {audit.id.slice(0, 8)}
+          </div>
         </div>
-        <div className="mt-1 text-xs font-medium text-primary">المراجع: {audit.auditorName}</div>
-      </div>
 
-      <Badge variant={isDraft ? "outline" : "default"}>
-        {isDraft ? "مسودة (Draft)" : "معتمد (Completed)"}
-      </Badge>
+        <Badge variant={isDraft ? "outline" : "default"}>
+          {isDraft ? "مسودة (Draft)" : "معتمد (Completed)"}
+        </Badge>
 
-      {(audit.version ?? 1) > 1 && (
-        <span className="text-xs text-muted-foreground font-mono">v{audit.version}</span>
-      )}
+        {(audit.version ?? 1) > 1 && (
+          <span className="text-xs text-muted-foreground font-mono">v{audit.version}</span>
+        )}
 
-      <div className="ml-auto flex flex-wrap gap-2">
-        {isDraft ? (
-          canEdit ? (
+        <div className="ml-auto flex flex-wrap gap-2">
+          {isDraft ? (
+            canEdit ? (
+              <Button asChild size="sm" variant="outline">
+                <Link to="/audits/$id" params={{ id: audit.id }}>
+                  <PenLine className="size-4 ml-1" /> استكمال
+                </Link>
+              </Button>
+            ) : null
+          ) : canEdit ? (
             <Button asChild size="sm" variant="outline">
               <Link to="/audits/$id" params={{ id: audit.id }}>
-                <PenLine className="size-4 ml-1" /> استكمال
+                <PenLine className="size-4 ml-1" /> تعديل
               </Link>
             </Button>
-          ) : null
-        ) : canEdit ? (
+          ) : null}
+
           <Button asChild size="sm" variant="outline">
-            <Link to="/audits/$id" params={{ id: audit.id }}>
-              <PenLine className="size-4 ml-1" /> تعديل
+            <Link to="/audits/$id/summary" params={{ id: audit.id }}>
+              الملخص
             </Link>
           </Button>
-        ) : null}
 
-        <Button asChild size="sm" variant="outline">
-          <Link to="/audits/$id/summary" params={{ id: audit.id }}>
-            الملخص
-          </Link>
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void exportExcel(audit.id)}
+            disabled={exportingExcelId !== null}
+            className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 font-semibold"
+          >
+            <FileSpreadsheet className="size-4 ml-1 text-emerald-600" /> إكسيل (Excel)
+          </Button>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => exportAuditToExcel(audit.id)}
-          className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 font-semibold"
-        >
-          <FileSpreadsheet className="size-4 ml-1 text-emerald-600" /> إكسيل (Excel)
-        </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void exportAuditPdf(audit.id)}
+            disabled={exportingPdfId !== null}
+            className="border-blue-300 font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
+          >
+            <FileDown className="size-4 ml-1 text-blue-600" />
+            {exportingPdfId === audit.id ? "جاري التجهيز..." : "PDF"}
+          </Button>
 
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void exportAuditPdf(audit.id)}
-          disabled={exportingPdfId === audit.id}
-          className="border-blue-300 font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
-        >
-          <FileDown className="size-4 ml-1 text-blue-600" />
-          {exportingPdfId === audit.id ? "جاري التجهيز..." : "PDF"}
-        </Button>
-
-        {canEdit && <Button
-          size="sm"
-          variant="ghost"
-          aria-label="Delete audit"
-          onClick={() => removeAudit(audit.id)}
-        >
-          <Trash2 className="size-4 text-destructive" />
-        </Button>}
+          {profile &&
+            (profile.role === "admin" ||
+              audit.created_by === profile.id ||
+              audit.auditor_id === profile.id) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="حذف الفحص"
+                disabled={deletingId !== null}
+                onClick={() => removeAudit(audit.id)}
+              >
+                <Trash2 className="size-4 text-destructive" />
+              </Button>
+            )}
+        </div>
       </div>
-    </div>
     );
   };
 
   return (
     <AppShell
+      contentClassName="audit-list-page"
       title="Audits"
       subtitle={
         canViewAllAudits((userProfile?.role || "auditor") as "admin" | "manager" | "auditor")
@@ -323,6 +397,12 @@ function AuditsList() {
         </Button>
       }
     >
+      {sharing.isError && (
+        <p role="alert">
+          تعذر تحميل صلاحيات المشاركة.{" "}
+          <Button onClick={() => void sharing.refetch()}>إعادة المحاولة</Button>
+        </p>
+      )}
       <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
         <span className="text-sm font-semibold">
           تصفية {locationScopeLabel(scope as LocationScope)}:
@@ -404,7 +484,8 @@ function AuditsList() {
           />
         </label>
         <Select
-          value={status}
+          value={showDrafts ? status : "submitted"}
+          disabled={!showDrafts}
           onValueChange={(value) =>
             navigate({
               to: "/audits",
@@ -424,7 +505,7 @@ function AuditsList() {
       </div>
 
       <Tabs
-        value={activeTab}
+        value={showDrafts ? activeTab : "completed"}
         onValueChange={(val) => setActiveTab(val as "completed" | "drafts")}
         className="w-full space-y-4"
       >
@@ -444,13 +525,18 @@ function AuditsList() {
           </TabsTrigger>
 
           <TabsTrigger
+            disabled={!showDrafts}
             value="drafts"
             className="gap-2 text-sm font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm"
           >
             <Clock className="size-4 text-amber-500" />
-            المسودات قيد التنفيذ
+            {profile?.role === "manager"
+              ? sharing.peerIds.length
+                ? "مسوداتي والمشاركة معي"
+                : "مسوداتي قيد التنفيذ"
+              : "المسودات قيد التنفيذ"}
             <Badge variant="secondary" className="mr-1 text-xs">
-              {draftAudits.length}
+              {showDrafts ? draftAudits.length : "مغلق"}
             </Badge>
           </TabsTrigger>
         </TabsList>
@@ -470,16 +556,21 @@ function AuditsList() {
           </div>
         </TabsContent>
 
-        <TabsContent value="drafts" className="space-y-3 mt-0">
-          {!isLoading && draftAudits.length === 0 && (
-            <div className="surface-card p-10 text-center text-sm text-muted-foreground" dir="rtl">
-              لا توجد أي مسودات معلقة حالياً.
+        {showDrafts && (
+          <TabsContent value="drafts" className="space-y-3 mt-0">
+            {!isLoading && draftAudits.length === 0 && (
+              <div
+                className="surface-card p-10 text-center text-sm text-muted-foreground"
+                dir="rtl"
+              >
+                لا توجد أي مسودات معلقة حالياً.
+              </div>
+            )}
+            <div className="grid gap-3">
+              {draftAudits.map((audit) => renderAuditCard(audit, true))}
             </div>
-          )}
-          <div className="grid gap-3">
-            {draftAudits.map((audit) => renderAuditCard(audit, true))}
-          </div>
-        </TabsContent>
+          </TabsContent>
+        )}
       </Tabs>
     </AppShell>
   );

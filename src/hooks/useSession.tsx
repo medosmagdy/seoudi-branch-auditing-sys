@@ -1,116 +1,65 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { supabase } from "@/integrations/supabase/client";
-
-export interface UserProfile {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  active: boolean;
-  role: "admin" | "manager" | "auditor";
+import {
+  loadSessionProfile,
+  SessionLoader,
+  type SessionState,
+  type UserProfile,
+} from "@/lib/session-profile";
+export type { UserProfile } from "@/lib/session-profile";
+interface SessionContextType extends SessionState {
   isAdmin: boolean;
-}
-
-interface SessionContextType {
-  profile: UserProfile | null;
-  isLoading: boolean;
-  isAdmin: boolean;
+  isPasswordRecovery: boolean;
   refresh: () => Promise<void>;
 }
-
 const SessionContext = createContext<SessionContextType>({
   profile: null,
+  error: null,
   isLoading: true,
   isAdmin: false,
-  refresh: async () => { },
+  isPasswordRecovery: false,
+  refresh: async () => {},
 });
-
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchCurrentUserData = async () => {
-    try {
-      const {
-        data: { session },
-        error: userError,
-      } = await supabase.auth.getSession();
-      const user = session?.user;
-
-      if (userError || !user) {
-        setProfile(null);
-        return;
-      }
-
-      // جلب البروفايل والرتبة معاً
-      const [profRes, roleRes] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select("id, full_name, email, active")
-          .eq("id", user.id)
-          .maybeSingle(),
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .maybeSingle(),
-      ]);
-
-      const role: "admin" | "manager" | "auditor" =
-        roleRes.data?.role === "admin" || roleRes.data?.role === "manager"
-          ? roleRes.data.role
-          : "auditor";
-      const isUserAdmin = role === "admin";
-
-      const displayName =
-        profRes.data?.['full_name'] ||
-        user.user_metadata?.['full_name'] ||
-        user.email?.split("@")[0] ||
-        "مستخدم";
-
-      setProfile({
-        id: user.id,
-        full_name: displayName,
-        email: user.email || null,
-        active: profRes.data?.['active'] ?? true,
-        role,
-        isAdmin: isUserAdmin,
-      });
-    } catch (err) {
-      console.error("Session load error:", err);
-      setProfile(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  const [state, setState] = useState<SessionState>({ profile: null, error: null, isLoading: true });
+  const currentLoader = useRef<SessionLoader | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const refresh = useCallback(() => currentLoader.current?.load() ?? Promise.resolve(), []);
   useEffect(() => {
-    fetchCurrentUserData();
-
+    const loader = new SessionLoader(loadSessionProfile, setState);
+    currentLoader.current = loader;
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
-      if (event !== "INITIAL_SESSION") fetchCurrentUserData();
+      if (event === "PASSWORD_RECOVERY") setIsPasswordRecovery(true);
+      if (event === "SIGNED_OUT") {
+        setIsPasswordRecovery(false);
+        loader.clear();
+      } else if (event !== "INITIAL_SESSION") queueMicrotask(() => void loader.load());
     });
-
+    void loader.load();
     return () => {
+      loader.dispose();
       subscription.unsubscribe();
+      if (currentLoader.current === loader) currentLoader.current = null;
     };
   }, []);
-
   return (
     <SessionContext.Provider
-      value={{
-        profile,
-        isLoading,
-        isAdmin: profile?.isAdmin ?? false,
-        refresh: fetchCurrentUserData,
-      }}
+      value={{ ...state, isAdmin: state.profile?.isAdmin ?? false, isPasswordRecovery, refresh }}
     >
       {children}
     </SessionContext.Provider>
   );
 }
-
 export function useSession() {
   return useContext(SessionContext);
 }
