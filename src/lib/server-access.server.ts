@@ -12,6 +12,14 @@ export async function requireServerActor(
 ): Promise<ServerActor> {
   if (!token) throw new Error("يجب تسجيل الدخول أولًا");
   const { data, error } = await client.auth.getUser(token);
+  if (error) {
+    if (error.message.toLowerCase().includes("invalid api key"))
+      throw new Error(
+        "إعدادات اتصال السيرفر بقاعدة البيانات غير صحيحة؛ راجع مفتاح Supabase ومشروعه",
+      );
+    if (!error.status || error.status >= 500 || error.name === "AuthRetryableFetchError")
+      throw new Error("تعذر الاتصال بخدمة تسجيل الدخول؛ أعد المحاولة");
+  }
   if (error || !data.user) throw new Error("الجلسة غير صالحة؛ سجّل الدخول مرة أخرى");
   const id = data.user.id;
   const [profile, role] = await Promise.all([

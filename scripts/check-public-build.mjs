@@ -1,7 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { parseEnv } from "node:util";
-const directory = resolve(".vercel/output/static");
+const candidates = [resolve(".vercel/output/static"), resolve(".output/public")];
 const env = {};
 for (const name of [".env", ".env.local", ".env.production", ".env.production.local"]) {
   try { Object.assign(env, parseEnv(await readFile(resolve(name), "utf8"))); }
@@ -44,7 +44,13 @@ async function check(path) {
   }
 }
 try {
-  await check(directory);
+  for (const directory of candidates) {
+    try {
+      if ((await stat(directory)).isDirectory()) await check(directory);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
   if (!count) throw new Error("No public build assets found");
   if (failures.length) {
     // Report file names only. Never print matching credentials or file contents.

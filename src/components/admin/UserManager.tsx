@@ -1,3 +1,4 @@
+import { SectionAccessManager } from "./SectionAccessManager";
 import { ManagerBranchAccess } from "./ManagerBranchAccess";
 import { AuditSharingManager } from "./AuditSharingManager";
 import { loadAdminDirectory, type AdminDirectoryUser } from "@/lib/admin-directory";
@@ -189,6 +190,7 @@ export function UserManager() {
     <div className="space-y-4" dir="rtl">
       {currentProfile?.role === "admin" && <AuditSharingManager users={users ?? []} />}
       {currentProfile?.role === "admin" && <ManagerBranchAccess users={users ?? []} />}
+      {currentProfile?.role === "admin" && <SectionAccessManager users={users ?? []} />}
       {reportUser && (
         <InspectorReport
           key={reportUser.id}

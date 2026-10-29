@@ -107,6 +107,28 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("server-side authorization and storage operations with isolated mocks", () => {
+  it("distinguishes server API configuration and temporary auth outages from expired sessions", async () => {
+    const getUser = vi.spyOn(client.auth, "getUser");
+    try {
+      getUser.mockResolvedValueOnce({
+        data: { user: null },
+        error: { message: "Invalid API key", status: 401 },
+      } as never);
+      await expect(requireServerActor(client, "test-token")).rejects.toThrow(
+        "راجع مفتاح Supabase ومشروعه",
+      );
+      getUser.mockResolvedValueOnce({
+        data: { user: null },
+        error: { message: "Temporarily unavailable", status: 503 },
+      } as never);
+      await expect(requireServerActor(client, "test-token")).rejects.toThrow(
+        "تعذر الاتصال بخدمة تسجيل الدخول",
+      );
+      expect(state.calls).toEqual([]);
+    } finally {
+      getUser.mockRestore();
+    }
+  });
   it("requires a server-verified token and active profile before any privileged action", async () => {
     await expect(requireServerActor(client, undefined)).rejects.toThrow("تسجيل الدخول");
     expect(state.calls).toEqual([]);
@@ -180,11 +202,45 @@ describe("server-side authorization and storage operations with isolated mocks",
   });
   it("retains photo metadata on storage failure and propagates database deletion failures", async () => {
     r2.send.mockRejectedValueOnce(new Error("Storage offline"));
-    await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow("Storage offline");
+    await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow(
+      "تعذر الاتصال بتخزين الصور",
+    );
     expect(state.calls.some((call) => call.method === "DELETE")).toBe(false);
     state.writeFails = true;
     await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow("تعذر حذف");
     expect(state.calls.some((call) => call.method === "DELETE")).toBe(true);
+  });
+  it("reports denied storage deletion without removing metadata", async () => {
+    r2.send.mockRejectedValueOnce(
+      Object.assign(new Error("private provider detail"), { name: "AccessDenied" }),
+    );
+    await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow("DeleteObject");
+    expect(state.calls.some((call) => call.method === "DELETE")).toBe(false);
+  });
+  it("deletes the stored object and metadata for a shared editor, but rejects unrelated users", async () => {
+    state.role = "auditor";
+    state.owner = id(8);
+    await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow("غير مصرح");
+    expect(r2.send).not.toHaveBeenCalled();
+    expect(state.calls.some((call) => call.method === "DELETE")).toBe(false);
+    state.shared = true;
+    await expect(removePhoto(client, "test-token", id(7))).resolves.toEqual({ success: true });
+    expect(r2.send.mock.calls[0]![0].input).toEqual({ Bucket: "audit-photos", Key: path });
+    expect(state.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+  });
+  it("cleans metadata for an already absent object, but retains it for a missing bucket", async () => {
+    r2.send.mockRejectedValueOnce(Object.assign(new Error("Absent"), { name: "NoSuchKey" }));
+    await expect(removePhoto(client, "test-token", id(7))).resolves.toEqual({ success: true });
+    expect(state.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    state.calls = [];
+    r2.send.mockRejectedValueOnce(
+      Object.assign(new Error("Wrong bucket"), {
+        name: "NoSuchBucket",
+        $metadata: { httpStatusCode: 404 },
+      }),
+    );
+    await expect(removePhoto(client, "test-token", id(7))).rejects.toThrow("تعذر الاتصال");
+    expect(state.calls.some((call) => call.method === "DELETE")).toBe(false);
   });
 });
 

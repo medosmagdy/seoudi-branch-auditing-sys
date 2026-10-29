@@ -104,7 +104,18 @@ export async function removePhoto(db: ServerDatabase, token: string | undefined,
       throw new Error("مسار الصورة غير صالح");
     const { client, bucket } = storage();
     // Keep the database record if object deletion fails, so a retry is possible.
-    await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: photo.storage_path }));
+    try {
+      await client.send(new DeleteObjectCommand({ Bucket: bucket, Key: photo.storage_path }));
+    } catch (error) {
+      const failure = error as { name?: string; $metadata?: { httpStatusCode?: number } };
+      const status = failure?.$metadata?.httpStatusCode;
+      // A missing object is already deleted; allow removal of its stale metadata.
+      if (failure?.name !== "NoSuchKey") {
+        if (status === 401 || status === 403 || failure?.name === "AccessDenied")
+          throw new Error("حساب تخزين الصور لا يسمح بالحذف؛ راجع صلاحية DeleteObject على السيرفر");
+        throw new Error("تعذر الاتصال بتخزين الصور؛ أعد المحاولة");
+      }
+    }
   }
   const { error: removeError } = await db
     .from("photos")
@@ -113,5 +124,5 @@ export async function removePhoto(db: ServerDatabase, token: string | undefined,
     .select("id")
     .single();
   if (removeError) throw new Error("تعذر حذف سجل الصورة؛ أعد المحاولة");
-  return { success: true };
+  return { success: true as const };
 }

@@ -1,14 +1,13 @@
 import { supabase } from "@/integrations/supabase/client";
 import { photoUploadServerFn, registerPhotoServerFn, deletePhotoServerFn } from "./photo.functions";
+import { createPhotoAuthorization, deleteWithSessionRecovery } from "./photo-auth";
 const R2_PUBLIC_URL = (import.meta.env["VITE_R2_PUBLIC_URL"] || "").replace(/\/$/, "");
-async function authorizationHeaders() {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.getSession();
-  if (error || !session?.access_token) throw new Error("يجب تسجيل الدخول لرفع الصور أو حذفها");
-  return { Authorization: `Bearer ${session.access_token}` };
-}
+// Access the lazy client only when a photo operation actually runs.
+const photoAuthorization = createPhotoAuthorization({
+  getSession: () => supabase.auth.getSession(),
+  refreshSession: () => supabase.auth.refreshSession(),
+});
+const authorizationHeaders = photoAuthorization.headers;
 export async function compressImage(file: File, maxWidth = 1600, quality = 0.82): Promise<Blob> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -91,7 +90,9 @@ export async function uploadQuestionPhotos(auditId: string, questionId: string, 
   return uploaded;
 }
 export async function deletePhoto(photoId: string, _storagePath: string) {
-  return deletePhotoServerFn({ data: { photoId }, headers: await authorizationHeaders() });
+  return deleteWithSessionRecovery(photoAuthorization, (headers) =>
+    deletePhotoServerFn({ data: { photoId }, headers }),
+  );
 }
 export async function signedPhotoUrls(storagePaths: string[]): Promise<Record<string, string>> {
   if (!storagePaths.length) return {};

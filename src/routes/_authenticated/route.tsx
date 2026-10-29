@@ -1,3 +1,4 @@
+import { SectionAccessGate } from "@/components/SectionAccessGate";
 import { useSession } from "@/hooks/useSession";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -54,5 +55,9 @@ function AuthenticatedLayout() {
         </div>
       </AppShell>
     );
-  return <Outlet />;
+  return (
+    <SectionAccessGate>
+      <Outlet />
+    </SectionAccessGate>
+  );
 }

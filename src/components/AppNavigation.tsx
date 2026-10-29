@@ -1,3 +1,5 @@
+import { useSectionAccess } from "@/hooks/useSectionAccess";
+import { sectionForRoute } from "@/lib/app-sections";
 import { navigationAccess } from "@/lib/navigation";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
@@ -28,6 +30,7 @@ const navItems = [
 ] as const;
 
 export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; isAdmin: boolean }) {
+  const sections = useSectionAccess();
   const [collapsed, setCollapsed] = useState(false);
   const { pathname, search } = useRouterState({ select: (state) => state.location });
   const currentScope = search.scope === "warehouses" ? "warehouses" : "branches";
@@ -65,7 +68,15 @@ export function AppNavigation({ profile, isAdmin }: { profile: SessionProfile; i
         aria-label="القائمة الرئيسية"
       >
         {navItems.map((item) => {
-          const access = navigationAccess(profile, item.to);
+          const section = sectionForRoute(
+            item.to,
+            "scope" in item.search ? item.search.scope : undefined,
+          );
+          if (section && !sections.canSee(section)) return null;
+          const access =
+            item.to === "/slaughtering"
+              ? { allowed: true, reason: "" }
+              : navigationAccess(profile, item.to);
           if (item.to === "/admin" && !isAdmin) return null;
           const isDisabled = !access.allowed;
           const routeActive =
