@@ -95,6 +95,8 @@ function AuditRunner() {
   const localAnswers = useRef<Record<string, AnswerState>>({});
   const [savingSummary, setSavingSummary] = useState(false);
   const [savingSection, setSavingSection] = useState(false);
+  const photoDeleteLocks = useRef(new Set<string>());
+  const [deletingPhotos, setDeletingPhotos] = useState<Set<string>>(new Set());
   const sectionLock = useRef(false);
   const writer = useMemo(
     () =>
@@ -794,14 +796,28 @@ function AuditRunner() {
                           />
                           {!readOnly && (
                             <button
-                              className="absolute -top-1.5 -right-1.5 grid size-4 place-items-center rounded-full bg-destructive text-destructive-foreground"
-                              aria-label="Delete photo"
+                              type="button"
+                              disabled={deletingPhotos.has(photo.id)}
+                              className="absolute -top-1.5 -right-1.5 grid size-5 place-items-center rounded-full bg-destructive text-destructive-foreground disabled:opacity-50"
+                              aria-label={
+                                deletingPhotos.has(photo.id) ? "جارٍ حذف الصورة" : "حذف الصورة"
+                              }
                               onClick={async () => {
+                                if (photoDeleteLocks.current.has(photo.id)) return;
+                                photoDeleteLocks.current.add(photo.id);
+                                setDeletingPhotos(new Set(photoDeleteLocks.current));
                                 try {
                                   await deletePhoto(photo.id, photo.storage_path);
                                   await queryClient.invalidateQueries({ queryKey: ["audit", id] });
-                                } catch {
-                                  toast.error("تعذر حذف الصورة؛ أعد المحاولة");
+                                } catch (error) {
+                                  toast.error(
+                                    error instanceof Error
+                                      ? error.message
+                                      : "تعذر حذف الصورة؛ أعد المحاولة",
+                                  );
+                                } finally {
+                                  photoDeleteLocks.current.delete(photo.id);
+                                  setDeletingPhotos(new Set(photoDeleteLocks.current));
                                 }
                               }}
                             >

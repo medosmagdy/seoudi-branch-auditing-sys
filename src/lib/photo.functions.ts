@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { photoDeleteResult } from "./photo-delete-result";
 const upload = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("audit"),
@@ -39,15 +40,17 @@ export const registerPhotoServerFn = createServerFn({ method: "POST" })
   });
 export const deletePhotoServerFn = createServerFn({ method: "POST" })
   .validator(z.object({ photoId: z.string().uuid() }))
-  .handler(async ({ data }) => {
-    const [{ getRequestHeader }, { supabaseAdmin }, { removePhoto }] = await Promise.all([
-      import("@tanstack/react-start/server"),
-      import("@/integrations/supabase/client.server"),
-      import("./photo-storage.server"),
-    ]);
-    return removePhoto(
-      supabaseAdmin,
-      getRequestHeader("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1],
-      data.photoId,
-    );
-  });
+  .handler(async ({ data }) =>
+    photoDeleteResult(async () => {
+      const [{ getRequestHeader }, { supabaseAdmin }, { removePhoto }] = await Promise.all([
+        import("@tanstack/react-start/server"),
+        import("@/integrations/supabase/client.server"),
+        import("./photo-storage.server"),
+      ]);
+      return removePhoto(
+        supabaseAdmin,
+        getRequestHeader("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1],
+        data.photoId,
+      );
+    }),
+  );

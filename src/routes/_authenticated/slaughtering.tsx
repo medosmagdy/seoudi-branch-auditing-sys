@@ -1,3 +1,4 @@
+import { useSectionAccess } from "@/hooks/useSectionAccess";
 import {
   addSlaughterLocation,
   loadSlaughterLocations,
@@ -16,7 +17,11 @@ import {
   type SlaughterReport,
 } from "@/lib/slaughter-model";
 import { buildSlaughterWorkbook, buildDailySlaughterWorkbook } from "@/lib/slaughter-export";
-import { loadSlaughterReports, saveSlaughterReport } from "@/lib/slaughter-data";
+import {
+  deleteSlaughterReport,
+  loadSlaughterReports,
+  saveSlaughterReport,
+} from "@/lib/slaughter-data";
 import {
   rejectionSummary,
   slaughterPercent,
@@ -25,7 +30,7 @@ import {
   type SlaughterDraft,
 } from "@/lib/slaughter-report";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { writeFile } from "xlsx";
 import { supabase } from "@/integrations/supabase/client";
 import slaughterArchive from "@/data/slaughter-archive.json";
@@ -59,19 +64,6 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export const Route = createFileRoute("/_authenticated/slaughtering")({
-  beforeLoad: async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
-    if (!user) throw new Error("Unauthorized");
-    const { data: roleData } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (roleData?.role !== "admin") {
-      throw redirect({ to: "/dashboard", search: { scope: "branches" } });
-    }
-  },
   component: SlaughteringPage,
 });
 
@@ -93,6 +85,10 @@ const normalizeAnimalType = (value: string) =>
 const rejectionReasons = ["Carcass", "Live", "Parasitic", "Viral", "TB", "Managemental"];
 
 function SlaughteringPage() {
+  const access = useSectionAccess();
+  const canManage = access.canSee("slaughtering");
+  const [deletingReport, setDeletingReport] = useState(false);
+  const deletingLock = useRef(false);
   const [activeTab, setActiveTab] = useState("overview");
   const [editingReport, setEditingReport] = useState<Report | null>(null);
   const [reportsLoading, setReportsLoading] = useState(true);
@@ -237,6 +233,7 @@ function SlaughteringPage() {
   };
 
   const saveReport = async (draft: SlaughterDraft) => {
+    if (!canManage) throw new Error("المجازر غير متاحة لحسابك");
     const validation = validateSlaughterDraft(draft);
     if (validation) {
       notify(validation);
@@ -401,14 +398,16 @@ function SlaughteringPage() {
       title="المجازر"
       subtitle="تسجيل ومتابعة تقارير الذبح اليومية والتقييم الصحي للحوم"
       action={
-        <Button
-          onClick={() => {
-            setEditingReport(null);
-            setActiveTab("new");
-          }}
-        >
-          <Plus className="ml-2 size-4" /> تقرير يومي جديد
-        </Button>
+        canManage && (
+          <Button
+            onClick={() => {
+              setEditingReport(null);
+              setActiveTab("new");
+            }}
+          >
+            <Plus className="ml-2 size-4" /> تقرير يومي جديد
+          </Button>
+        )
       }
     >
       {message && (
@@ -431,7 +430,7 @@ function SlaughteringPage() {
         <TabsList className="mb-5 grid w-full max-w-xl grid-cols-3">
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
           <TabsTrigger value="reports">التقارير اليومية</TabsTrigger>
-          <TabsTrigger value="new">تقرير جديد</TabsTrigger>
+          {canManage && <TabsTrigger value="new">تقرير جديد</TabsTrigger>}
         </TabsList>
 
         {activeTab !== "new" && (
@@ -790,30 +789,32 @@ function SlaughteringPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="new">
-          {editingReport && (
-            <p className="mb-3 rounded border p-3 text-sm">
-              استكمال مسودة {editingReport.farm} — {editingReport.date}
-            </p>
-          )}
-          <SlaughterForm
-            key={editingReport?.id ?? "new"}
-            initial={editingReport}
-            date={reportDate}
-            onDate={setReportDate}
-            onSave={saveReport}
-            notify={notify}
-            farms={slaughterLocationOptions([
-              ...farms,
-              ...savedReports.map((report) => report.farm),
-            ])}
-            houses={slaughterLocationOptions([
-              ...slaughterhouses,
-              ...savedReports.map((report) => report.slaughterhouse),
-            ])}
-            onCreateLocation={addLocation}
-          />
-        </TabsContent>
+        {canManage && (
+          <TabsContent value="new">
+            {editingReport && (
+              <p className="mb-3 rounded border p-3 text-sm">
+                استكمال مسودة {editingReport.farm} — {editingReport.date}
+              </p>
+            )}
+            <SlaughterForm
+              key={editingReport?.id ?? "new"}
+              initial={editingReport}
+              date={reportDate}
+              onDate={setReportDate}
+              onSave={saveReport}
+              notify={notify}
+              farms={slaughterLocationOptions([
+                ...farms,
+                ...savedReports.map((report) => report.farm),
+              ])}
+              houses={slaughterLocationOptions([
+                ...slaughterhouses,
+                ...savedReports.map((report) => report.slaughterhouse),
+              ])}
+              onCreateLocation={addLocation}
+            />
+          </TabsContent>
+        )}
       </Tabs>
       <Dialog
         open={Boolean(selectedReport)}
@@ -824,19 +825,56 @@ function SlaughteringPage() {
             <>
               <DialogHeader>
                 <DialogTitle>تفاصيل تقرير الذبح — {selectedReport.date}</DialogTitle>
-                {selectedReport.details?.version === 2 && selectedReport.status === "مسودة" && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setEditingReport(selectedReport);
-                      setReportDate(selectedReport.date);
-                      setSelectedReport(null);
-                      setActiveTab("new");
-                    }}
-                  >
-                    استكمال / تعديل المسودة
-                  </Button>
-                )}
+                {canManage &&
+                  !String(selectedReport.id).startsWith("archive-") &&
+                  /^[a-f0-9-]{36}$/i.test(String(selectedReport.id)) && (
+                    <Button
+                      variant="destructive"
+                      disabled={deletingReport}
+                      onClick={async () => {
+                        if (
+                          deletingLock.current ||
+                          !window.confirm(
+                            "حذف التقرير وصوره المرفقة نهائيًا؟ لا يمكن التراجع عن الحذف.",
+                          )
+                        )
+                          return;
+                        deletingLock.current = true;
+                        setDeletingReport(true);
+                        try {
+                          await deleteSlaughterReport(String(selectedReport.id));
+                          setSavedReports((current) =>
+                            current.filter((r) => String(r.id) !== String(selectedReport.id)),
+                          );
+                          setSelectedReport(null);
+                          setReloadKey((v) => v + 1);
+                          notify("تم حذف التقرير");
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : "تعذر حذف التقرير");
+                        } finally {
+                          deletingLock.current = false;
+                          setDeletingReport(false);
+                        }
+                      }}
+                    >
+                      {deletingReport ? "جارٍ الحذف…" : "حذف التقرير"}
+                    </Button>
+                  )}
+                {canManage &&
+                  selectedReport.details?.version === 2 &&
+                  selectedReport.status === "مسودة" && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setEditingReport(selectedReport);
+                        setReportDate(selectedReport.date);
+                        setSelectedReport(null);
+                        setActiveTab("new");
+                      }}
+                    >
+                      استكمال / تعديل المسودة
+                    </Button>
+                  )}
               </DialogHeader>
               <SlaughterDailyReport
                 key={selectedReport.id}

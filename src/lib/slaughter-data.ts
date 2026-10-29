@@ -37,3 +37,27 @@ export function saveSlaughterReport(payload: Record<string, unknown>, id?: strin
     .select(SLAUGHTER_REPORT_FIELDS)
     .single();
 }
+
+export async function deleteSlaughterReport(id: string) {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))
+    throw new Error("لا يمكن حذف تقرير الأرشيف المحلي");
+  const { data: photos, error: photoError } = await (supabase as any)
+    .from("slaughter_report_photos")
+    .select("storage_path")
+    .eq("report_id", id);
+  if (photoError) throw new Error("تعذر تحميل صور التقرير؛ لم يتم الحذف");
+  const paths = (photos ?? []).map((photo: { storage_path: string }) => photo.storage_path);
+  if (paths.some((path: string) => !path.startsWith(`slaughter/${id}/`) || path.includes("..")))
+    throw new Error("مسار صور التقرير غير صالح");
+  if (paths.length) {
+    const { error } = await supabase.storage.from("audit-reports").remove(paths);
+    if (error) throw new Error("تعذر حذف صور التقرير؛ أعد المحاولة");
+  }
+  const { error } = await (supabase as any)
+    .from("slaughter_reports")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .single();
+  if (error) throw new Error("تعذر حذف سجل التقرير؛ أعد المحاولة");
+}

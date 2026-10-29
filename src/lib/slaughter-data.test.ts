@@ -75,3 +75,61 @@ describe("slaughter reports deployed schema compatibility", () => {
     await expect(loadSlaughterReports()).rejects.toMatchObject({ code: "42501" });
   });
 });
+
+describe("slaughter report deletion", () => {
+  const id = "00000000-0000-4000-8000-000000000010";
+  it("rejects local archive reports before accessing the database", async () => {
+    const { deleteSlaughterReport } = await import("./slaughter-data");
+    await expect(deleteSlaughterReport("archive-10")).rejects.toThrow("الأرشيف");
+    expect(state.fetch).not.toHaveBeenCalled();
+  });
+  it("removes attachments before the report and scopes all queries to that report", async () => {
+    const { deleteSlaughterReport } = await import("./slaughter-data");
+    state.fetch.mockImplementation(async (url: string, options: RequestInit) => {
+      const u = new URL(url);
+      const body = u.pathname.includes("/storage/")
+        ? []
+        : u.pathname.endsWith("slaughter_report_photos")
+          ? [{ storage_path: `slaughter/${id}/photo.jpg` }]
+          : { id };
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    await deleteSlaughterReport(id);
+    expect(
+      state.fetch.mock.calls.map(([url, init]) => [new URL(url).pathname, init.method]),
+    ).toEqual([
+      ["/rest/v1/slaughter_report_photos", "GET"],
+      ["/storage/v1/object/audit-reports", "DELETE"],
+      ["/rest/v1/slaughter_reports", "DELETE"],
+    ]);
+    expect(new URL(state.fetch.mock.calls[0]![0]).searchParams.get("report_id")).toBe(`eq.${id}`);
+    expect(new URL(state.fetch.mock.calls[2]![0]).searchParams.get("id")).toBe(`eq.${id}`);
+  });
+  it("keeps the report when attachment cleanup fails", async () => {
+    const { deleteSlaughterReport } = await import("./slaughter-data");
+    state.fetch.mockImplementation(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(
+            new URL(url).pathname.includes("/storage/")
+              ? { message: "Denied" }
+              : [{ storage_path: `slaughter/${id}/photo.jpg` }],
+          ),
+          {
+            status: new URL(url).pathname.includes("/storage/") ? 403 : 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+    );
+    await expect(deleteSlaughterReport(id)).rejects.toThrow("تعذر حذف صور");
+    expect(
+      state.fetch.mock.calls.some(
+        ([url, init]) =>
+          new URL(url).pathname.endsWith("slaughter_reports") && init.method === "DELETE",
+      ),
+    ).toBe(false);
+  });
+});
