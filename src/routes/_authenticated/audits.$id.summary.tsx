@@ -1,3 +1,4 @@
+import { AuditEmailButton } from "@/components/audit/AuditEmailButton";
 import { useAuditSharing } from "@/hooks/useAuditSharing";
 import { AuditSummaryScores } from "@/components/audit/AuditSummaryScores";
 import { auditReportFileBase } from "@/lib/audit-report-name";
@@ -349,6 +350,7 @@ function SummaryPage() {
           <FileSpreadsheet className="size-4" /> تصدير تقرير إكسيل (Excel)
         </Button>
 
+        {model.status === "submitted" && <AuditEmailButton auditId={id} />}
         <Button asChild variant="ghost">
           <Link to="/audits/$id" params={{ id }}>
             الرجوع لقائمة الأسئلة
