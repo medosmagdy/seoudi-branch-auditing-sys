@@ -6,6 +6,9 @@ describe("section visibility and route coverage", () => {
     expect(sectionForRoute("/dashboard", "branches")).toBe("branches");
     for (const path of ["/audits", "/audits/new", "/audits/abc/report", "/audits/abc/summary"])
       expect(sectionForRoute(path)).toBe("audits");
+    expect(sectionForRoute("/maintenance")).toBe("maintenance");
+    expect(canSeeSection("manager", "maintenance")).toBe(false);
+    expect(canSeeSection("auditor", "maintenance", { maintenance: true })).toBe(true);
     expect(sectionForRoute("/expiry")).toBe("expiry");
     expect(sectionForRoute("/admin")).toBeNull();
     expect(sectionForRoute("/slaughtering")).toBe("slaughtering");

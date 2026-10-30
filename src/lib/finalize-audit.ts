@@ -3,11 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { loadReportModel, type ReportModel } from "@/lib/report-data";
 
 // The report loader already selects active questions for this audit's type.
-// Existing answers must win over defaults, including explicit N/A answers.
+// Persist inherited N/A only. Never invent full-credit answers during submission.
 export function defaultAnswersForReport(model: ReportModel) {
   return model.sections
     .filter((section) => !section.excluded)
     .flatMap((section) => section.groups.flatMap((group) => group.questions))
+    .filter((question) => question.isNa)
     .map((question) => ({
       audit_id: model.auditId,
       question_id: question.id,
@@ -17,16 +18,41 @@ export function defaultAnswersForReport(model: ReportModel) {
     }));
 }
 
+export function unresolvedQuestions(model: ReportModel) {
+  return model.sections.flatMap((section, sectionIndex) =>
+    section.excluded
+      ? []
+      : section.groups.flatMap((group) =>
+          group.questions
+            .filter(
+              (question) =>
+                !question.isNa &&
+                (question.answerRecorded === false ||
+                  question.unresolvedScore ||
+                  typeof question.score !== "number" ||
+                  !Number.isFinite(question.score) ||
+                  question.score < 0 ||
+                  question.score > question.maxScore),
+            )
+            .map((question) => ({
+              sectionIndex,
+              sectionName: section.nameAr,
+              questionId: question.id,
+              itemId: question.itemId,
+              text: question.textAr,
+            })),
+        ),
+  );
+}
 export function assertResolvedScores(model: ReportModel) {
-  const unresolved = model.sections
-    .filter((section) => !section.excluded)
-    .flatMap((section) => section.groups.flatMap((group) => group.questions))
-    .filter((question) => !question.isNa && (question.unresolvedScore || question.score === null));
-  if (unresolved.length) {
+  const unresolved = unresolvedQuestions(model);
+  if (unresolved.length)
     throw new Error(
-      `لا يمكن اعتماد الفحص: راجع درجة البنود التالية أو حددها غير منطبقة: ${unresolved.map((q) => q.itemId || q.id).join("، ")}`,
+      `لا يمكن اعتماد الفحص: ${unresolved.length} بند بدون تقييم صحيح. ${unresolved
+        .slice(0, 5)
+        .map((q) => `${q.sectionName || "القسم"}: ${q.itemId || q.questionId}`)
+        .join("، ")}. اختر درجة أو حدد غير منطبق.`,
     );
-  }
 }
 
 export async function finalizeAudit(auditId: string) {

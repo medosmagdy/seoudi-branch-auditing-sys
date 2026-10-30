@@ -1,3 +1,4 @@
+import { AuditEmailButton } from "@/components/audit/AuditEmailButton";
 import { useAuditSharing } from "@/hooks/useAuditSharing";
 import { auditReportFileBase } from "@/lib/audit-report-name";
 import { invalidateDashboard } from "@/lib/dashboard/cache";
@@ -227,6 +228,7 @@ function ReportPage() {
             تصدير تقرير إكسيل (Excel)
           </Button>
 
+          {model.status === "submitted" && <AuditEmailButton auditId={id} />}
           {model.status === "submitted" && canEdit && (
             <Button
               variant="secondary"

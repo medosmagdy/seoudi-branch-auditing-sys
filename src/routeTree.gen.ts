@@ -16,6 +16,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as AuthenticatedAdminRouteImport } from './routes/_authenticated/admin'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedExpiryRouteImport } from './routes/_authenticated/expiry'
+import { Route as AuthenticatedMaintenanceRouteImport } from './routes/_authenticated/maintenance'
 import { Route as AuthenticatedSlaughteringRouteImport } from './routes/_authenticated/slaughtering'
 import { Route as AuthenticatedAuditsIndexRouteImport } from './routes/_authenticated/audits.index'
 import { Route as AuthenticatedAuditsIdRouteImport } from './routes/_authenticated/audits.$id'
@@ -58,6 +59,12 @@ const AuthenticatedExpiryRoute = AuthenticatedExpiryRouteImport.update({
   path: '/expiry',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedMaintenanceRoute =
+  AuthenticatedMaintenanceRouteImport.update({
+    id: '/maintenance',
+    path: '/maintenance',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSlaughteringRoute =
   AuthenticatedSlaughteringRouteImport.update({
     id: '/slaughtering',
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/expiry': typeof AuthenticatedExpiryRoute
+  '/maintenance': typeof AuthenticatedMaintenanceRoute
   '/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/audits/$id': typeof AuthenticatedAuditsIdRouteWithChildren
   '/audits/new': typeof AuthenticatedAuditsNewRoute
@@ -121,6 +129,7 @@ export interface FileRoutesByTo {
   '/admin': typeof AuthenticatedAdminRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/expiry': typeof AuthenticatedExpiryRoute
+  '/maintenance': typeof AuthenticatedMaintenanceRoute
   '/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/audits/new': typeof AuthenticatedAuditsNewRoute
   '/audits': typeof AuthenticatedAuditsIndexRoute
@@ -137,6 +146,7 @@ export interface FileRoutesById {
   '/_authenticated/admin': typeof AuthenticatedAdminRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/expiry': typeof AuthenticatedExpiryRoute
+  '/_authenticated/maintenance': typeof AuthenticatedMaintenanceRoute
   '/_authenticated/slaughtering': typeof AuthenticatedSlaughteringRoute
   '/_authenticated/audits/$id': typeof AuthenticatedAuditsIdRouteWithChildren
   '/_authenticated/audits/new': typeof AuthenticatedAuditsNewRoute
@@ -154,6 +164,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/expiry'
+    | '/maintenance'
     | '/slaughtering'
     | '/audits/$id'
     | '/audits/new'
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/admin'
     | '/dashboard'
     | '/expiry'
+    | '/maintenance'
     | '/slaughtering'
     | '/audits/new'
     | '/audits'
@@ -184,6 +196,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin'
     | '/_authenticated/dashboard'
     | '/_authenticated/expiry'
+    | '/_authenticated/maintenance'
     | '/_authenticated/slaughtering'
     | '/_authenticated/audits/$id'
     | '/_authenticated/audits/new'
@@ -249,6 +262,13 @@ declare module '@tanstack/react-router' {
       path: '/expiry'
       fullPath: '/expiry'
       preLoaderRoute: typeof AuthenticatedExpiryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/maintenance': {
+      id: '/_authenticated/maintenance'
+      path: '/maintenance'
+      fullPath: '/maintenance'
+      preLoaderRoute: typeof AuthenticatedMaintenanceRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/slaughtering': {
@@ -324,6 +344,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRoute: typeof AuthenticatedAdminRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedExpiryRoute: typeof AuthenticatedExpiryRoute
+  AuthenticatedMaintenanceRoute: typeof AuthenticatedMaintenanceRoute
   AuthenticatedSlaughteringRoute: typeof AuthenticatedSlaughteringRoute
   AuthenticatedAuditsIdRoute: typeof AuthenticatedAuditsIdRouteWithChildren
   AuthenticatedAuditsNewRoute: typeof AuthenticatedAuditsNewRoute
@@ -334,6 +355,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRoute: AuthenticatedAdminRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedExpiryRoute: AuthenticatedExpiryRoute,
+  AuthenticatedMaintenanceRoute: AuthenticatedMaintenanceRoute,
   AuthenticatedSlaughteringRoute: AuthenticatedSlaughteringRoute,
   AuthenticatedAuditsIdRoute: AuthenticatedAuditsIdRouteWithChildren,
   AuthenticatedAuditsNewRoute: AuthenticatedAuditsNewRoute,

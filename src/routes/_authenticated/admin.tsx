@@ -1,3 +1,4 @@
+import { BranchEmailRecipientsManager } from "@/components/admin/BranchEmailRecipientsManager";
 import { createFileRoute } from "@tanstack/react-router";
 import { Shield, Users, CheckSquare } from "lucide-react";
 import { useSession } from "@/hooks/useSession";
@@ -80,10 +81,17 @@ function AdminPage() {
               <CheckSquare className="size-4" />
               قوائم وبنود التفتيش
             </TabsTrigger>
+            <TabsTrigger value="email" className="text-xs font-bold gap-2 py-2 px-4 rounded-lg">
+              مستلمو التقارير
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="outline-none">
             <UserManager />
+          </TabsContent>
+
+          <TabsContent value="email">
+            <BranchEmailRecipientsManager />
           </TabsContent>
 
           <TabsContent value="checklists" className="outline-none">

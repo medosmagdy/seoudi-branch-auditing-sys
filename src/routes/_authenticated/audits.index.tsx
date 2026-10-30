@@ -1,3 +1,4 @@
+import { AuditEmailButton } from "@/components/audit/AuditEmailButton";
 import { auditOwnerFilter } from "@/lib/audit-sharing";
 import { useAuditSharing } from "@/hooks/useAuditSharing";
 import { auditReportFileBase } from "@/lib/audit-report-name";
@@ -336,6 +337,7 @@ function AuditsList() {
             </Button>
           ) : null}
 
+          {audit.status === "submitted" && <AuditEmailButton auditId={audit.id} />}
           <Button asChild size="sm" variant="outline">
             <Link to="/audits/$id/summary" params={{ id: audit.id }}>
               الملخص

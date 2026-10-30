@@ -429,7 +429,12 @@ function AuditRunner() {
   const updateAnswer = (questionId: string, patch: Partial<AnswerState>) => {
     if (readOnly || savingSummary) return;
     const question = data.questions.find((entry) => entry.id === questionId);
-    const current = localAnswers.current[questionId] ?? answers[questionId];
+    const current =
+      localAnswers.current[questionId] ??
+      answers[questionId] ??
+      (data.audit.status === "submitted"
+        ? { score: question?.max_score ?? 4, isNa: false, comment: "" }
+        : undefined);
     const next = editAnswer(current, patch, question?.max_score ?? 4);
     localAnswers.current[questionId] = next;
     setAnswers((previous) => ({ ...previous, [questionId]: next }));
@@ -635,7 +640,7 @@ function AuditRunner() {
         <div className="space-y-4 pb-20">
           {sectionQuestions.map((question) => {
             const answer = answers[question.id] ?? {
-              score: question.max_score ?? 4,
+              score: data.audit.status === "submitted" ? (question.max_score ?? 4) : null,
               isNa: false,
               comment: "",
             };

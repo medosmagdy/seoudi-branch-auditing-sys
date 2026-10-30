@@ -12,6 +12,7 @@ import {
   PackageSearch,
   FilePlus2,
   Settings,
+  Wrench,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -22,6 +23,7 @@ type SessionProfile = ReturnType<typeof useSession>["profile"];
 const navItems = [
   { to: "/audits/new", label: "بدء فحص", icon: FilePlus2, search: {} },
   { to: "/audits", label: "سجل الفحوصات", icon: ClipboardCheck, search: {} },
+  { to: "/maintenance", label: "الصيانة", icon: Wrench, search: {} },
   { to: "/slaughtering", label: "المجازر", icon: ClipboardCheck, search: {} },
   { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
   { to: "/dashboard", label: "المخازن", icon: Warehouse, search: { scope: "warehouses" } },
