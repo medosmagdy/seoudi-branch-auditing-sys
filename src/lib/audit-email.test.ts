@@ -90,7 +90,7 @@ describe("audit email template", () => {
   it("uses FSMS wording, respects explicit type codes and blocks unresolved non-NA questions", () => {
     const m = model();
     m.auditTypeCode = "FSMS";
-    expect(auditEmailTemplate(m).body).toContain("نظام إدارة سلامة الغذاء");
+    expect(auditEmailTemplate(m).body).toContain("الدورة المستندية ISO22000:2018");
     m.auditTypeCode = "FS";
     m.auditTypeName = "الممارسات الصحية";
     expect(auditEmailTemplate(m).body).toContain("تقرير مراجعة سلامة الغذاء");
@@ -100,6 +100,35 @@ describe("audit email template", () => {
     expect(() => auditEmailTemplate({ ...m, sections })).toThrow("غير محسومة");
     sections[0]!.excluded = true;
     expect(() => auditEmailTemplate({ ...m, sections })).not.toThrow();
+  });
+  it("uses the exact quarterly FSMS body with calendar boundaries and never includes delivery lines", () => {
+    for (const [date, quarter] of [
+      ["2026-01-01", "الأول"],
+      ["2026-03-31", "الأول"],
+      ["2026-04-01", "الثاني"],
+      ["2026-06-30", "الثاني"],
+      ["2026-07-01", "الثالث"],
+      ["2026-09-30", "الثالث"],
+      ["2026-10-01", "الرابع"],
+      ["2026-12-31", "الرابع"],
+      ["2027-01-01", "الأول"],
+    ]) {
+      const m = model("روكسي");
+      m.auditTypeCode = "FSMS";
+      m.auditDate = date!;
+      m.result.finalPercentage = 92.42;
+      const draft = auditEmailTemplate(m);
+      expect(draft.body).toContain("السادة الزملاء الأفاضل");
+      expect(draft.body).toContain(
+        `الدورة المستندية ISO22000:2018 لفرع روكسي عن الربع ${quarter} لعام ${date!.slice(0, 4)}.`,
+      );
+      expect(draft.body).toContain("نتيجة المراجعة النهائية : 92.42%");
+      expect(draft.body).not.toContain("التوصيل");
+      expect(draft.body).not.toContain("عن شهر");
+      expect(draft.hasDelivery).toBe(false);
+    }
+    const maintenance = { ...model(), auditTypeCode: "MAINT", auditTypeName: "الصيانة" };
+    expect(() => auditEmailTemplate(maintenance)).toThrow("الصيانة");
   });
   it("does not turn input into HTML or permit scripts; highlights exact percentages", () => {
     const html = auditEmailHtml("الدرجة 89.75%\n\n<img src=x onerror=alert(1)>");

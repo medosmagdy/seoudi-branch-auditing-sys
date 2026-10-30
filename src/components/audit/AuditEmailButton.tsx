@@ -1,3 +1,4 @@
+import { loadAuditEmailRecipients } from "@/lib/branch-email-recipients";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Mail, Loader2, Copy, FileDown } from "lucide-react";
@@ -42,6 +43,25 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
     retry: 1,
   });
   const model = query.data;
+  const recipients = useQuery({
+    queryKey: ["audit-email-recipients", auditId],
+    queryFn: () => loadAuditEmailRecipients(auditId),
+    enabled: open && !!model && !templateError,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+  const initializedRecipients = useRef(false);
+  useEffect(() => {
+    if (!open) initializedRecipients.current = false;
+  }, [open]);
+  useEffect(() => {
+    if (!open || !recipients.isSuccess || recipients.isFetching || initializedRecipients.current)
+      return;
+    setTo(recipients.data.to_addresses.join("; "));
+    setCc(recipients.data.cc_addresses.join("; "));
+    initializedRecipients.current = true;
+  }, [open, recipients.data, recipients.isSuccess, recipients.isFetching]);
   useEffect(() => {
     if (!open || !model) return;
     try {
@@ -59,6 +79,8 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
     model.status === "submitted" &&
     !query.isFetching &&
     !query.isError &&
+    recipients.isSuccess &&
+    !recipients.isFetching &&
     !templateError;
   const verifyLatest = async () => {
     const fresh = await query.refetch();
@@ -166,10 +188,31 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
               {templateError}
             </p>
           ) : (
-            <fieldset disabled={busy} className="space-y-4">
+            <fieldset
+              disabled={busy || recipients.isPending || recipients.isFetching}
+              className="space-y-4"
+            >
+              {recipients.isPending || recipients.isFetching ? (
+                <p role="status">جارٍ تحميل مستلمي الفرع…</p>
+              ) : recipients.isError ? (
+                <div role="alert">
+                  <p>تعذر تحميل مستلمي الفرع؛ تجهيز الملف متوقف لحد إعادة التحقق.</p>
+                  <Button onClick={() => void recipients.refetch()}>إعادة المحاولة</Button>
+                </div>
+              ) : null}
+              {recipients.isSuccess && !recipients.data.installed && (
+                <p className="text-xs text-muted-foreground">
+                  قوائم الفروع الخاصة لم يتم تفعيلها بعد؛ أدخل To وCC يدويًا مؤقتًا.
+                </p>
+              )}
+              {recipients.isSuccess && recipients.data.installed && !recipients.data.configured && (
+                <p className="text-xs text-muted-foreground">
+                  لم تُحفظ قائمة لهذا الفرع؛ أدخل المستلمين يدويًا أو اطلب من الإدارة ضبطها.
+                </p>
+              )}
               <p className="rounded-lg bg-muted p-3 text-xs">
-                To وCC اختياريين مؤقتًا؛ تقدر تكملهم في Outlook. عناوين المستلمين لا تُحفظ في النظام
-                حاليًا. ملف PDF يُرفق داخل ملف البريد تلقائيًا.
+                القائمة المحفوظة للفرع تُحمّل تلقائيًا لو مضبوطة. تقدر تعدّل To وCC للرسالة الحالية؛
+                تعديل هنا لا يغيّر قائمة الإدارة. ملف PDF يُرفق داخل ملف البريد تلقائيًا.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1 text-sm">

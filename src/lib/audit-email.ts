@@ -71,6 +71,24 @@ export function auditEmailTemplate(model: EmailAudit) {
         : program === "FS"
           ? "سلامة الغذاء"
           : model.auditTypeName;
+  if (/صيان|maintenance|\bMAINT\b/i.test(`${model.auditTypeCode} ${names}`))
+    throw new Error(
+      "قالب الصيانة ومستلمينها لم يتم إعدادهم بعد؛ لن تُستخدم قائمة الفروع تلقائيًا للصيانة",
+    );
+  if (program === "FSMS") {
+    const quarter = ["الأول", "الثاني", "الثالث", "الرابع"][Math.floor((Number(date[2]) - 1) / 3)];
+    return {
+      subject: auditReportFileBase(model),
+      hasDelivery: false,
+      body: [
+        "السادة الزملاء الأفاضل",
+        "تحية طيبة وبعد ،،",
+        `مرسل تقرير مراجعة الدورة المستندية ISO22000:2018 لفرع ${model.branchName} عن الربع ${quarter} لعام ${date[1]}.`,
+        `نتيجة المراجعة النهائية : ${emailPercentage(model.result.finalPercentage)}`,
+        "وتفضلوا بقبول وافر الاحترام والتقدير.",
+      ].join("\n\n"),
+    };
+  }
   const period = `${months[Number(date[2]) - 1]} ${date[1]}`;
   const delivery = model.result.delivery;
   const hasDelivery = !!delivery && !delivery.excluded && delivery.max > 0;
@@ -110,7 +128,13 @@ export function emailRecipients(raw: string) {
   const addresses = raw
     .split(/[,;\n]+/)
     .map((v) => v.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((value) => {
+      if (!value.includes("<") && !value.includes(">")) return value;
+      const match = /^(?:"[^"\r\n]*"|[^<>"\r\n]*)\s*<([^<>\r\n]+)>$/.exec(value);
+      if (!match) throw new Error("صيغة اسم المستلم والبريد غير صالحة");
+      return match[1]!.trim();
+    });
   if (addresses.length > 100) throw new Error("عدد المستلمين كبير؛ الحد الأقصى 100 لكل حقل");
   for (const address of addresses)
     if (
