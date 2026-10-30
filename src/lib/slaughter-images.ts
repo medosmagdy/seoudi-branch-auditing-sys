@@ -9,8 +9,10 @@ export interface SlaughterExcelImage {
 export async function attachSlaughterImages(
   workbook: WorkBook,
   images: SlaughterExcelImage[],
+  workbookBytes?: Uint8Array,
 ): Promise<Uint8Array> {
-  const bytes = write(workbook, { type: "array", bookType: "xlsx", compression: true });
+  const bytes =
+    workbookBytes ?? write(workbook, { type: "array", bookType: "xlsx", compression: true });
   if (!images.length) return new Uint8Array(bytes);
   const index = workbook.SheetNames.indexOf("Related pictures");
   if (index < 0) throw new Error("Missing Related pictures worksheet");

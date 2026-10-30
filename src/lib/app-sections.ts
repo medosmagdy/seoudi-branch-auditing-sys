@@ -7,6 +7,7 @@ export const APP_SECTIONS = [
     path: "/audits",
     roles: ["admin", "manager", "auditor"],
   },
+  { id: "maintenance", label: "الصيانة", path: "/maintenance", roles: ["admin"] },
   { id: "slaughtering", label: "المجازر", path: "/slaughtering", roles: ["admin"] },
   {
     id: "branches",
