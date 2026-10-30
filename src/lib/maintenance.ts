@@ -1,3 +1,4 @@
+import { reportBranchName } from "./report-branch-name";
 import { z } from "zod";
 export const severities = { high: "عالية", medium: "متوسطة", low: "منخفضة" } as const;
 export const findingStatuses = {
@@ -122,7 +123,9 @@ export function latestReports<
 }
 export function reportFileName(branch: string, inspectionDate: string) {
   const d = new Date(inspectionDate + "T00:00:00Z");
-  return `${branch.replace(/[<>:"/\\|?*\x00-\x1f]/g, " ").trim()} Maintenance Report Q${Math.floor(d.getUTCMonth() / 3) + 1}-${d.getUTCFullYear()}`;
+  return `${reportBranchName(branch)
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, " ")
+    .trim()} Maintenance Report Q${Math.floor(d.getUTCMonth() / 3) + 1}-${d.getUTCFullYear()}`;
 }
 export function duplicateFindings(findings: Finding[]): Finding[] {
   return findings.map((f) => ({ ...f, id: crypto.randomUUID(), photos: [...f.photos] }));

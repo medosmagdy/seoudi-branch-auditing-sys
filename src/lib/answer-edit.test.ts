@@ -2,18 +2,18 @@ import { describe, expect, it } from "vitest";
 import { AnswerWrites, editAnswer } from "./answer-edit";
 
 describe("answer editing", () => {
-  it("keeps full credit when commenting on an untouched question", () => {
+  it("does not invent a score when commenting on an untouched question", () => {
     expect(editAnswer(undefined, { comment: "note" }, 4)).toEqual({
-      score: 4,
+      score: null,
       isNa: false,
       comment: "note",
     });
   });
-  it("restores the question maximum when leaving N/A", () => {
+  it("requires a new grade when leaving N/A", () => {
     expect(
       editAnswer({ score: null, isNa: true, comment: "note" }, { isNa: false, score: null }, 2)
         .score,
-    ).toBe(2);
+    ).toBeNull();
   });
   it("preserves zero on comments and explicit selection after N/A", () => {
     expect(editAnswer({ score: 0, isNa: false, comment: "" }, { comment: "note" }, 4).score).toBe(

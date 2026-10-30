@@ -5,10 +5,10 @@ export function editAnswer(
   patch: Partial<EditableAnswer>,
   maxScore: number,
 ): EditableAnswer {
-  const previous = current ?? { score: maxScore, isNa: false, comment: "" };
+  const previous = current ?? { score: null, isNa: false, comment: "" };
   const next = { ...previous, ...patch };
   if (next.isNa) next.score = null;
-  else if (previous.isNa && patch.isNa === false && patch.score == null) next.score = maxScore;
+  else if (previous.isNa && patch.isNa === false && patch.score == null) next.score = null;
   return next;
 }
 

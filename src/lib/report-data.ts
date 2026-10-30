@@ -12,6 +12,7 @@ export interface ReportPhoto {
 }
 
 export interface ReportQuestion {
+  answerRecorded?: boolean;
   unresolvedScore?: boolean;
   id: string;
   itemId: string;
@@ -266,7 +267,10 @@ export async function loadReportModel(
       .map((groupId) => {
         const header = headerRows.find((row) => row.id === groupId);
         const groupQuestions = sectionQuestions.filter(
-          (question) => question.header_id === groupId,
+          (question) =>
+            question.header_id === groupId ||
+            (groupId === null &&
+              !headerRows.some((h) => h.id === question.header_id && h.section_id === section.id)),
         );
 
         return {
@@ -318,6 +322,7 @@ export async function loadReportModel(
               itemId: question.item_id,
               textAr: question.text_ar,
               maxScore: max,
+              answerRecorded: Object.prototype.hasOwnProperty.call(rawAnswerMap, question.id),
               unresolvedScore: answer?.score === null && !isNa,
               score: earned,
               isNa,

@@ -38,7 +38,7 @@ function report(finalPercentage = 90) {
         groups: [
           {
             questions: [
-              { id: "untouched-fs", maxScore: 4 },
+              { id: "untouched-fs", maxScore: 4, score: 4, answerRecorded: true },
               { id: "deducted-fs", maxScore: 2, score: 0 },
               { id: "na-fs", maxScore: 4, isNa: true },
             ],
@@ -62,14 +62,10 @@ describe("audit submission", () => {
     mocks.single.mockResolvedValue({ data: { id: "audit-fs" }, error: null });
   });
 
-  it("defaults only to the current report's questions and excludes N/A sections", () => {
+  it("persists inherited N/A only and never creates full-credit scores", () => {
     const defaults = defaultAnswersForReport(report());
-    expect(defaults.map((row) => row.question_id)).toEqual([
-      "untouched-fs",
-      "deducted-fs",
-      "na-fs",
-    ]);
-    expect(defaults.map((row) => row.score)).toEqual([4, 2, null]);
+    expect(defaults.map((row) => row.question_id)).toEqual(["na-fs"]);
+    expect(defaults.map((row) => row.score)).toEqual([null]);
     expect(defaults.every((row) => row.audit_id === "audit-fs")).toBe(true);
   });
 
@@ -150,4 +146,22 @@ it("persists inherited N/A questions and section exclusions before finalizing", 
     ]),
     expect.objectContaining({ ignoreDuplicates: true }),
   );
+});
+
+it("blocks an absent answer even when the preview shows a default maximum", async () => {
+  vi.resetAllMocks();
+  const model = report();
+  model.sections[0]!.groups[0]!.questions[0]!.answerRecorded = false;
+  mocks.load.mockResolvedValue(model);
+  await expect(finalizeAudit("audit-fs")).rejects.toThrow("بدون تقييم");
+  expect(mocks.upsert).not.toHaveBeenCalled();
+  expect(mocks.update).not.toHaveBeenCalled();
+});
+it.each([NaN, Infinity, -1, 5])("rejects an invalid score %s", async (score) => {
+  vi.resetAllMocks();
+  const model = report();
+  model.sections[0]!.groups[0]!.questions[0]!.score = score;
+  mocks.load.mockResolvedValue(model);
+  await expect(finalizeAudit("audit-fs")).rejects.toThrow("بدون تقييم");
+  expect(mocks.update).not.toHaveBeenCalled();
 });

@@ -1,3 +1,4 @@
+import { reportBranchName } from "./report-branch-name";
 interface AuditReportIdentity {
   branchName: string;
   branchNameEn?: string | null;
@@ -16,13 +17,7 @@ function safeName(value: string) {
 }
 
 export function auditReportFileBase(model: AuditReportIdentity) {
-  const originalBranch = safeName(model.branchNameEn?.trim() || model.branchName || "Branch");
-  const normalizedBranch = originalBranch.replace(/[\s_-]/g, "").toLowerCase();
-  const branch = /^(citystars|سيتيستارز|سيتىستارز)$/.test(normalizedBranch)
-    ? "CityStars"
-    : /^(sheraton|شيراتون|شيرتون)$/.test(normalizedBranch)
-      ? "Sheraton"
-      : originalBranch || "Branch";
+  const branch = safeName(reportBranchName(model.branchName, model.branchNameEn));
   const code = model.auditTypeCode?.trim().toUpperCase();
   const names = `${model.auditTypeNameEn} ${model.auditTypeName}`;
   const program =

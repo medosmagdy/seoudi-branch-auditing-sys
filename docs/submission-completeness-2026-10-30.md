@@ -1,0 +1,11 @@
+# Future audit submission completeness
+
+The user explicitly requested that every active question be graded or N/A before a new submission, and clarified that previously submitted audits must remain untouched. This supersedes the earlier automatic-full-credit rule for unanswered items during submission.
+
+The runner now leaves unanswered draft questions visibly unselected. Comments/photos alone do not assign a grade, and leaving N/A requires choosing a grade. Existing saved zero/full-credit answers, inherited N/A and excluded sections retain their meaning. The report model distinguishes a missing persisted/inherited answer from a displayed score estimate. Summary shows a blocking count and links to each missing section/question. Finalization checks before writes and again after a fresh reload; it persists inherited N/A only and no longer generates missing full-credit answers. Scoring weights, delivery inclusion/exclusion and historical result data are unchanged. Submitted legacy views keep their previous missing-answer display fallback; no data is backfilled or recalculated in the database.
+
+A database trigger proposal is available in supabase/proposals/2026-10-30_submission_completeness_REVIEW_ONLY.sql. It validates only transitions/new inserts into submitted status, excludes inactive questions/sections and explicit N/A, preserves zero, and skips already-submitted rows. It does not alter historical audits or RLS. The proposal passed isolated PostgreSQL lifecycle tests.
+
+Activation was attempted after explaining the future-only scope but automatic approval review rejected it because this exact persistent production migration needs explicit approval after scope disclosure. It was NOT applied and was not retried through another route. Until approved/applied, new application builds enforce the rule, but old clients/direct database status updates do not receive the additional database guard.
+
+Report filename/email subject branch identities are now shared across FS/GHP/FSMS and maintenance: التجمع = Silver Star; الجامعة = AUC; مول العرب = Mall Of Arabia; مدينتي = Madinaty; سوديك = Sodic; سوديك سيزر = Sodic Matcha; سوديك ايست = Sodic East. Explicit approved identities override stale stored English names, preserving other branch labels and the existing date/quarter format. Database branch names are not changed.

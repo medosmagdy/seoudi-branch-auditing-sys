@@ -1,3 +1,7 @@
+import { lazy, Suspense } from "react";
+const ImportDialog = lazy(() =>
+  import("./MaintenanceImportDialog").then((m) => ({ default: m.MaintenanceImportDialog })),
+);
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -95,6 +99,7 @@ function ReportEditor({
   onChanged: () => void;
   focusFinding?: string;
 }) {
+  const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(initial),
     [saved, setSaved] = useState(initial),
     [busy, setBusy] = useState(false),
@@ -205,6 +210,12 @@ function ReportEditor({
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
+        {report.status === "draft" && (
+          <Button variant="outline" disabled={busy} onClick={() => setImporting(true)}>
+            استيراد ملف Excel
+          </Button>
+        )}
+
         <Button disabled={busy} onClick={() => void save()}>
           حفظ التغييرات
         </Button>
@@ -359,6 +370,21 @@ function ReportEditor({
           </section>
         ))}
       </div>
+      {importing && (
+        <Suspense fallback={<p role="status">جارٍ تجهيز الاستيراد…</p>}>
+          <ImportDialog
+            current={report}
+            branch={branch}
+            onClose={() => setImporting(false)}
+            onSaved={(value) => {
+              setReport(value);
+              setSaved(value);
+              setImporting(false);
+              onChanged();
+            }}
+          />
+        </Suspense>
+      )}
       {editing && (
         <FindingEditor
           key={editing.id}

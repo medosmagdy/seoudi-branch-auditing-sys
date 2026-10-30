@@ -19,7 +19,7 @@ import { ReportDocument } from "@/components/report/ReportDocument";
 import { downloadElementAsPdf } from "@/lib/export-pdf";
 import { useSession } from "@/hooks/useSession";
 import { canEditAudit } from "@/lib/permissions";
-import { finalizeAudit } from "@/lib/finalize-audit";
+import { unresolvedQuestions, finalizeAudit } from "@/lib/finalize-audit";
 
 export const Route = createFileRoute("/_authenticated/audits/$id/summary")({
   head: () => ({
@@ -169,6 +169,8 @@ function SummaryPage() {
       setExportingExcel(false);
     }
   };
+
+  const incompleteQuestions = unresolvedQuestions(model);
 
   const submitAudit = async () => {
     if (!canEdit) {
@@ -328,13 +330,48 @@ function SummaryPage() {
         </div>
       </div>
 
+      {isDraft && incompleteQuestions.length > 0 && (
+        <div
+          role="alert"
+          className="mt-5 rounded-xl border border-destructive/30 bg-destructive/5 p-5"
+          dir="rtl"
+        >
+          <h2 className="font-bold text-destructive">
+            لا يمكن اعتماد الفحص: {incompleteQuestions.length} سؤال بدون تقييم صحيح
+          </h2>
+          <p className="mt-2 text-sm">
+            اختَر درجة لكل سؤال أو حدده N/A. التعليق والصورة لوحدهم مش تقييم.
+          </p>
+          <div className="mt-3 flex flex-col gap-2">
+            {incompleteQuestions.slice(0, 30).map((q) => (
+              <Button
+                key={q.questionId}
+                className="justify-start whitespace-normal text-start"
+                variant="outline"
+                onClick={() =>
+                  void navigate({
+                    to: "/audits/$id",
+                    params: { id },
+                    search: { section: q.sectionIndex, questionId: q.questionId },
+                  })
+                }
+              >
+                {q.sectionName} — {q.itemId}: {q.text}
+              </Button>
+            ))}
+          </div>
+          {incompleteQuestions.length > 30 && (
+            <p className="mt-2 text-sm">معروض أول 30 سؤال. استكملهم لتظهر بقية البنود.</p>
+          )}
+        </div>
+      )}
       <div
         className="summary-footer surface-card mt-6 flex flex-wrap items-center gap-3 p-5"
         dir="rtl"
       >
         {isDraft && canEdit && (
           <Button
-            disabled={submitting || savingDeduction}
+            disabled={submitting || savingDeduction || incompleteQuestions.length > 0}
             onClick={submitAudit}
             className="gap-2 font-bold"
           >
