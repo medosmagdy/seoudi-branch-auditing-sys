@@ -1,3 +1,5 @@
+import { loadAuditEmailAccess } from "@/lib/audit-email-access";
+import { useSession } from "@/hooks/useSession";
 import { loadAuditEmailRecipients } from "@/lib/branch-email-recipients";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -25,6 +27,16 @@ import {
 } from "@/lib/audit-email";
 
 export function AuditEmailButton({ auditId }: { auditId: string }) {
+  const { profile } = useSession();
+  const permission = useQuery({
+    queryKey: ["audit-email-access", profile?.id],
+    queryFn: loadAuditEmailAccess,
+    enabled: !!profile?.active,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
   const [open, setOpen] = useState(false),
     [to, setTo] = useState(""),
     [cc, setCc] = useState(""),
@@ -83,6 +95,9 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
     !recipients.isFetching &&
     !templateError;
   const verifyLatest = async () => {
+    const access = await permission.refetch();
+    if (access.isError || !access.data?.allowed)
+      throw new Error("صلاحية تجهيز الميل غير متاحة لحسابك");
     const fresh = await query.refetch();
     if (fresh.isError || !fresh.data) throw new Error("تعذر التحقق من أحدث بيانات الأوديت");
     auditEmailTemplate(fresh.data);
@@ -152,6 +167,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
       setBusy(false);
     }
   };
+  if (!permission.isSuccess || !permission.data.allowed) return null;
   return (
     <>
       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>

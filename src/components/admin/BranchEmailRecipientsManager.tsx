@@ -1,3 +1,4 @@
+import { AuditEmailAccessManager } from "./AuditEmailAccessManager";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -73,6 +74,7 @@ export function BranchEmailRecipientsManager() {
   return (
     <section className="surface-card space-y-4 p-5">
       <h2 className="font-bold">مستلمو تقارير الفروع — To وCC</h2>
+      <AuditEmailAccessManager />
       <p className="text-sm text-muted-foreground">
         القائمة مشتركة لـFS وGHP وFSMS فقط. الصيانة منفصلة ولم تُجهز بعد. ملف Excel: الفرع في العمود
         الأول، To في الثاني، CC في الثالث. القوائم تُحفظ في الداتابيز الخاصة؛ لا تُنشر داخل كود
