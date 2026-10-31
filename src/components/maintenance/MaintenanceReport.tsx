@@ -25,6 +25,7 @@ import {
   saveMaintenanceReport,
 } from "@/lib/maintenance-data";
 import { maintenanceReportRows, downloadMaintenanceExcel } from "@/lib/maintenance-export";
+import { MaintenancePdfDocument } from "./MaintenancePdfDocument";
 import { FindingEditor, maintenanceSelect } from "./FindingEditor";
 export function MaintenanceReportDialog({
   id,
@@ -54,36 +55,38 @@ export function MaintenanceReportDialog({
       }}
     >
       <DialogContent
-        className="max-h-[95vh] overflow-y-auto sm:max-w-6xl"
+        className="flex max-h-[95vh] flex-col overflow-hidden sm:max-w-6xl"
         dir="rtl"
         onInteractOutside={(e) => e.preventDefault()}
       >
         <DialogHeader className="pr-8">
           <DialogTitle>تقرير صيانة — {branch}</DialogTitle>
         </DialogHeader>
-        {q.isPending ? (
-          <div role="status">
-            جارٍ تحميل التقرير…
-            <Button variant="outline" onClick={onClose}>
-              رجوع
-            </Button>
-          </div>
-        ) : q.isError ? (
-          <div role="alert">
-            تعذر تحميل التقرير<Button onClick={() => void q.refetch()}>إعادة المحاولة</Button>
-            <Button onClick={onClose}>رجوع</Button>
-          </div>
-        ) : (
-          <ReportEditor
-            key={id}
-            initial={q.data}
-            branch={branch}
-            onClose={onClose}
-            closeRequest={closeRequest}
-            onChanged={onChanged}
-            {...(focusFinding ? { focusFinding } : {})}
-          />
-        )}
+        <div className="min-h-0 overflow-y-auto p-1">
+          {q.isPending ? (
+            <div role="status">
+              جارٍ تحميل التقرير…
+              <Button variant="outline" onClick={onClose}>
+                رجوع
+              </Button>
+            </div>
+          ) : q.isError ? (
+            <div role="alert">
+              تعذر تحميل التقرير<Button onClick={() => void q.refetch()}>إعادة المحاولة</Button>
+              <Button onClick={onClose}>رجوع</Button>
+            </div>
+          ) : (
+            <ReportEditor
+              key={id}
+              initial={q.data}
+              branch={branch}
+              onClose={onClose}
+              closeRequest={closeRequest}
+              onChanged={onChanged}
+              {...(focusFinding ? { focusFinding } : {})}
+            />
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -105,6 +108,9 @@ function ReportEditor({
 }) {
   const [importing, setImporting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<"all" | Finding["status"]>("all");
+  const [sectionFilter, setSectionFilter] = useState("all");
+  const [tempBranchManager, setTempBranchManager] = useState(initial.branch_manager ?? "");
+  const [tempAreaManager, setTempAreaManager] = useState(initial.maintenance_area_manager ?? "");
   const [report, setReport] = useState(initial),
     [saved, setSaved] = useState(initial),
     [busy, setBusy] = useState(false),
@@ -124,7 +130,16 @@ function ReportEditor({
       closeRequest.current = onClose;
     };
   }, [busy, dirty, onClose, closeRequest]);
-  const visibleFindings = filterReportFindings(report.findings, statusFilter);
+  const sections = [...new Set(report.findings.map((f) => f.section))];
+  useEffect(() => {
+    if (sectionFilter !== "all" && !sections.includes(sectionFilter)) setSectionFilter("all");
+  }, [sectionFilter, report.findings]);
+  const visibleFindings = filterReportFindings(report.findings, statusFilter, sectionFilter);
+  const hasManagerFields =
+    report.branch_manager !== undefined && report.maintenance_area_manager !== undefined;
+  const branchManager = hasManagerFields ? (report.branch_manager ?? "") : tempBranchManager;
+  const areaManager = hasManagerFields ? (report.maintenance_area_manager ?? "") : tempAreaManager;
+  const scope = `${sectionFilter === "all" ? "كل الأقسام" : sectionFilter} · ${statusFilter === "all" ? "كل الحالات" : findingStatuses[statusFilter]}`;
   const visibleStats = metrics(visibleFindings.map((x) => x.finding));
   useEffect(() => {
     if (!dirty) return;
@@ -174,9 +189,15 @@ function ReportEditor({
     lock.current = true;
     setBusy(true);
     try {
+      const suffix = [
+        sectionFilter === "all" ? "" : sectionFilter,
+        statusFilter === "all" ? "" : findingStatuses[statusFilter],
+      ]
+        .filter(Boolean)
+        .join(" - ")
+        .replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ");
       const filename =
-        reportFileName(branch, report.inspection_date) +
-        (statusFilter === "all" ? "" : ` - ${findingStatuses[statusFilter]}`);
+        reportFileName(branch, report.inspection_date) + (suffix ? ` - ${suffix}` : "");
       if (kind === "excel")
         await downloadMaintenanceExcel(
           maintenanceReportRows(
@@ -189,9 +210,8 @@ function ReportEditor({
       else {
         const node = documentRef.current;
         if (!node) throw new Error("تعذر تجهيز التقرير");
-        await Promise.all(Array.from(node.querySelectorAll("img")).map((img) => img.decode()));
-        const { downloadElementAsPdf } = await import("@/lib/export-pdf");
-        await downloadElementAsPdf(node, filename);
+        const { downloadMaintenancePdf } = await import("@/lib/maintenance-pdf");
+        await downloadMaintenancePdf(node, filename);
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "تعذر التصدير");
@@ -230,6 +250,39 @@ function ReportEditor({
           </p>
         </div>
       </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label>
+          مدير الفرع
+          <Input
+            maxLength={200}
+            value={branchManager}
+            disabled={busy}
+            onChange={(e) =>
+              hasManagerFields
+                ? setReport((r) => ({ ...r, branch_manager: e.target.value }))
+                : setTempBranchManager(e.target.value)
+            }
+          />
+        </label>
+        <label>
+          مدير منطقة الصيانة
+          <Input
+            maxLength={200}
+            value={areaManager}
+            disabled={busy}
+            onChange={(e) =>
+              hasManagerFields
+                ? setReport((r) => ({ ...r, maintenance_area_manager: e.target.value }))
+                : setTempAreaManager(e.target.value)
+            }
+          />
+        </label>
+        {!hasManagerFields && (
+          <p className="sm:col-span-2 text-xs text-amber-700">
+            الأسماء تستخدم في PDF خلال هذه الجلسة؛ حفظها في التقرير يحتاج تفعيل إضافة الداتابيز.
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         {report.status === "draft" && (
           <Button variant="outline" disabled={busy} onClick={() => setImporting(true)}>
@@ -245,7 +298,13 @@ function ReportEditor({
             حفظ واعتماد التقرير
           </Button>
         )}
-        <Button variant="outline" disabled={busy} onClick={() => setEditing(blankFinding())}>
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() =>
+            setEditing({ ...blankFinding(), section: sectionFilter === "all" ? "" : sectionFilter })
+          }
+        >
           + إضافة ملاحظة
         </Button>
         <Button
@@ -279,6 +338,34 @@ function ReportEditor({
           </Button>
         </p>
       )}
+      <div>
+        <p className="mb-2 text-sm font-semibold">الأقسام</p>
+        <div role="tablist" aria-label="أقسام التقرير" className="flex gap-2 overflow-x-auto pb-2">
+          <button
+            type="button"
+            role="tab"
+            aria-controls="maintenance-findings-panel"
+            aria-selected={sectionFilter === "all"}
+            className={`shrink-0 rounded-lg border px-4 py-2 text-sm ${sectionFilter === "all" ? "bg-primary text-primary-foreground" : "bg-card"}`}
+            onClick={() => setSectionFilter("all")}
+          >
+            كل الأقسام ({report.findings.length})
+          </button>
+          {sections.map((section) => (
+            <button
+              type="button"
+              role="tab"
+              aria-controls="maintenance-findings-panel"
+              aria-selected={sectionFilter === section}
+              key={section}
+              className={`shrink-0 rounded-lg border px-4 py-2 text-sm ${sectionFilter === section ? "bg-primary text-primary-foreground" : "bg-card"}`}
+              onClick={() => setSectionFilter(section)}
+            >
+              {section} ({report.findings.filter((f) => f.section === section).length})
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="block max-w-xs space-y-2 text-sm">
         حالة الملاحظة
         <select
@@ -299,7 +386,12 @@ function ReportEditor({
         المعروض: {visibleFindings.length} من {report.findings.length} ملاحظة. التصدير يشمل الملاحظات
         المعروضة فقط.
       </p>
-      <div ref={documentRef} className="space-y-4 rounded-xl bg-white p-5 text-slate-900" dir="rtl">
+      <div
+        id="maintenance-findings-panel"
+        role="tabpanel"
+        className="space-y-4 rounded-xl bg-white p-5 text-slate-900"
+        dir="rtl"
+      >
         <header data-report-block className="border-b pb-4">
           <h2 className="text-2xl font-bold">تقرير الصيانة — {branch}</h2>
           <p>{reportFileName(branch, report.inspection_date)}</p>
@@ -407,6 +499,18 @@ function ReportEditor({
             })}
           </section>
         ))}
+      </div>
+      <div className="pointer-events-none fixed left-[-10000px] top-0" aria-hidden="true" inert>
+        <div ref={documentRef}>
+          <MaintenancePdfDocument
+            report={{ ...report, findings: visibleFindings.map((x) => x.finding) }}
+            branch={branch}
+            urls={photos.data ?? {}}
+            branchManager={branchManager}
+            areaManager={areaManager}
+            scope={scope}
+          />
+        </div>
       </div>
       {importing && (
         <Suspense fallback={<p role="status">جارٍ تجهيز الاستيراد…</p>}>

@@ -38,7 +38,16 @@ export async function carryLatestUnfinished(
     const draft = await deps.load(id);
     if (draft.branch_id !== branch || draft.status !== "draft")
       throw new Error("تعذر التحقق من المسودة الجديدة.");
-    await deps.save({ ...draft, findings: duplicateFindings(open) });
+    await deps.save({
+      ...draft,
+      ...(draft.branch_manager !== undefined
+        ? { branch_manager: source.branch_manager ?? "" }
+        : {}),
+      ...(draft.maintenance_area_manager !== undefined
+        ? { maintenance_area_manager: source.maintenance_area_manager ?? "" }
+        : {}),
+      findings: duplicateFindings(open),
+    });
     return id;
   } catch (error) {
     try {

@@ -46,8 +46,16 @@ function fixture() {
     source_report_id: null,
     findings: items,
   });
-  const source = report(newer, "submitted", "2026-09-01"),
-    target = report(newId, "draft", "2027-01-01", []);
+  const source = {
+      ...report(newer, "submitted", "2026-09-01"),
+      branch_manager: "مدير الفرع",
+      maintenance_area_manager: "مدير المنطقة",
+    },
+    target = {
+      ...report(newId, "draft", "2027-01-01", []),
+      branch_manager: "",
+      maintenance_area_manager: "",
+    };
   const summary = (
     id: string,
     status: "draft" | "submitted",
@@ -66,16 +74,14 @@ function fixture() {
     high_open: 0,
   });
   const deps: CarryDependencies = {
-    index: vi
-      .fn()
-      .mockResolvedValue({
-        reports: [
-          summary(old, "submitted", "2026-06-01"),
-          summary(newer, "submitted", "2026-09-01"),
-          summary(draftId, "draft", "2026-12-01"),
-          summary(crypto.randomUUID(), "submitted", "2026-12-30", other),
-        ],
-      }),
+    index: vi.fn().mockResolvedValue({
+      reports: [
+        summary(old, "submitted", "2026-06-01"),
+        summary(newer, "submitted", "2026-09-01"),
+        summary(draftId, "draft", "2026-12-01"),
+        summary(crypto.randomUUID(), "submitted", "2026-12-30", other),
+      ],
+    }),
     load: vi.fn(async (id) => (id === newId ? target : source)),
     create: vi.fn().mockResolvedValue(newId),
     save: vi.fn().mockResolvedValue(2),
@@ -91,6 +97,8 @@ describe("carry unfinished notes safely", () => {
     expect(deps.load).toHaveBeenNthCalledWith(1, newer);
     expect(deps.create).toHaveBeenCalledWith(branch, "2027-01-01", "مراجع", null);
     const saved = vi.mocked(deps.save).mock.calls[0]![0];
+    expect(saved.branch_manager).toBe("مدير الفرع");
+    expect(saved.maintenance_area_manager).toBe("مدير المنطقة");
     expect(saved.findings).toHaveLength(1);
     expect(saved.findings[0]).toMatchObject({
       status: "open",
@@ -138,4 +146,13 @@ it("exports exactly the selected status and keeps the all-states export intact",
     expect(visible.length).toBe(filter === "all" ? 4 : 1);
   }
   expect(filterReportFindings(findings, "resolved")[0]!.index).toBe(1);
+});
+
+it("filters section and status together for the Excel data", () => {
+  const { findings } = fixture();
+  expect(filterReportFindings(findings, "open", "سمك")).toHaveLength(1);
+  expect(filterReportFindings(findings, "open", "جزارة")).toHaveLength(0);
+  expect(filterReportFindings(findings, "all", "جزارة").map((x) => x.finding.description)).toEqual([
+    "تم",
+  ]);
 });

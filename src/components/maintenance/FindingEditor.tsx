@@ -1,9 +1,20 @@
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { CalendarDays, ImagePlus } from "lucide-react";
+import { ar } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { findingSchema, findingStatuses, severities, type Finding } from "@/lib/maintenance";
+import {
+  faultDateForCalendar,
+  formatFaultCalendarDate,
+  findingSchema,
+  findingStatuses,
+  severities,
+  type Finding,
+} from "@/lib/maintenance";
 import { maintenancePhotoUrls, uploadMaintenancePhoto } from "@/lib/maintenance-data";
 export const maintenanceSelect = "h-11 w-full rounded-lg border bg-background px-3 text-sm";
 export function FindingEditor({
@@ -19,10 +30,14 @@ export function FindingEditor({
   onSave: (f: Finding) => void;
   onClose: () => void;
 }) {
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [draft, setDraft] = useState(initial),
     [busy, setBusy] = useState(false),
     [localUrls, setLocalUrls] = useState<Record<string, string>>({});
   const uploadLock = useRef(false);
+  const fileId = useId();
+  const selectedDate = faultDateForCalendar(draft.initial_history);
+  const validDate = !!selectedDate;
   const set = <K extends keyof Finding>(key: K, value: Finding[K]) =>
     setDraft((d) => ({ ...d, [key]: value }));
   async function upload(file: File) {
@@ -80,15 +95,52 @@ export function FindingEditor({
               ))}
             </datalist>
           </label>
-          <label className="space-y-2">
-            تاريخ العطل (يقبل شهر/سنة)
-            <Input
-              placeholder="9/2026"
-              value={draft.initial_history}
-              maxLength={100}
-              onChange={(e) => set("initial_history", e.target.value)}
-            />
-          </label>
+          <div className="space-y-2">
+            <p className="text-sm">تاريخ العطل</p>
+            {draft.initial_history && !validDate && (
+              <p className="rounded-lg bg-muted p-2 text-xs">
+                التاريخ المحفوظ: {draft.initial_history} (سيظل كما هو حتى تختار تاريخًا جديدًا)
+              </p>
+            )}
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  aria-label="اختيار تاريخ العطل"
+                >
+                  <CalendarDays className="size-4" />
+                  {validDate ? draft.initial_history : "اختر تاريخ العطل"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start" dir="rtl">
+                <Calendar
+                  mode="single"
+                  locale={ar}
+                  captionLayout="dropdown"
+                  startMonth={new Date(1900, 0)}
+                  endMonth={new Date(2100, 11)}
+                  selected={selectedDate}
+                  onSelect={(day) => {
+                    if (!day) return;
+                    set("initial_history", formatFaultCalendarDate(day));
+                    setCalendarOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+            {draft.initial_history && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => set("initial_history", "")}
+              >
+                مسح التاريخ
+              </Button>
+            )}
+          </div>
           <label className="space-y-2 sm:col-span-2">
             نقاط الصيانة
             <textarea
@@ -185,18 +237,25 @@ export function FindingEditor({
                 </div>
               ))}
             </div>
-            <Input
-              className="mt-3"
-              aria-label="إضافة صورة"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={busy || draft.photos.length >= 8}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void upload(f);
-                e.target.value = "";
-              }}
-            />
+            <label
+              htmlFor={fileId}
+              className={`mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-4 py-2 text-sm font-semibold text-primary transition hover:bg-primary/10 focus-within:ring-2 focus-within:ring-primary ${busy || draft.photos.length >= 8 ? "pointer-events-none opacity-50" : "cursor-pointer"}`}
+            >
+              <ImagePlus className="size-4" /> إضافة صورة
+              <input
+                id={fileId}
+                className="sr-only"
+                aria-label="إضافة صورة"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={busy || draft.photos.length >= 8}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void upload(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <p className="mt-2 text-xs text-muted-foreground">
               إزالة الصورة تخص هذه الملاحظة فقط وتحافظ على صور التقارير السابقة والنسخ الأخرى.
             </p>

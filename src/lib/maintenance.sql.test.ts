@@ -19,6 +19,15 @@ describe.skipIf(!modulePath)("maintenance SQL lifecycle and authorization", () =
           "utf8",
         ),
       );
+      await db.exec(
+        await readFile(
+          new URL(
+            "../../supabase/proposals/2026-10-31_maintenance_report_managers_REVIEW_ONLY.sql",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      );
       await expect(db.query("select sqop_maintenance_index()")).rejects.toThrow("denied");
       await db.exec(`SET test.uid='${id(1)}'`);
       async function create(date: string, source: string | null = null, branch = id(10)) {
@@ -56,13 +65,28 @@ describe.skipIf(!modulePath)("maintenance SQL lifecycle and authorization", () =
         due_date: null,
         photos: [],
       };
-      r = { ...r, status: "submitted", findings: [finding] };
+      r = {
+        ...r,
+        status: "submitted",
+        branch_manager: "مدير الفرع",
+        maintenance_area_manager: "مدير الصيانة",
+        findings: [finding],
+      };
       await save(r);
       expect((await index()).findings).toHaveLength(1);
       await expect(save(r)).rejects.toThrow("مستخدم آخر");
       const copy = await create("2026-09-01", first);
       let c = await report(copy);
       expect(c.status).toBe("draft");
+      expect(c.branch_manager).toBe("مدير الفرع");
+      expect(c.maintenance_area_manager).toBe("مدير الصيانة");
+      const oldClient = { ...c };
+      delete oldClient.branch_manager;
+      delete oldClient.maintenance_area_manager;
+      await save(oldClient);
+      c = await report(copy);
+      expect(c.branch_manager).toBe("مدير الفرع");
+      await expect(save({ ...c, branch_manager: null })).rejects.toThrow("Invalid manager");
       expect(c.findings[0].id).not.toBe(finding.id);
       expect(c.findings[0].description).toBe("صيانة");
       expect((await index()).findings[0].report_id).toBe(first);

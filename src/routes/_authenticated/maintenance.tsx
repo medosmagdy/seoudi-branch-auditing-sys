@@ -1,3 +1,4 @@
+import { ReportRowExports } from "@/components/maintenance/ReportRowExports";
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -410,6 +411,7 @@ function MaintenancePage() {
                                   >
                                     فتح التقرير
                                   </Button>
+                                  <ReportRowExports id={r.id} branch={branchName(r.branch_id)} />
                                   <Button
                                     size="sm"
                                     variant="outline"
