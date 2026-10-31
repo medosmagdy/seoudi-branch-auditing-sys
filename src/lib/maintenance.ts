@@ -130,6 +130,11 @@ export function reportFileName(branch: string, inspectionDate: string) {
 export function duplicateFindings(findings: Finding[]): Finding[] {
   return findings.map((f) => ({ ...f, id: crypto.randomUUID(), photos: [...f.photos] }));
 }
+export function filterReportFindings(findings: Finding[], status: "all" | Finding["status"]) {
+  return findings
+    .map((finding, index) => ({ finding, index }))
+    .filter(({ finding }) => status === "all" || finding.status === status);
+}
 export function filterLog(
   rows: LogFinding[],
   branch: string,

@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   blankFinding,
+  filterReportFindings,
   findingStatuses,
   severities,
   metrics,
@@ -38,6 +39,7 @@ export function MaintenanceReportDialog({
   onChanged: () => void;
   focusFinding?: string;
 }) {
+  const closeRequest = useRef<() => void>(onClose);
   const q = useQuery({
     queryKey: ["maintenance-report", id],
     queryFn: () => loadMaintenanceReport(id),
@@ -48,16 +50,15 @@ export function MaintenanceReportDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !q.data) onClose();
+        if (!open) closeRequest.current();
       }}
     >
       <DialogContent
-        className="max-h-[95vh] overflow-y-auto sm:max-w-6xl [&>button.absolute]:hidden"
+        className="max-h-[95vh] overflow-y-auto sm:max-w-6xl"
         dir="rtl"
-        onEscapeKeyDown={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader>
+        <DialogHeader className="pr-8">
           <DialogTitle>تقرير صيانة — {branch}</DialogTitle>
         </DialogHeader>
         {q.isPending ? (
@@ -78,6 +79,7 @@ export function MaintenanceReportDialog({
             initial={q.data}
             branch={branch}
             onClose={onClose}
+            closeRequest={closeRequest}
             onChanged={onChanged}
             {...(focusFinding ? { focusFinding } : {})}
           />
@@ -92,14 +94,17 @@ function ReportEditor({
   onClose,
   onChanged,
   focusFinding,
+  closeRequest,
 }: {
   initial: MaintenanceReport;
+  closeRequest: React.RefObject<() => void>;
   branch: string;
   onClose: () => void;
   onChanged: () => void;
   focusFinding?: string;
 }) {
   const [importing, setImporting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | Finding["status"]>("all");
   const [report, setReport] = useState(initial),
     [saved, setSaved] = useState(initial),
     [busy, setBusy] = useState(false),
@@ -111,6 +116,17 @@ function ReportEditor({
   const dirty = JSON.stringify(report) !== JSON.stringify(saved),
     m = metrics(report.findings);
   useEffect(() => {
+    closeRequest.current = () => {
+      if (!busy && (!dirty || window.confirm("فيه تغييرات غير محفوظة. الخروج بدون حفظ؟")))
+        onClose();
+    };
+    return () => {
+      closeRequest.current = onClose;
+    };
+  }, [busy, dirty, onClose, closeRequest]);
+  const visibleFindings = filterReportFindings(report.findings, statusFilter);
+  const visibleStats = metrics(visibleFindings.map((x) => x.finding));
+  useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => {
       event.preventDefault();
@@ -119,7 +135,7 @@ function ReportEditor({
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  const paths = report.findings.flatMap((f) => f.photos);
+  const paths = visibleFindings.flatMap(({ finding }) => finding.photos);
   const photos = useQuery({
     queryKey: ["maintenance-photos", paths],
     queryFn: () => maintenancePhotoUrls(paths),
@@ -158,10 +174,15 @@ function ReportEditor({
     lock.current = true;
     setBusy(true);
     try {
-      const filename = reportFileName(branch, report.inspection_date);
+      const filename =
+        reportFileName(branch, report.inspection_date) +
+        (statusFilter === "all" ? "" : ` - ${findingStatuses[statusFilter]}`);
       if (kind === "excel")
         await downloadMaintenanceExcel(
-          maintenanceReportRows(report, branch),
+          maintenanceReportRows(
+            { ...report, findings: visibleFindings.map((x) => x.finding) },
+            branch,
+          ),
           filename,
           photos.data,
         );
@@ -241,13 +262,7 @@ function ReportEditor({
         >
           تصدير Excel بالصور
         </Button>
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() => {
-            if (!dirty || window.confirm("فيه تغييرات غير محفوظة. الخروج بدون حفظ؟")) onClose();
-          }}
-        >
+        <Button variant="ghost" disabled={busy} onClick={() => closeRequest.current()}>
           رجوع للتقارير
         </Button>
       </div>
@@ -264,6 +279,26 @@ function ReportEditor({
           </Button>
         </p>
       )}
+      <label className="block max-w-xs space-y-2 text-sm">
+        حالة الملاحظة
+        <select
+          aria-label="فلترة ملاحظات التقرير حسب الحالة"
+          className={maintenanceSelect}
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+        >
+          <option value="all">كل الحالات</option>
+          {Object.entries(findingStatuses).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-sm text-muted-foreground">
+        المعروض: {visibleFindings.length} من {report.findings.length} ملاحظة. التصدير يشمل الملاحظات
+        المعروضة فقط.
+      </p>
       <div ref={documentRef} className="space-y-4 rounded-xl bg-white p-5 text-slate-900" dir="rtl">
         <header data-report-block className="border-b pb-4">
           <h2 className="text-2xl font-bold">تقرير الصيانة — {branch}</h2>
@@ -273,14 +308,17 @@ function ReportEditor({
             {report.status === "draft" ? "مسودة" : "معتمد"}
           </p>
           <p>
-            تم: {m.resolved} | لم تغلق: {m.open} | نسبة الإغلاق:{" "}
-            {m.rate === null ? "—" : m.rate.toFixed(2) + "%"}
+            تم: {visibleStats.resolved} | لم تغلق: {visibleStats.open} | نسبة الإغلاق:{" "}
+            {visibleStats.rate === null ? "—" : visibleStats.rate.toFixed(2) + "%"}
           </p>
         </header>
         {!report.findings.length && (
           <p className="py-10 text-center text-muted-foreground">أضف أول ملاحظة لهذا التقرير.</p>
         )}
-        {Array.from({ length: Math.ceil(report.findings.length / 3) }, (_, group) => (
+        {report.findings.length > 0 && visibleFindings.length === 0 && (
+          <p className="py-10 text-center text-muted-foreground">لا توجد ملاحظات بهذه الحالة.</p>
+        )}
+        {Array.from({ length: Math.ceil(visibleFindings.length / 3) }, (_, group) => (
           <section key={group} data-report-page className="space-y-4 bg-white p-2">
             <div data-report-block className="border-b pb-3 text-sm">
               <strong>تقرير الصيانة — {branch}</strong>
@@ -289,12 +327,12 @@ function ReportEditor({
                 {report.status === "draft" ? "مسودة" : "معتمد"}
               </p>
               <p>
-                تم: {m.resolved} | لم تغلق: {m.open} | الإغلاق:{" "}
-                {m.rate === null ? "—" : m.rate.toFixed(2) + "%"} · مجموعة {group + 1}
+                تم: {visibleStats.resolved} | لم تغلق: {visibleStats.open} | الإغلاق:{" "}
+                {visibleStats.rate === null ? "—" : visibleStats.rate.toFixed(2) + "%"} · مجموعة{" "}
+                {group + 1}
               </p>
             </div>
-            {report.findings.slice(group * 3, group * 3 + 3).map((f, index) => {
-              const i = group * 3 + index;
+            {visibleFindings.slice(group * 3, group * 3 + 3).map(({ finding: f, index: i }) => {
               return (
                 <Card key={f.id} data-report-block className="border shadow-none">
                   <CardContent className="space-y-3 p-4">

@@ -1,3 +1,4 @@
+import { carryLatestUnfinished } from "./maintenance-carry";
 import { supabase } from "@/integrations/supabase/client";
 import { z } from "zod";
 import {
@@ -125,4 +126,18 @@ export async function maintenancePhotoUrls(paths: string[]) {
   if (!paths.length) return {} as Record<string, string>;
   return ((await photoOperation({ action: "read", paths })) as { urls: Record<string, string> })
     .urls;
+}
+
+export async function createMaintenanceFromLatestUnfinished(
+  branch: string,
+  date: string,
+  reviewer: string,
+) {
+  return carryLatestUnfinished(branch, date, reviewer, {
+    index: loadMaintenanceIndex,
+    load: loadMaintenanceReport,
+    create: createMaintenanceReport,
+    save: saveMaintenanceReport,
+    remove: deleteMaintenanceReport,
+  });
 }

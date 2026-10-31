@@ -24,6 +24,7 @@ import { useSession } from "@/hooks/useSession";
 import {
   loadMaintenanceIndex,
   createMaintenanceReport,
+  createMaintenanceFromLatestUnfinished,
   deleteMaintenanceReport,
   maintenancePhotoUrls,
 } from "@/lib/maintenance-data";
@@ -58,6 +59,7 @@ function MaintenancePage() {
     [selectedBranch, setSelectedBranch] = useState(""),
     [report, setReport] = useState<{ id: string; branch: string; focus?: string } | null>(null),
     [newReport, setNewReport] = useState<{ branch: string; source: string | null } | null>(null),
+    [carryOpen, setCarryOpen] = useState(false),
     [date, setDate] = useState(today()),
     [reviewer, setReviewer] = useState(profile?.full_name ?? ""),
     [busy, setBusy] = useState(false),
@@ -94,16 +96,21 @@ function MaintenancePage() {
     lock.current = true;
     setBusy(true);
     try {
-      const id = await createMaintenanceReport(
-        newReport.branch,
-        date,
-        reviewer.trim(),
-        newReport.source,
-      );
+      const id =
+        carryOpen && !newReport.source
+          ? await createMaintenanceFromLatestUnfinished(newReport.branch, date, reviewer.trim())
+          : await createMaintenanceReport(
+              newReport.branch,
+              date,
+              reviewer.trim(),
+              newReport.source,
+            );
       setReport({ id, branch: newReport.branch });
       setNewReport(null);
       await changed();
     } catch (e) {
+      // If creation succeeded but the response or cleanup failed, refresh so the user can see any draft left behind.
+      void qc.invalidateQueries({ queryKey: ["maintenance-index"] });
       toast.error(e instanceof Error ? e.message : "تعذر إنشاء التقرير");
     } finally {
       lock.current = false;
@@ -147,6 +154,7 @@ function MaintenancePage() {
   }
   const branchName = (id: string) => q.data?.branches.find((b) => b.id === id)?.name_ar ?? "";
   const openNew = (id: string, source: string | null) => {
+    setCarryOpen(false);
     setDate(today());
     setReviewer(profile?.full_name ?? "");
     setNewReport({ branch: id, source });
@@ -622,9 +630,29 @@ function MaintenancePage() {
                   onChange={(e) => setReviewer(e.target.value)}
                 />
               </label>
+              {!newReport.source && (
+                <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={carryOpen}
+                    disabled={busy || !latest.some((r) => r.branch_id === newReport.branch)}
+                    onChange={(e) => setCarryOpen(e.target.checked)}
+                  />
+                  <span>
+                    انقل ملاحظات «لم يتم» من أحدث تقرير معتمد للفرع، بصورها وتفاصيلها.
+                    <small className="mt-1 block text-muted-foreground">
+                      تُنقل حالة «لم يتم» فقط؛ الحالات الأخرى لا تُنقل.
+                    </small>
+                  </span>
+                </label>
+              )}
               <p className="text-sm text-muted-foreground">
-                التقرير الجديد مسودة. الاعتماد هو اللي يحدث السجل والمؤشرات. النسخ ينقل كل الملاحظات
-                وحالتها وصورها بدون تغيير الأصل.
+                التقرير الجديد مسودة. الاعتماد هو اللي يحدث السجل والمؤشرات.{" "}
+                {newReport.source
+                  ? "النسخ ينقل كل الملاحظات وحالتها وصورها بدون تغيير الأصل."
+                  : carryOpen
+                    ? "الملاحظات المنقولة نسخة مستقلة؛ التقرير السابق لا يتغير."
+                    : "يمكنك البدء بتقرير فارغ أو اختيار نقل الملاحظات أعلاه."}
               </p>
               <Button disabled={busy} onClick={() => void create()}>
                 {busy ? "جارٍ الإنشاء…" : "إنشاء وفتح التقرير"}
