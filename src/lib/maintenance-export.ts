@@ -120,7 +120,7 @@ export async function downloadMaintenanceExcel(
     throw new Error(
       "النتائج تحتوي أكثر من 300 صورة؛ حدد فرعًا أو فلتر النتائج لتصديرها على دفعات.",
     );
-  const images = [];
+  const images: import("./slaughter-images").SlaughterExcelImage[] = [];
   for (const f of rows)
     for (const path of f.photos) {
       if (!urls[path]) throw new Error("تعذر تحميل صورة؛ لن يتم تصدير تقرير ناقص");
