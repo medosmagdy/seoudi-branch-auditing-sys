@@ -12,6 +12,13 @@ async function blobDataUrl(blob: Blob) {
 }
 // Copy signed images into the PDF document as data URLs. Adding cache-busting query parameters to signed R2 URLs breaks their signatures.
 export async function downloadMaintenancePdf(node: HTMLElement, filename: string) {
+  const faces = await Promise.all(["regular", "bold"].map(async (weight) => {
+    const response = await fetch(`/fonts/calibri-${weight}.ttf`);
+    if (!response.ok) throw new Error("تعذر تحميل خط Calibri؛ أعد المحاولة");
+    const data = await blobDataUrl(await response.blob());
+    return `@font-face{font-family:Calibri;src:url("${data}") format("truetype");font-weight:${weight === "bold" ? 700 : 400};font-style:normal;}`;
+  }));
+  const fontCSS = faces.join("\n");
   const clone = node.cloneNode(true) as HTMLElement;
   const originals = Array.from(node.querySelectorAll<HTMLImageElement>("img")),
     images = Array.from(clone.querySelectorAll<HTMLImageElement>("img"));
@@ -52,7 +59,7 @@ export async function downloadMaintenancePdf(node: HTMLElement, filename: string
   document.body.appendChild(clone);
   try {
     await Promise.all(images.map((image) => image.decode()));
-    await downloadElementAsPdf(clone, filename);
+    await downloadElementAsPdf(clone, filename, fontCSS);
   } finally {
     clone.remove();
   }

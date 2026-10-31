@@ -79,10 +79,10 @@ describe("PDF photo preparation", () => {
       node = { cloneNode: () => clone, querySelectorAll: () => [original, original] };
     vi.stubGlobal("document", { body: { appendChild: vi.fn() } });
     await downloadMaintenancePdf(node as unknown as HTMLElement, "report");
-    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(3);
     expect(fetcher).toHaveBeenCalledWith(url, { cache: "no-store" });
     expect(cloneImage.src).toBe("data:image/jpeg;base64,aW1hZ2U=");
-    expect(mock.download).toHaveBeenCalledWith(clone, "report");
+    expect(mock.download).toHaveBeenCalledWith(clone, "report", expect.stringContaining("@font-face"));
     expect(clone.remove).toHaveBeenCalled();
   });
   it("fails instead of silently omitting photos when the signed URL is unavailable", async () => {
