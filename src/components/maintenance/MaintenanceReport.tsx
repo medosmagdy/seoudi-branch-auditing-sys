@@ -55,14 +55,14 @@ export function MaintenanceReportDialog({
       }}
     >
       <DialogContent
-        className="flex max-h-[95vh] flex-col overflow-hidden sm:max-w-6xl"
+        className="flex max-h-[94dvh] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl"
         dir="rtl"
         onInteractOutside={(e) => e.preventDefault()}
       >
-        <DialogHeader className="pr-8">
+        <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-12 text-start sm:text-start">
           <DialogTitle>تقرير صيانة — {branch}</DialogTitle>
         </DialogHeader>
-        <div className="min-h-0 overflow-y-auto p-1">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-muted/20 p-4 sm:p-6">
           {q.isPending ? (
             <div role="status">
               جارٍ تحميل التقرير…
@@ -221,9 +221,9 @@ function ReportEditor({
     }
   }
   return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <label>
+    <div className="space-y-5">
+      <div className="grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-3">
+        <label className="grid content-start gap-2 text-sm font-medium">
           تاريخ الفحص
           <Input
             type="date"
@@ -232,7 +232,7 @@ function ReportEditor({
             onChange={(e) => setReport((r) => ({ ...r, inspection_date: e.target.value }))}
           />
         </label>
-        <label>
+        <label className="grid content-start gap-2 text-sm font-medium">
           المراجع
           <Input
             maxLength={200}
@@ -250,8 +250,8 @@ function ReportEditor({
           </p>
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label>
+      <div className="grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-2">
+        <label className="grid content-start gap-2 text-sm font-medium">
           مدير الفرع
           <Input
             maxLength={200}
@@ -264,7 +264,7 @@ function ReportEditor({
             }
           />
         </label>
-        <label>
+        <label className="grid content-start gap-2 text-sm font-medium">
           مدير منطقة الصيانة
           <Input
             maxLength={200}
@@ -283,7 +283,7 @@ function ReportEditor({
           </p>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 rounded-xl border bg-card p-3 [&>button]:min-h-10">
         {report.status === "draft" && (
           <Button variant="outline" disabled={busy} onClick={() => setImporting(true)}>
             استيراد ملف Excel
@@ -563,6 +563,6 @@ function ReportEditor({
           }}
         />
       )}
-    </>
+    </div>
   );
 }
