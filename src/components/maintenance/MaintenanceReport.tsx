@@ -482,7 +482,6 @@ function ReportEditor({
                             src={photos.data?.[p]}
                             alt={`صورة ${n + 1} — ${f.description}`}
                             className="max-h-60 w-64 rounded-lg object-contain"
-                            crossOrigin="anonymous"
                           />
                         </a>
                       ))}
