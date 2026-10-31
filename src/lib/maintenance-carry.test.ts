@@ -90,6 +90,20 @@ function fixture() {
   return { branch, newId, newer, source, target, deps, findings };
 }
 describe("carry unfinished notes safely", () => {
+  it("copies only the selected statuses from the explicitly chosen report without changing it", async () => {
+    const { branch, newer, source, deps } = fixture();
+    const before = JSON.stringify(source);
+    await carryLatestUnfinished(branch, "2027-01-01", "مراجع", deps, ["open", "in_progress"], newer);
+    const saved = vi.mocked(deps.save).mock.calls[0]![0];
+    expect(saved.findings.map((f) => f.status)).toEqual(["open", "in_progress"]);
+    expect(deps.index).not.toHaveBeenCalled();
+    expect(JSON.stringify(source)).toBe(before);
+  });
+  it("does not create a report without selected statuses", async () => {
+    const { branch, deps } = fixture();
+    await expect(carryLatestUnfinished(branch, "2027-01-01", "مراجع", deps, [])).rejects.toThrow("اختر حالة");
+    expect(deps.create).not.toHaveBeenCalled();
+  });
   it("uses the latest submitted report for the same branch and copies only لم يتم with photos, retaining the source", async () => {
     const { branch, newId, newer, source, deps, findings } = fixture();
     const before = JSON.stringify(source);

@@ -132,6 +132,8 @@ export async function createMaintenanceFromLatestUnfinished(
   branch: string,
   date: string,
   reviewer: string,
+  statuses: MaintenanceReport['findings'][number]['status'][] = ['open'],
+  sourceId: string | null = null,
 ) {
   return carryLatestUnfinished(branch, date, reviewer, {
     index: loadMaintenanceIndex,
@@ -139,5 +141,5 @@ export async function createMaintenanceFromLatestUnfinished(
     create: createMaintenanceReport,
     save: saveMaintenanceReport,
     remove: deleteMaintenanceReport,
-  });
+  }, statuses, sourceId);
 }

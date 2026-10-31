@@ -22,16 +22,19 @@ export async function carryLatestUnfinished(
   date: string,
   reviewer: string,
   deps: CarryDependencies,
+  statuses: MaintenanceReport['findings'][number]['status'][] = ['open'],
+  sourceId: string | null = null,
 ) {
-  const latest = latestReports((await deps.index()).reports).find((r) => r.branch_id === branch);
-  if (!latest) throw new Error("لا يوجد تقرير معتمد سابق لهذا الفرع.");
-  const source = await deps.load(latest.id);
-  if (source.branch_id !== branch || source.status !== "submitted")
+  if (!statuses.length) throw new Error("اختر حالة واحدة على الأقل.");
+  const latest = sourceId ? null : latestReports((await deps.index()).reports).find((r) => r.branch_id === branch);
+  if (!sourceId && !latest) throw new Error("لا يوجد تقرير معتمد سابق لهذا الفرع.");
+  const source = await deps.load(sourceId ?? latest!.id);
+  if (source.branch_id !== branch || (!sourceId && source.status !== "submitted"))
     throw new Error("تغير التقرير السابق؛ أعد المحاولة.");
-  const open = source.findings.filter((f) => f.status === "open");
+  const open = source.findings.filter((f) => statuses.includes(f.status));
   if (!open.length)
     throw new Error(
-      "أحدث تقرير معتمد لا يحتوي على ملاحظات بحالة «لم يتم». يمكنك إنشاء تقرير فارغ.",
+      "التقرير المصدر لا يحتوي على ملاحظات بالحالات المختارة. يمكنك إنشاء تقرير فارغ.",
     );
   const id = await deps.create(branch, date, reviewer, null);
   try {

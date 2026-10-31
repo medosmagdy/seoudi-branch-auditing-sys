@@ -61,6 +61,7 @@ function MaintenancePage() {
     [report, setReport] = useState<{ id: string; branch: string; focus?: string } | null>(null),
     [newReport, setNewReport] = useState<{ branch: string; source: string | null } | null>(null),
     [carryOpen, setCarryOpen] = useState(false),
+    [copyStatuses, setCopyStatuses] = useState<(keyof typeof findingStatuses)[]>(['open']),
     [date, setDate] = useState(today()),
     [reviewer, setReviewer] = useState(profile?.full_name ?? ""),
     [busy, setBusy] = useState(false),
@@ -98,8 +99,8 @@ function MaintenancePage() {
     setBusy(true);
     try {
       const id =
-        carryOpen && !newReport.source
-          ? await createMaintenanceFromLatestUnfinished(newReport.branch, date, reviewer.trim())
+        carryOpen || newReport.source
+          ? await createMaintenanceFromLatestUnfinished(newReport.branch, date, reviewer.trim(), copyStatuses, newReport.source)
           : await createMaintenanceReport(
               newReport.branch,
               date,
@@ -156,6 +157,7 @@ function MaintenancePage() {
   const branchName = (id: string) => q.data?.branches.find((b) => b.id === id)?.name_ar ?? "";
   const openNew = (id: string, source: string | null) => {
     setCarryOpen(false);
+    setCopyStatuses(source ? Object.keys(findingStatuses) as (keyof typeof findingStatuses)[] : ['open']);
     setDate(today());
     setReviewer(profile?.full_name ?? "");
     setNewReport({ branch: id, source });
@@ -641,22 +643,35 @@ function MaintenancePage() {
                     onChange={(e) => setCarryOpen(e.target.checked)}
                   />
                   <span>
-                    انقل ملاحظات «لم يتم» من أحدث تقرير معتمد للفرع، بصورها وتفاصيلها.
+                    انقل ملاحظات من أحدث تقرير معتمد للفرع، بصورها وتفاصيلها.
                     <small className="mt-1 block text-muted-foreground">
-                      تُنقل حالة «لم يتم» فقط؛ الحالات الأخرى لا تُنقل.
+                      اختر الحالات التي تريد نقلها.
                     </small>
                   </span>
                 </label>
               )}
+              {(newReport.source || carryOpen) && (
+                <fieldset className="space-y-2 rounded-lg border p-3" disabled={busy}>
+                  <legend className="px-1 text-sm font-medium">حالات الملاحظات المطلوب نسخها</legend>
+                  <div className="flex flex-wrap gap-4">
+                    {(Object.entries(findingStatuses) as [keyof typeof findingStatuses, string][]).map(([value, label]) => (
+                      <label key={value} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={copyStatuses.includes(value)} onChange={(e) => setCopyStatuses((current) => e.target.checked ? [...current, value] : current.filter((item) => item !== value))} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
               <p className="text-sm text-muted-foreground">
                 التقرير الجديد مسودة. الاعتماد هو اللي يحدث السجل والمؤشرات.{" "}
                 {newReport.source
-                  ? "النسخ ينقل كل الملاحظات وحالتها وصورها بدون تغيير الأصل."
+                  ? "النسخ ينقل الملاحظات بالحالات المختارة وصورها بدون تغيير الأصل."
                   : carryOpen
                     ? "الملاحظات المنقولة نسخة مستقلة؛ التقرير السابق لا يتغير."
                     : "يمكنك البدء بتقرير فارغ أو اختيار نقل الملاحظات أعلاه."}
               </p>
-              <Button disabled={busy} onClick={() => void create()}>
+              <Button disabled={busy || (!!newReport.source || carryOpen) && copyStatuses.length === 0} onClick={() => void create()}>
                 {busy ? "جارٍ الإنشاء…" : "إنشاء وفتح التقرير"}
               </Button>
             </DialogContent>
