@@ -72,7 +72,7 @@ export function MaintenancePdfDocument({
           </p>
         </div>
       </section>
-      {Array.from({ length: Math.ceil(report.findings.length / 2) }, (_, group) => (
+      {Array.from({ length: Math.ceil(report.findings.length / 3) }, (_, group) => (
         <section key={group} data-report-page className="space-y-4 bg-white p-5">
           <header data-report-block className="border-b-2 border-emerald-800 pb-3">
             <h2 className="text-xl font-bold text-emerald-900">ملاحظات الصيانة — {branch}</h2>
@@ -80,16 +80,16 @@ export function MaintenancePdfDocument({
               تاريخ الفحص: {report.inspection_date} · {scope}
             </p>
           </header>
-          {report.findings.slice(group * 2, group * 2 + 2).map((f, i) => (
+          {report.findings.slice(group * 3, group * 3 + 3).map((f, i) => (
             <article
               key={f.id}
               data-report-block
-              className="rounded-xl border border-slate-200 p-5"
+              className="rounded-xl border border-slate-200 p-3"
             >
               <div className="flex justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-emerald-800">
-                    {f.section} · ملاحظة {group * 2 + i + 1}
+                    {f.section} · ملاحظة {group * 3 + i + 1}
                   </p>
                   <h3 className="mt-2 whitespace-pre-wrap text-lg font-bold">{f.description}</h3>
                 </div>
@@ -98,7 +98,7 @@ export function MaintenancePdfDocument({
                   <p className="mt-1">الخطورة: {severities[f.severity]}</p>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
                 <p>تاريخ العطل: {f.initial_history || "—"}</p>
                 <p>مسؤول التنفيذ: {f.assigned_to || "—"}</p>
                 <p>موعد الإغلاق: {f.due_date || "—"}</p>
@@ -109,15 +109,15 @@ export function MaintenancePdfDocument({
                 {f.comments && <p className="whitespace-pre-wrap">التعليقات: {f.comments}</p>}
               </div>
               {f.photos.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-3">
+                <div className="mt-2 flex flex-wrap gap-2">
                   {f.photos.map((path, n) => (
                     <img
                       key={path}
                       src={urls[path]}
                       alt={`صورة ${n + 1} للملاحظة`}
                       style={{
-                        width: 175,
-                        height: 145,
+                        width: 150,
+                        height: 105,
                         objectFit: "contain",
                         borderRadius: 8,
                         border: "1px solid #e2e8f0",

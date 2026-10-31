@@ -155,7 +155,7 @@ it("exports exactly the selected status and keeps the all-states export intact",
       ),
       xlsx = read(write(book, { type: "array", bookType: "xlsx" }), { type: "array" }),
       rows = utils.sheet_to_json<unknown[]>(xlsx.Sheets["Maintenance"]!, { header: 1 }),
-      descriptions = rows.slice(4).map((r) => r[4]);
+      descriptions = rows.slice(4).map((r) => r[3]);
     expect(descriptions).toEqual(visible.map((x) => x.finding.description));
     expect(visible.length).toBe(filter === "all" ? 4 : 1);
   }
