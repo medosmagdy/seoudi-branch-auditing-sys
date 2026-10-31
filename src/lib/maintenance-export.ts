@@ -30,7 +30,6 @@ export function maintenanceWorkbook(
     [
       "الفرع",
       "تاريخ الفحص",
-      "كود الملاحظة",
       "القسم",
       "نقاط الصيانة",
       "تاريخ العطل",
@@ -49,7 +48,6 @@ export function maintenanceWorkbook(
     data.push([
       f.branch_name ?? "",
       f.inspection_date ?? "",
-      f.id,
       f.section,
       f.description,
       f.initial_history,
@@ -66,7 +64,6 @@ export function maintenanceWorkbook(
   sheet["!cols"] = [
     { wch: 20 },
     { wch: 14 },
-    { wch: 38 },
     { wch: 20 },
     { wch: 65 },
     { wch: 16 },
@@ -79,18 +76,18 @@ export function maintenanceWorkbook(
     { wch: 16 },
     { wch: 24 },
   ];
-  sheet["!autofilter"] = { ref: `A4:N${Math.max(4, data.length)}` };
-  sheet["!rows"] = data.map((_, i) => ({ hpt: i < 4 ? 24 : 48 }));
+  sheet["!autofilter"] = { ref: `A4:M${Math.max(4, data.length)}` };
+  sheet["!rows"] = data.map((_, i) => ({ hpt: i < 4 ? 30 : Math.max(90, (rows[i - 4]?.photos.length ?? 1) * 90) }));
   if (m.rate !== null) sheet["H2"].z = "0.00%";
   book.Workbook = { Views: [{ RTL: true }] } as NonNullable<WorkBook["Workbook"]>;
-  sheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 13 } }];
+  sheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
   for (let r = 0; r < data.length; r++)
-    for (let c = 0; c < 14; c++) {
+    for (let c = 0; c < 13; c++) {
       const address = utils.encode_cell({ r, c });
       const cell = sheet[address] ?? { t: "s", v: "" };
       cell.s = {
         font: {
-          name: "Arial",
+          name: "Calibri",
           sz: r === 0 ? 16 : 11,
           color: { rgb: r === 0 || r === 3 ? "FFFFFF" : "173D32" },
           bold: r < 4,
@@ -98,7 +95,8 @@ export function maintenanceWorkbook(
         fill: {
           fgColor: { rgb: r === 0 || r === 3 ? "174D3A" : r % 2 === 0 ? "F1F7F4" : "FFFFFF" },
         },
-        alignment: { horizontal: "right", vertical: "center", wrapText: true },
+        alignment: { horizontal: "center", vertical: "center", wrapText: true },
+        border: { bottom: { style: "thin", color: { rgb: "DCE6E0" } } },
       };
       sheet[address] = cell;
     }
@@ -122,18 +120,21 @@ export async function downloadMaintenanceExcel(
     throw new Error(
       "النتائج تحتوي أكثر من 300 صورة؛ حدد فرعًا أو فلتر النتائج لتصديرها على دفعات.",
     );
-  const images = [];
+  const images: import("./slaughter-images").SlaughterExcelImage[] = [];
   for (const f of rows)
     for (const path of f.photos) {
       if (!urls[path]) throw new Error("تعذر تحميل صورة؛ لن يتم تصدير تقرير ناقص");
-      const r = await fetch(urls[path]!);
+      let r: Response;
+      try { r = await fetch(urls[path]!, { cache: "no-store" }); }
+      catch { throw new Error("تعذر تحميل صورة للتصدير؛ حدّث التقرير ثم أعد المحاولة. لم يتم تنزيل ملف ناقص."); }
       if (!r.ok) throw new Error("تعذر تحميل الصور");
       images.push(await photoForExcel(await r.blob()));
     }
   const book = maintenanceWorkbook(rows, name);
+  const captions = rows.flatMap((f) => f.photos.map(() => `${f.section} — ${f.description} — ${findingStatuses[f.status]}`));
   let offset = 3;
   for (const [i, image] of images.entries()) {
-    utils.sheet_add_aoa(book.Sheets["Related pictures"]!, [[`صورة ${i + 1}`]], {
+    utils.sheet_add_aoa(book.Sheets["Related pictures"]!, [[`صورة ${i + 1} — ${captions[i]}`]], {
       origin: { r: offset - 1, c: 0 },
     });
     const width = Math.min(image.width, 720),
@@ -144,9 +145,31 @@ export async function downloadMaintenanceExcel(
   const styledBytes = new Uint8Array(
     XLSX.write(book, { type: "array", bookType: "xlsx", compression: true }),
   );
-  const bytes = images.length
+  let bytes = images.length
     ? await attachSlaughterImages(book, images, styledBytes)
     : styledBytes;
+  if (images.length) {
+    // Embed pictures beside their finding in the main worksheet, not in a separate gallery.
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const galleryPath = "xl/worksheets/sheet2.xml";
+    zip.file(galleryPath, (await zip.file(galleryPath)!.async("string")).replace(/<drawing[^>]*\/>/, ""));
+    let main = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    if (!main.includes("xmlns:r=")) main = main.replace("<worksheet ", '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
+    zip.file("xl/worksheets/sheet1.xml", main.replace("</worksheet>", '<drawing r:id="rIdSlaughterPictures"/></worksheet>'));
+    zip.file("xl/worksheets/_rels/sheet1.xml.rels", await zip.file("xl/worksheets/_rels/sheet2.xml.rels")!.async("string"));
+    let index = 0;
+    const positions = rows.flatMap((f, row) => f.photos.map((_, photo) => ({ row: row + 4, photo })));
+    let drawing = await zip.file("xl/drawings/slaughterPictures.xml")!.async("string");
+    drawing = drawing.replace(/<xdr:oneCellAnchor>[\s\S]*?<\/xdr:oneCellAnchor>/g, (anchor) => {
+      const position = positions[index]!;
+      const image = images[index++]!;
+      const scale = Math.min(150 / image.width, 105 / image.height);
+      return anchor.replace(/<xdr:from>[\s\S]*?<\/xdr:from>/, `<xdr:from><xdr:col>12</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${position.row}</xdr:row><xdr:rowOff>${position.photo * 120 * 9525 + 9525}</xdr:rowOff></xdr:from>`).replace(/<xdr:ext cx="[^\"]*" cy="[^\"]*"\/>/, `<xdr:ext cx="${Math.round(image.width * scale * 9525)}" cy="${Math.round(image.height * scale * 9525)}"/>`);
+    });
+    zip.file("xl/drawings/slaughterPictures.xml", drawing);
+    bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  }
   const blob = new Blob([new Uint8Array(bytes)], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });

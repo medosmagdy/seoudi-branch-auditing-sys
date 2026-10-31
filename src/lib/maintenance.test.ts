@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   blankFinding,
+  faultDateForCalendar,
+  formatFaultCalendarDate,
   metrics,
   latestReports,
   duplicateFindings,
@@ -162,4 +164,10 @@ it("preserves styled workbook bytes while adding embedded photo parts", async ()
   expect(await zip.file("xl/worksheets/sheet2.xml")!.async("string")).toContain(
     "rIdSlaughterPictures",
   );
+});
+
+it("keeps partial legacy dates without inventing a day and formats selected dates in local time", () => {
+  expect(faultDateForCalendar("9/2024")).toBeUndefined();
+  expect(faultDateForCalendar("2026-02-30")).toBeUndefined();
+  expect(formatFaultCalendarDate(faultDateForCalendar("2026-09-01")!)).toBe("2026-09-01");
 });

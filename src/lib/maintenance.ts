@@ -39,6 +39,8 @@ export const reportSchema = z.object({
   version: z.number().int().positive(),
   created_at: z.string(),
   source_report_id: z.string().uuid().nullable(),
+  branch_manager: z.string().max(200).optional(),
+  maintenance_area_manager: z.string().max(200).optional(),
   findings: z.array(findingSchema).max(1000),
 });
 export type Finding = z.infer<typeof findingSchema>;
@@ -73,6 +75,17 @@ export function today() {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+// A partial legacy date has no invented day; keep its original string until a user picks a date.
+export function faultDateForCalendar(raw: string): Date | undefined {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return undefined;
+  const utc = new Date(raw + "T00:00:00Z");
+  if (!Number.isFinite(utc.getTime()) || utc.toISOString().slice(0, 10) !== raw) return undefined;
+  const [year, month, day] = raw.split("-").map(Number);
+  return new Date(year!, month! - 1, day!);
+}
+export function formatFaultCalendarDate(day: Date) {
+  return `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
 }
 export function blankFinding(): Finding {
   return {
@@ -129,6 +142,19 @@ export function reportFileName(branch: string, inspectionDate: string) {
 }
 export function duplicateFindings(findings: Finding[]): Finding[] {
   return findings.map((f) => ({ ...f, id: crypto.randomUUID(), photos: [...f.photos] }));
+}
+export function filterReportFindings(
+  findings: Finding[],
+  status: "all" | Finding["status"],
+  section = "all",
+) {
+  return findings
+    .map((finding, index) => ({ finding, index }))
+    .filter(
+      ({ finding }) =>
+        (status === "all" || finding.status === status) &&
+        (section === "all" || finding.section === section),
+    );
 }
 export function filterLog(
   rows: LogFinding[],

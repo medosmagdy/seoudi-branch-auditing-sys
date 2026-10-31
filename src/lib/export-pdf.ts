@@ -80,7 +80,7 @@ function addCanvas(
   }
 }
 
-export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
+export async function nodeToPdfBlob(node: HTMLElement, fontEmbedCSS = ""): Promise<Blob> {
   const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   const pages = Array.from(node.querySelectorAll<HTMLElement>("[data-report-page]"));
   const targets = pages.length > 0 ? pages : [node];
@@ -99,8 +99,8 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
       backgroundColor: "#ffffff",
       imagePlaceholder: CORS_FALLBACK_IMAGE,
       cacheBust: true,
-      skipFonts: true, // يمنع SecurityError بتاع Google Fonts
-      fontEmbedCSS: "", // يمنع محاولة جلب الخطوط الخارجية inline
+      skipFonts: !fontEmbedCSS, // يمنع SecurityError بتاع Google Fonts
+      fontEmbedCSS, // يمنع محاولة جلب الخطوط الخارجية inline
       filter: (domNode: HTMLElement) => !domNode.classList?.contains("print:hidden"),
     });
 
@@ -111,8 +111,8 @@ export async function nodeToPdfBlob(node: HTMLElement): Promise<Blob> {
   return pdf.output("blob");
 }
 
-export async function downloadElementAsPdf(node: HTMLElement, fileName: string) {
-  const blob = await nodeToPdfBlob(node);
+export async function downloadElementAsPdf(node: HTMLElement, fileName: string, fontEmbedCSS = "") {
+  const blob = await nodeToPdfBlob(node, fontEmbedCSS);
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;

@@ -1,3 +1,4 @@
+import { ReportRowExports } from "@/components/maintenance/ReportRowExports";
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +25,7 @@ import { useSession } from "@/hooks/useSession";
 import {
   loadMaintenanceIndex,
   createMaintenanceReport,
+  createMaintenanceFromLatestUnfinished,
   deleteMaintenanceReport,
   maintenancePhotoUrls,
 } from "@/lib/maintenance-data";
@@ -58,6 +60,8 @@ function MaintenancePage() {
     [selectedBranch, setSelectedBranch] = useState(""),
     [report, setReport] = useState<{ id: string; branch: string; focus?: string } | null>(null),
     [newReport, setNewReport] = useState<{ branch: string; source: string | null } | null>(null),
+    [carryOpen, setCarryOpen] = useState(false),
+    [copyStatuses, setCopyStatuses] = useState<(keyof typeof findingStatuses)[]>(['open']),
     [date, setDate] = useState(today()),
     [reviewer, setReviewer] = useState(profile?.full_name ?? ""),
     [busy, setBusy] = useState(false),
@@ -94,16 +98,21 @@ function MaintenancePage() {
     lock.current = true;
     setBusy(true);
     try {
-      const id = await createMaintenanceReport(
-        newReport.branch,
-        date,
-        reviewer.trim(),
-        newReport.source,
-      );
+      const id =
+        carryOpen || newReport.source
+          ? await createMaintenanceFromLatestUnfinished(newReport.branch, date, reviewer.trim(), copyStatuses, newReport.source)
+          : await createMaintenanceReport(
+              newReport.branch,
+              date,
+              reviewer.trim(),
+              newReport.source,
+            );
       setReport({ id, branch: newReport.branch });
       setNewReport(null);
       await changed();
     } catch (e) {
+      // If creation succeeded but the response or cleanup failed, refresh so the user can see any draft left behind.
+      void qc.invalidateQueries({ queryKey: ["maintenance-index"] });
       toast.error(e instanceof Error ? e.message : "تعذر إنشاء التقرير");
     } finally {
       lock.current = false;
@@ -147,6 +156,8 @@ function MaintenancePage() {
   }
   const branchName = (id: string) => q.data?.branches.find((b) => b.id === id)?.name_ar ?? "";
   const openNew = (id: string, source: string | null) => {
+    setCarryOpen(false);
+    setCopyStatuses(source ? Object.keys(findingStatuses) as (keyof typeof findingStatuses)[] : ['open']);
     setDate(today());
     setReviewer(profile?.full_name ?? "");
     setNewReport({ branch: id, source });
@@ -402,6 +413,7 @@ function MaintenancePage() {
                                   >
                                     فتح التقرير
                                   </Button>
+                                  <ReportRowExports id={r.id} branch={branchName(r.branch_id)} />
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -622,11 +634,44 @@ function MaintenancePage() {
                   onChange={(e) => setReviewer(e.target.value)}
                 />
               </label>
+              {!newReport.source && (
+                <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={carryOpen}
+                    disabled={busy || !latest.some((r) => r.branch_id === newReport.branch)}
+                    onChange={(e) => setCarryOpen(e.target.checked)}
+                  />
+                  <span>
+                    انقل ملاحظات من أحدث تقرير معتمد للفرع، بصورها وتفاصيلها.
+                    <small className="mt-1 block text-muted-foreground">
+                      اختر الحالات التي تريد نقلها.
+                    </small>
+                  </span>
+                </label>
+              )}
+              {(newReport.source || carryOpen) && (
+                <fieldset className="space-y-2 rounded-lg border p-3" disabled={busy}>
+                  <legend className="px-1 text-sm font-medium">حالات الملاحظات المطلوب نسخها</legend>
+                  <div className="flex flex-wrap gap-4">
+                    {(Object.entries(findingStatuses) as [keyof typeof findingStatuses, string][]).map(([value, label]) => (
+                      <label key={value} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={copyStatuses.includes(value)} onChange={(e) => setCopyStatuses((current) => e.target.checked ? [...current, value] : current.filter((item) => item !== value))} />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              )}
               <p className="text-sm text-muted-foreground">
-                التقرير الجديد مسودة. الاعتماد هو اللي يحدث السجل والمؤشرات. النسخ ينقل كل الملاحظات
-                وحالتها وصورها بدون تغيير الأصل.
+                التقرير الجديد مسودة. الاعتماد هو اللي يحدث السجل والمؤشرات.{" "}
+                {newReport.source
+                  ? "النسخ ينقل الملاحظات بالحالات المختارة وصورها بدون تغيير الأصل."
+                  : carryOpen
+                    ? "الملاحظات المنقولة نسخة مستقلة؛ التقرير السابق لا يتغير."
+                    : "يمكنك البدء بتقرير فارغ أو اختيار نقل الملاحظات أعلاه."}
               </p>
-              <Button disabled={busy} onClick={() => void create()}>
+              <Button disabled={busy || (!!newReport.source || carryOpen) && copyStatuses.length === 0} onClick={() => void create()}>
                 {busy ? "جارٍ الإنشاء…" : "إنشاء وفتح التقرير"}
               </Button>
             </DialogContent>
