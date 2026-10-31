@@ -77,7 +77,7 @@ export function maintenanceWorkbook(
     { wch: 24 },
   ];
   sheet["!autofilter"] = { ref: `A4:M${Math.max(4, data.length)}` };
-  sheet["!rows"] = data.map((_, i) => ({ hpt: i < 4 ? 30 : 90 }));
+  sheet["!rows"] = data.map((_, i) => ({ hpt: i < 4 ? 30 : Math.max(90, (rows[i - 4]?.photos.length ?? 1) * 90) }));
   if (m.rate !== null) sheet["H2"].z = "0.00%";
   book.Workbook = { Views: [{ RTL: true }] } as NonNullable<WorkBook["Workbook"]>;
   sheet["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 12 } }];
@@ -145,9 +145,31 @@ export async function downloadMaintenanceExcel(
   const styledBytes = new Uint8Array(
     XLSX.write(book, { type: "array", bookType: "xlsx", compression: true }),
   );
-  const bytes = images.length
+  let bytes = images.length
     ? await attachSlaughterImages(book, images, styledBytes)
     : styledBytes;
+  if (images.length) {
+    // Embed pictures beside their finding in the main worksheet, not in a separate gallery.
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const galleryPath = "xl/worksheets/sheet2.xml";
+    zip.file(galleryPath, (await zip.file(galleryPath)!.async("string")).replace(/<drawing[^>]*\/>/, ""));
+    let main = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    if (!main.includes("xmlns:r=")) main = main.replace("<worksheet ", '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
+    zip.file("xl/worksheets/sheet1.xml", main.replace("</worksheet>", '<drawing r:id="rIdSlaughterPictures"/></worksheet>'));
+    zip.file("xl/worksheets/_rels/sheet1.xml.rels", await zip.file("xl/worksheets/_rels/sheet2.xml.rels")!.async("string"));
+    let index = 0;
+    const positions = rows.flatMap((f, row) => f.photos.map((_, photo) => ({ row: row + 4, photo })));
+    let drawing = await zip.file("xl/drawings/slaughterPictures.xml")!.async("string");
+    drawing = drawing.replace(/<xdr:oneCellAnchor>[\s\S]*?<\/xdr:oneCellAnchor>/g, (anchor) => {
+      const position = positions[index]!;
+      const image = images[index++]!;
+      const scale = Math.min(150 / image.width, 105 / image.height);
+      return anchor.replace(/<xdr:from>[\s\S]*?<\/xdr:from>/, `<xdr:from><xdr:col>12</xdr:col><xdr:colOff>19050</xdr:colOff><xdr:row>${position.row}</xdr:row><xdr:rowOff>${position.photo * 120 * 9525 + 9525}</xdr:rowOff></xdr:from>`).replace(/<xdr:ext cx="[^\"]*" cy="[^\"]*"\/>/, `<xdr:ext cx="${Math.round(image.width * scale * 9525)}" cy="${Math.round(image.height * scale * 9525)}"/>`);
+    });
+    zip.file("xl/drawings/slaughterPictures.xml", drawing);
+    bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+  }
   const blob = new Blob([new Uint8Array(bytes)], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });

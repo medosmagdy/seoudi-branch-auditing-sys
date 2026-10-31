@@ -14,6 +14,11 @@ export function MaintenancePdfDocument({
   areaManager: string;
   scope: string;
 }) {
+  const sections = [...new Set(report.findings.map((f) => f.section))];
+  const pages = sections.flatMap((section) => {
+    const findings = report.findings.filter((f) => f.section === section);
+    return Array.from({ length: Math.ceil(findings.length / 3) }, (_, i) => ({ section, findings: findings.slice(i * 3, i * 3 + 3), offset: i * 3 }));
+  });
   const m = metrics(report.findings),
     open = report.findings.filter((f) => f.status === "open").length,
     newCount = report.findings.filter((f) => f.status === "new").length,
@@ -22,7 +27,7 @@ export function MaintenancePdfDocument({
     <div
       dir="rtl"
       className="bg-white text-slate-900"
-      style={{ width: 900, padding: 32, fontFamily: "Arial, sans-serif" }}
+      style={{ width: 900, padding: 32, fontFamily: "Calibri, Carlito, Arial, sans-serif" }}
     >
       <section data-report-page className="bg-white" style={{ minHeight: 1080, padding: 28 }}>
         <header data-report-block className="rounded-2xl bg-emerald-900 p-8 text-white">
@@ -72,15 +77,16 @@ export function MaintenancePdfDocument({
           </p>
         </div>
       </section>
-      {Array.from({ length: Math.ceil(report.findings.length / 3) }, (_, group) => (
+      {pages.map((page, group) => (
         <section key={group} data-report-page className="space-y-4 bg-white p-5">
           <header data-report-block className="border-b-2 border-emerald-800 pb-3">
-            <h2 className="text-xl font-bold text-emerald-900">ملاحظات الصيانة — {branch}</h2>
+            <h2 className="text-3xl font-bold text-emerald-900">قسم {page.section}</h2>
+            <p className="mt-2 font-bold">{branch}</p>
             <p className="mt-1 text-sm text-slate-600">
               تاريخ الفحص: {report.inspection_date} · {scope}
             </p>
           </header>
-          {report.findings.slice(group * 3, group * 3 + 3).map((f, i) => (
+          {page.findings.map((f, i) => (
             <article
               key={f.id}
               data-report-block
@@ -89,7 +95,7 @@ export function MaintenancePdfDocument({
               <div className="flex justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold text-emerald-800">
-                    {f.section} · ملاحظة {group * 3 + i + 1}
+                    {f.section} · ملاحظة {page.offset + i + 1}
                   </p>
                   <h3 className="mt-2 whitespace-pre-wrap text-lg font-bold">{f.description}</h3>
                 </div>

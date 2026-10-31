@@ -45,7 +45,7 @@ it("renders a report cover with correct selected counts, people and photo refere
   expect(html).toContain("نسبة الإغلاق");
   expect(html).toContain("50.0%");
   expect(html).toContain("https://example.test/signed");
-  expect((html.match(/data-report-page/g) || []).length).toBe(2);
+  expect((html.match(/data-report-page/g) || []).length).toBe(3);
 });
 describe("PDF photo preparation", () => {
   afterEach(() => {
