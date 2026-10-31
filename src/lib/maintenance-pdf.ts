@@ -26,7 +26,7 @@ export async function downloadMaintenancePdf(node: HTMLElement, filename: string
         cache.set(
           src,
           (async () => {
-            const response = await fetch(src);
+            const response = await fetch(src, { cache: "no-store" });
             if (!response.ok) throw new Error("تعذر تحميل صورة التقرير؛ أعد المحاولة");
             const blob = await response.blob();
             if (!blob.type.startsWith("image/")) throw new Error("ملف صورة غير صالح");

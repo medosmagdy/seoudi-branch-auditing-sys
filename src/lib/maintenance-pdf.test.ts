@@ -80,7 +80,7 @@ describe("PDF photo preparation", () => {
     vi.stubGlobal("document", { body: { appendChild: vi.fn() } });
     await downloadMaintenancePdf(node as unknown as HTMLElement, "report");
     expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(fetcher).toHaveBeenCalledWith(url);
+    expect(fetcher).toHaveBeenCalledWith(url, { cache: "no-store" });
     expect(cloneImage.src).toBe("data:image/jpeg;base64,aW1hZ2U=");
     expect(mock.download).toHaveBeenCalledWith(clone, "report");
     expect(clone.remove).toHaveBeenCalled();
