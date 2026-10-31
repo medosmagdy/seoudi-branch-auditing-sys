@@ -382,6 +382,24 @@ function ReportEditor({
           ))}
         </select>
       </label>
+      {statusFilter !== "all" && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy || !report.findings.some((f) => f.status === statusFilter)}
+            onClick={() => {
+              const count = report.findings.filter((f) => f.status === statusFilter).length;
+              if (count && window.confirm(`حذف ${count} ملاحظة بحالة «${findingStatuses[statusFilter]}» من جميع أقسام هذا التقرير؟ لن يثبت الحذف إلا بعد حفظ التقرير.`)) {
+                setReport((r) => ({ ...r, findings: r.findings.filter((f) => f.status !== statusFilter) }));
+              }
+            }}
+          >
+            حذف كل ملاحظات «{findingStatuses[statusFilter]}»
+          </Button>
+          <span className="text-sm text-muted-foreground">يشمل الحذف كل الأقسام، ويُثبّت عند حفظ التقرير.</span>
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
         المعروض: {visibleFindings.length} من {report.findings.length} ملاحظة. التصدير يشمل الملاحظات
         المعروضة فقط.
