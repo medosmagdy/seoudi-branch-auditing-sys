@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { findingStatuses, severities, type MaintenanceReport } from "@/lib/maintenance";
 import { saveMaintenanceReport, uploadMaintenancePhoto } from "@/lib/maintenance-data";
 import { reportBranchName, branchNameKey } from "@/lib/report-branch-name";
-import type { ImportPhoto, MaintenanceImport, MaintenanceWorkbook } from "@/lib/maintenance-import";
+import { openMaintenanceWorkbook, type ImportPhoto, type MaintenanceImport, type MaintenanceWorkbook } from "@/lib/maintenance-import";
 import { maintenanceSelect } from "./FindingEditor";
 function ImportImage({ image }: { image: ImportPhoto }) {
   const [url, setUrl] = useState("");
@@ -79,7 +79,6 @@ export function MaintenanceImportDialog({
       if (!/\.xlsx$/i.test(file.name))
         throw new Error("اختر ملف .xlsx؛ احفظ الملفات القديمة بالصيغة دي أولًا");
       if (file.size > 30 * 1024 * 1024) throw new Error("الحد الأقصى للملف 30 ميجابايت");
-      const { openMaintenanceWorkbook } = await import("@/lib/maintenance-import");
       const book = await openMaintenanceWorkbook(new Uint8Array(await file.arrayBuffer()));
       setWorkbook(book);
       await selectSheet(book, book.sheets[0]!);
