@@ -148,14 +148,17 @@ it("persists inherited N/A questions and section exclusions before finalizing", 
   );
 });
 
-it("blocks an absent answer even when the preview shows a default maximum", async () => {
+it("persists the full-score default for an untouched question", async () => {
   vi.resetAllMocks();
   const model = report();
   model.sections[0]!.groups[0]!.questions[0]!.answerRecorded = false;
   mocks.load.mockResolvedValue(model);
-  await expect(finalizeAudit("audit-fs")).rejects.toThrow("بدون تقييم");
-  expect(mocks.upsert).not.toHaveBeenCalled();
-  expect(mocks.update).not.toHaveBeenCalled();
+  mocks.upsert.mockResolvedValue({ error: null });
+  mocks.statusUpsert.mockResolvedValue({ error: null });
+  mocks.single.mockResolvedValue({ data: { id: "audit-fs" }, error: null });
+  await finalizeAudit("audit-fs");
+  expect(mocks.upsert).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ question_id: "untouched-fs", score: 4, is_na: false })]), expect.objectContaining({ ignoreDuplicates: true }));
+  expect(mocks.update).toHaveBeenCalled();
 });
 it.each([NaN, Infinity, -1, 5])("rejects an invalid score %s", async (score) => {
   vi.resetAllMocks();

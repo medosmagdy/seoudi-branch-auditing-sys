@@ -3,12 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { loadReportModel, type ReportModel } from "@/lib/report-data";
 
 // The report loader already selects active questions for this audit's type.
-// Persist inherited N/A only. Never invent full-credit answers during submission.
+// Persist untouched default scores and inherited N/A; explicit invalid scores remain blocked.
 export function defaultAnswersForReport(model: ReportModel) {
   return model.sections
     .filter((section) => !section.excluded)
     .flatMap((section) => section.groups.flatMap((group) => group.questions))
-    .filter((question) => question.isNa)
+    .filter((question) => question.isNa || (question.answerRecorded === false && !question.unresolvedScore && question.score === question.maxScore))
     .map((question) => ({
       audit_id: model.auditId,
       question_id: question.id,
@@ -27,8 +27,7 @@ export function unresolvedQuestions(model: ReportModel) {
             .filter(
               (question) =>
                 !question.isNa &&
-                (question.answerRecorded === false ||
-                  question.unresolvedScore ||
+                (question.unresolvedScore ||
                   typeof question.score !== "number" ||
                   !Number.isFinite(question.score) ||
                   question.score < 0 ||
