@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { exportAuditToExcel } from "@/lib/export-audit-excel";
 import { loadReportModel } from "@/lib/report-data";
-import { downloadElementAsPdf } from "@/lib/export-pdf";
+import { nodeToPdfBlob, downloadElementAsPdf } from "@/lib/export-pdf";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { useSession } from "@/hooks/useSession";
 import {
@@ -65,6 +65,8 @@ function AuditsList() {
   const sharing = useAuditSharing();
   const showDrafts = !!profile && canViewDraftAudits(profile.role);
   const [activeTab, setActiveTab] = useState<"completed" | "drafts">("completed");
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const bulkLock = useRef(false);
   const [exportingPdfId, setExportingPdfId] = useState<string | null>(null);
   const [exportingExcelId, setExportingExcelId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -287,6 +289,48 @@ function AuditsList() {
     (a) => a.status === "draft" || a.status === "in_progress",
   );
 
+  async function exportFiltered(kind: "excel" | "pdf") {
+    if (bulkLock.current || pdfLock.current || excelLock.current || !completedAudits.length) return;
+    bulkLock.current = true;
+    const selected = [...completedAudits];
+    try {
+      const [{ default: JSZip }, { default: XLSX }, { buildAuditWorkbook }] = await Promise.all([
+        import("jszip"), import("xlsx-js-style"), import("@/lib/audit-workbook"),
+      ]);
+      const zip = new JSZip();
+      for (const [index, audit] of selected.entries()) {
+        setBulkProgress(`تجهيز ${index + 1} من ${selected.length}`);
+        const model = await loadReportModel(audit.id, { includePhotos: kind === "pdf" });
+        const base = auditReportFileBase(model);
+        const unique = `${base} - ${audit.id}`;
+        if (kind === "excel") {
+          const { workbook } = buildAuditWorkbook(model);
+          zip.file(`${unique}.xlsx`, XLSX.write(workbook, { type: "array", bookType: "xlsx", compression: true }));
+        } else {
+          const container = document.createElement("div");
+          Object.assign(container.style, { position: "fixed", left: "-100000px", top: "0", width: "900px", background: "white" });
+          document.body.appendChild(container);
+          const { createRoot } = await import("react-dom/client");
+          const { flushSync } = await import("react-dom");
+          const root = createRoot(container);
+          try {
+            flushSync(() => root.render(<ReportDocument model={model} />));
+            await document.fonts.ready;
+            zip.file(`${unique}.pdf`, await nodeToPdfBlob(container));
+          } finally { root.unmount(); container.remove(); }
+        }
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url; link.download = `Approved-Audits-${kind}.zip`; link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`تم تجهيز ${selected.length} تقرير`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر تجهيز التجميعة؛ لم يتم تنزيل ملف ناقص");
+    } finally { bulkLock.current = false; setBulkProgress(null); }
+  }
+
   const renderAuditCard = (audit: any, isDraft: boolean) => {
     const canEdit = profile
       ? canEditAudit({
@@ -348,7 +392,7 @@ function AuditsList() {
             size="sm"
             variant="outline"
             onClick={() => void exportExcel(audit.id)}
-            disabled={exportingExcelId !== null}
+            disabled={exportingExcelId !== null || !!bulkProgress}
             className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 border-emerald-300 font-semibold"
           >
             <FileSpreadsheet className="size-4 ml-1 text-emerald-600" /> إكسيل (Excel)
@@ -358,7 +402,7 @@ function AuditsList() {
             size="sm"
             variant="outline"
             onClick={() => void exportAuditPdf(audit.id)}
-            disabled={exportingPdfId !== null}
+            disabled={exportingPdfId !== null || !!bulkProgress}
             className="border-blue-300 font-semibold text-blue-700 hover:bg-blue-50 hover:text-blue-800"
           >
             <FileDown className="size-4 ml-1 text-blue-600" />
@@ -399,6 +443,11 @@ function AuditsList() {
         </Button>
       }
     >
+      <div className="mb-4 flex flex-wrap items-center gap-3" dir="rtl">
+        <Button variant="outline" disabled={!!bulkProgress || isLoading || !completedAudits.length || !!exportingPdfId || !!exportingExcelId} onClick={() => void exportFiltered("excel")}>تحميل المعتمدين Excel ({completedAudits.length})</Button>
+        <Button variant="outline" disabled={!!bulkProgress || isLoading || !completedAudits.length || !!exportingPdfId || !!exportingExcelId} onClick={() => void exportFiltered("pdf")}>تحميل المعتمدين PDF ({completedAudits.length})</Button>
+        <p role="status" className="text-sm text-muted-foreground">{bulkProgress ?? "ملف ZIP للتقارير المعتمدة المطابقة للفلاتر الحالية"}</p>
+      </div>
       {sharing.isError && (
         <p role="alert">
           تعذر تحميل صلاحيات المشاركة.{" "}

@@ -68,3 +68,15 @@ describe("live-formula audit Excel export", () => {
     expect(built.workbook.Sheets["البيانات"]!["D12"]!.f).toContain("O''Brien");
   });
 });
+
+it("highlights only applicable scores below the maximum and keeps formulas intact", () => {
+  const model = auditExportFixture();
+  const built = buildAuditWorkbook(model);
+  for (const section of model.sections) for (const group of section.groups) for (const question of group.questions) {
+    const input = built.inputs.find((x) => x.questionId === question.id);
+    if (!input) continue;
+    const cell = built.workbook.Sheets[input.sheet]![input.scoreCell]!;
+    const yellow = !section.excluded && !question.isNa && typeof question.score === "number" && question.score < question.maxScore;
+    expect(cell.s?.fill?.fgColor?.rgb === "FFF2CC").toBe(yellow);
+  }
+});
