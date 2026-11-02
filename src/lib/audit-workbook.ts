@@ -191,6 +191,12 @@ export function buildAuditWorkbook(model: ReportModel) {
           `IF(${excluded},0,IF(ISNUMBER(D${row}),IF(OR(D${row}<0,D${row}>E${row}),1,0),1))`,
           bad ? 1 : 0,
         );
+        if (active && typeof score === "number" && score < qMax) {
+          for (const col of ["A", "B", "C", "D", "E", "F"]) {
+            const cell = sheet[`${col}${row}`];
+            if (cell) cell.s = { ...cell.s, fill: { fgColor: { rgb: "FFF2CC" } } };
+          }
+        }
         inputs.push({
           sheet: name,
           scoreCell: `D${row}`,
