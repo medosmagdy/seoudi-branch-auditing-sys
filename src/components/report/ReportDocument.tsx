@@ -115,6 +115,21 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </div>
         </div>
 
+        <div data-report-block className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+          <h2 className="mb-3 text-lg font-bold text-amber-950">الخصومات العامة على الفرع</h2>
+          {model.generalDeductions.length ? (
+            <div className="space-y-2">
+              {model.generalDeductions.map((deduction) => (
+                <div key={deduction.id} className="flex justify-between gap-4 rounded-lg bg-white p-3 text-sm">
+                  <span className="whitespace-pre-wrap">{deduction.reasonText || "خصم عام"}</span>
+                  <strong className="shrink-0 text-amber-950">{deduction.percentage}%</strong>
+                </div>
+              ))}
+              <p className="border-t border-amber-200 pt-2 font-bold">إجمالي الخصومات العامة: {model.generalDeductions.reduce((sum, d) => sum + Number(d.percentage), 0)}%</p>
+            </div>
+          ) : <p className="text-sm text-amber-950">لا توجد خصومات عامة.</p>}
+        </div>
+
         {/* 3. اتجاه درجات الفرع شهريًا */}
         {model.history.length > 0 && (
           <div data-report-block className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -221,7 +236,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
           </span>
         </div>
 
-        {!model.ncrs || model.ncrs.length === 0 ? (
+        {(!model.ncrs || model.ncrs.length === 0) && !model.sections.some((s) => !s.excluded && s.deductions.length) ? (
           <div
             data-report-block
             className="rounded-xl border border-emerald-300 bg-emerald-50 p-6 text-center text-emerald-900"
@@ -230,7 +245,17 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             <p className="font-bold">لا توجد أي حالات عدم مطابقة أو بنود مخصومة في هذا الفحص.</p>
           </div>
         ) : (
-          model.ncrs.map((ncr) => (
+          model.sections.filter((section) => !section.excluded).map((section) => (
+            <section key={section.id} className="space-y-3 rounded-2xl border-2 border-emerald-200 bg-emerald-50/20 p-4">
+              <header data-report-block className="rounded-xl bg-emerald-900 p-4 text-white">
+                <h3 className="text-xl font-bold">{section.nameAr}</h3>
+                <p className="mt-1 text-xs">ملاحظات القسم وخصوماته الإضافية</p>
+              </header>
+              {section.deductions.length > 0 && <div data-report-block className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+                <h4 className="mb-2 font-bold text-amber-950">خصومات القسم</h4>
+                {section.deductions.map((d) => <div key={d.id} className="flex justify-between gap-4 py-1 text-sm"><span className="whitespace-pre-wrap">{d.reasonText}</span><strong className="shrink-0">{d.percentage}%</strong></div>)}
+              </div>}
+              {model.ncrs.filter((ncr) => section.groups.some((group) => group.questions.some((q) => q.id === ncr.id))).map((ncr) => (
             <div
               key={ncr.id}
               data-report-block
@@ -266,6 +291,8 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                 </div>
               )}
             </div>
+              ))}
+            </section>
           ))
         )}
       </div>
