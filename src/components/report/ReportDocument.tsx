@@ -40,7 +40,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
                 تقرير عدم المطابقة والملاحظات (NCR Report)
               </h1>
               <p className="mt-2 text-xs font-semibold leading-relaxed text-muted-foreground sm:text-sm">
-                {model.auditTypeName || "فحص سلامة الغذاء"} • كود التفتيش:{" "}
+                {model.auditTypeName || "فحص سلامة الغذاء"} • كود الاوديت:{" "}
                 {model.auditId.slice(0, 8)}
               </p>
             </div>
@@ -58,11 +58,11 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               <span className="font-bold text-sm text-foreground">{model.branchName}</span>
             </div>
             <div>
-              <span className="text-muted-foreground block text-[11px]">تاريخ التدقيق:</span>
+              <span className="text-muted-foreground block text-[11px]">تاريخ الاوديت:</span>
               <span className="font-mono font-bold text-sm text-foreground">{model.auditDate}</span>
             </div>
             <div>
-              <span className="text-muted-foreground block text-[11px]">المفتش:</span>
+              <span className="text-muted-foreground block text-[11px]">المراجع:</span>
               <span className="font-bold text-foreground">{model.auditorName || "—"}</span>
             </div>
             <div>
@@ -90,7 +90,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               {formatPercentage(finalPercentage)}%
             </div>
             <span className="text-[11px] font-semibold block mt-1">
-              {isPassed ? "مطابق لمعايير الجودة" : "يحتاج إلى إجراءات تصحيحية فورية"}
+              {isPassed ? "مطابق لمعايير الجودة" : ""}
             </span>
           </div>
 
@@ -111,7 +111,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
               إجمالي الخصومات الإضافية
             </span>
             <div className="mt-1 text-3xl font-black text-amber-600">{totalDeductions}%</div>
-            <span className="text-[11px] text-muted-foreground block mt-1">خصومات عامة وأقسام</span>
+            <span className="text-[11px] text-muted-foreground block mt-1">خصومات عامة</span>
           </div>
         </div>
 
