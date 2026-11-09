@@ -1,4 +1,6 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { useSession } from "@/hooks/useSession";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { ClipboardCheck, BarChart3, FileText, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -14,7 +16,8 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "Seoudi Quality Operating Platform" },
       {
         property: "og:description",
-        content: "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
+        content:
+          "Food safety auditing app for Seoudi branches: dynamic weighted checklists, precise scoring and professional bilingual reports.",
       },
     ],
   }),
@@ -40,11 +43,21 @@ const features = [
 ];
 
 function Landing() {
+  const { isPasswordRecovery } = useSession();
+  const navigate = useNavigate();
+  useEffect(() => {
+    // Supabase can fall back to Site URL when the requested redirect is not allowlisted.
+    if (isPasswordRecovery) void navigate({ to: "/auth", replace: true });
+  }, [isPasswordRecovery, navigate]);
   return (
     <div className="min-h-screen bg-background" dir="ltr">
       <header className="brand-banner">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
-          <img src="/quality-assurance-logo.png" alt="Seoudi Quality Assurance" className="h-16 w-28 object-contain mix-blend-multiply" />
+          <img
+            src="/quality-assurance-logo.png"
+            alt="Seoudi Quality Assurance"
+            className="h-16 w-28 object-contain mix-blend-multiply"
+          />
           <div className="text-sm font-semibold leading-tight">
             Seoudi Quality Operating Platform
             <span className="block text-[11px] font-normal opacity-80">SQOP</span>
@@ -66,8 +79,8 @@ function Landing() {
             Branch auditing, straight from the floor
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground sm:text-lg">
-            A field tool for auditors: one section per screen, large scoring buttons, automatic draft saving and a
-            final result calculated to Seoudi rules.
+            A field tool for auditors: one section per screen, large scoring buttons, automatic
+            draft saving and a final result calculated to Seoudi rules.
           </p>
           <div className="mt-7 flex justify-center gap-3">
             <Button asChild size="lg">
