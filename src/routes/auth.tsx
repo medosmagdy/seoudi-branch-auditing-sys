@@ -1,7 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { signInSchema, emailSchema, newPasswordSchema, authDestination } from "@/lib/auth-flow";
+import {
+  signInSchema,
+  emailSchema,
+  newPasswordSchema,
+  authDestination,
+  passwordRecoveryRedirect,
+  hasExpiredRecoveryLink,
+} from "@/lib/auth-flow";
 import { useSession } from "@/hooks/useSession";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -30,13 +37,14 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resetMode, setResetMode] = useState<"request" | "update" | null>(null);
+  const [requestReset, setRequestReset] = useState(false);
+  const resetMode = isPasswordRecovery ? "update" : requestReset ? "request" : null;
 
   useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setResetMode("update");
-    });
-    return () => data.subscription.unsubscribe();
+    if (!hasExpiredRecoveryLink(window.location.search, window.location.hash)) return;
+    window.history.replaceState(window.history.state, "", "/auth");
+    setRequestReset(true);
+    toast.error("This reset link is expired or already used. Request a new one.");
   }, []);
 
   const submitPasswordReset = async (event: FormEvent) => {
@@ -49,11 +57,11 @@ function AuthPage() {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(parsedEmail.data, {
-        redirectTo: window.location.origin + "/auth",
+        redirectTo: passwordRecoveryRedirect,
       });
       if (error) throw error;
       toast.success("If this email exists, a password reset link has been sent.");
-      setResetMode(null);
+      setRequestReset(false);
     } catch {
       toast.error("Unable to send the reset link. Please try again.");
     } finally {
@@ -63,6 +71,7 @@ function AuthPage() {
 
   const submitNewPassword = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isPasswordRecovery) return;
     const parsed = newPasswordSchema.safeParse(password);
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Invalid password");
@@ -74,8 +83,8 @@ function AuthPage() {
       if (error) throw error;
       toast.success("Password updated successfully.");
       setPassword("");
-      setResetMode(null);
-      await supabase.auth.signOut();
+      setRequestReset(false);
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
       toast.error("Unable to update the password. Please use a fresh reset link.");
     } finally {
@@ -84,7 +93,6 @@ function AuthPage() {
   };
 
   useEffect(() => {
-    if (isPasswordRecovery) setResetMode("update");
     const destination = authDestination(profile, isPasswordRecovery, resetMode);
     if (destination) void navigate({ to: destination, replace: true });
   }, [profile, isPasswordRecovery, resetMode, navigate]);
@@ -165,7 +173,7 @@ function AuthPage() {
                 type="button"
                 variant="ghost"
                 className="w-full"
-                onClick={() => setResetMode(null)}
+                onClick={() => setRequestReset(false)}
               >
                 Back to sign in
               </Button>
@@ -220,7 +228,7 @@ function AuthPage() {
               <button
                 type="button"
                 className="w-full text-center text-sm text-primary underline-offset-4 hover:underline"
-                onClick={() => setResetMode("request")}
+                onClick={() => setRequestReset(true)}
               >
                 Forgot password?
               </button>

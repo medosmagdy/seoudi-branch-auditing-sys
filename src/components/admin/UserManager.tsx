@@ -1,3 +1,4 @@
+import { UserPasswordDialog } from "./UserPasswordDialog";
 import { SectionAccessManager } from "./SectionAccessManager";
 import { ManagerBranchAccess } from "./ManagerBranchAccess";
 import { AuditSharingManager } from "./AuditSharingManager";
@@ -306,7 +307,8 @@ export function UserManager() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 mr-auto">
+                  <div className="flex flex-wrap items-center gap-2 mr-auto">
+                    {currentProfile?.role === "admin" && <UserPasswordDialog user={u} />}
                     <div className="w-40">
                       <Select
                         disabled={updatingUserId !== null || deletingUserId !== null}

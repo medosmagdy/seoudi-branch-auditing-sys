@@ -24,3 +24,13 @@ export function authDestination(
   if (!profile || recovery || resetMode === "update") return null;
   return profile.role === "auditor" ? ("/audits" as const) : ("/dashboard" as const);
 }
+
+// Keep recovery on the production host, even if requested from a preview URL.
+export const passwordRecoveryRedirect = "https://www.sqop.app/auth";
+
+export function hasExpiredRecoveryLink(search: string, hash: string) {
+  return [search, hash].some((part) => {
+    const code = new URLSearchParams(part.slice(1)).get("error_code");
+    return code === "otp_expired" || code === "access_denied";
+  });
+}

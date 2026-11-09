@@ -31,3 +31,11 @@ describe("authentication navigation and password policies", () => {
     ).toBe(false);
   });
 });
+
+it("uses the production reset destination and detects expired callbacks", async () => {
+  const { passwordRecoveryRedirect, hasExpiredRecoveryLink } = await import("./auth-flow");
+  expect(passwordRecoveryRedirect).toBe("https://www.sqop.app/auth");
+  expect(hasExpiredRecoveryLink("?error_code=otp_expired", "")).toBe(true);
+  expect(hasExpiredRecoveryLink("", "#error_code=access_denied")).toBe(true);
+  expect(hasExpiredRecoveryLink("", "#type=recovery")).toBe(false);
+});
