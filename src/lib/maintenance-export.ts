@@ -114,7 +114,7 @@ export async function downloadMaintenanceExcel(
   name: string,
   urls: Record<string, string>,
 ) {
-  const { attachSlaughterImages, photoForExcel } = await import("./slaughter-images");
+  const { photoForExcel } = await import("./slaughter-images");
   const count = rows.reduce((n, r) => n + r.photos.length, 0);
   if (count > 300)
     throw new Error(
@@ -130,6 +130,23 @@ export async function downloadMaintenanceExcel(
       if (!r.ok) throw new Error("تعذر تحميل الصور");
       images.push(await photoForExcel(await r.blob()));
     }
+  const bytes = await buildMaintenanceExcel(rows, name, images);
+  const blob = new Blob([new Uint8Array(bytes)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name + ".xlsx";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+export async function buildMaintenanceExcel(
+  rows: (Finding & { branch_name?: string; inspection_date?: string })[],
+  name: string,
+  images: import("./slaughter-images").SlaughterExcelImage[],
+) {
+  const { attachSlaughterImages } = await import("./slaughter-images");
   const book = maintenanceWorkbook(rows, name);
   const captions = rows.flatMap((f) => f.photos.map(() => `${f.section} — ${f.description} — ${findingStatuses[f.status]}`));
   let offset = 3;
@@ -154,10 +171,12 @@ export async function downloadMaintenanceExcel(
     const zip = await JSZip.loadAsync(bytes);
     const galleryPath = "xl/worksheets/sheet2.xml";
     zip.file(galleryPath, (await zip.file(galleryPath)!.async("string")).replace(/<drawing[^>]*\/>/, ""));
+    const galleryRelationships = "xl/worksheets/_rels/sheet2.xml.rels";
     let main = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
     if (!main.includes("xmlns:r=")) main = main.replace("<worksheet ", '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
     zip.file("xl/worksheets/sheet1.xml", main.replace("</worksheet>", '<drawing r:id="rIdSlaughterPictures"/></worksheet>'));
-    zip.file("xl/worksheets/_rels/sheet1.xml.rels", await zip.file("xl/worksheets/_rels/sheet2.xml.rels")!.async("string"));
+    zip.file("xl/worksheets/_rels/sheet1.xml.rels", await zip.file(galleryRelationships)!.async("string"));
+    zip.remove(galleryRelationships);
     let index = 0;
     const positions = rows.flatMap((f, row) => f.photos.map((_, photo) => ({ row: row + 4, photo })));
     let drawing = await zip.file("xl/drawings/slaughterPictures.xml")!.async("string");
@@ -170,15 +189,7 @@ export async function downloadMaintenanceExcel(
     zip.file("xl/drawings/slaughterPictures.xml", drawing);
     bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
   }
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name + ".xlsx";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return bytes;
 }
 export function maintenanceReportRows(report: MaintenanceReport, branch: string) {
   return report.findings.map((f) => ({
