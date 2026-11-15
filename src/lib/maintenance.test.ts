@@ -107,7 +107,11 @@ describe("maintenance current branch snapshot", () => {
     const book = maintenanceWorkbook([f], "Maintenance");
     const decoded = read(write(book, { type: "array", bookType: "xlsx" }), { type: "array" });
     const data = utils.sheet_to_json<unknown[]>(decoded.Sheets["Maintenance"]!, { header: 1 });
-    expect(data[4]!.slice(3, 11)).toEqual([
+    expect(data[3]!.slice(2, 10)).toEqual([
+      "القسم", "نقاط الصيانة", "تاريخ العطل", "الخطورة",
+      "الإجراء التصحيحي", "الأدلة", "الحالة", "تعليقات",
+    ]);
+    expect(data[4]!.slice(2, 10)).toEqual([
       "الأسماك",
       "عطل باب",
       "9/2024",
@@ -133,17 +137,10 @@ describe("maintenance current branch snapshot", () => {
 });
 
 it("preserves styled workbook bytes while adding embedded photo parts", async () => {
-  const { default: XLSX } = await import("xlsx-js-style");
-  const { attachSlaughterImages } = await import("./slaughter-images");
+  const { buildMaintenanceExcel } = await import("./maintenance-export");
   const { default: JSZip } = await import("jszip");
-  const book = maintenanceWorkbook(
-    [{ ...blankFinding(), section: "أسماك", description: "عطل" }],
-    "Maintenance",
-  );
-  const styled = new Uint8Array(XLSX.write(book, { type: "array", bookType: "xlsx" }));
-  const bytes = await attachSlaughterImages(
-    book,
-    [
+  const f = { ...blankFinding(), section: "أسماك", description: "عطل", photos: ["photo-1"] };
+  const bytes = await buildMaintenanceExcel([f], "Maintenance", [
       {
         bytes: Uint8Array.from(
           Buffer.from(
@@ -155,15 +152,20 @@ it("preserves styled workbook bytes while adding embedded photo parts", async ()
         width: 1,
         height: 1,
       },
-    ],
-    styled,
-  );
+  ]);
   const zip = await JSZip.loadAsync(bytes);
   expect(await zip.file("xl/styles.xml")!.async("string")).toContain("174D3A");
   expect(zip.file("xl/media/slaughter-1.png")).not.toBeNull();
-  expect(await zip.file("xl/worksheets/sheet2.xml")!.async("string")).toContain(
+  expect(await zip.file("xl/worksheets/sheet1.xml")!.async("string")).toContain(
     "rIdSlaughterPictures",
   );
+  expect(await zip.file("xl/worksheets/sheet2.xml")!.async("string")).not.toContain("<drawing");
+  expect(zip.file("xl/worksheets/_rels/sheet2.xml.rels")).toBeNull();
+  expect(await zip.file("xl/worksheets/_rels/sheet1.xml.rels")!.async("string")).toContain("slaughterPictures.xml");
+  const drawing = await zip.file("xl/drawings/slaughterPictures.xml")!.async("string");
+  expect(drawing).toContain("<xdr:col>12</xdr:col>");
+  expect(drawing).toContain("<xdr:row>4</xdr:row>");
+
 });
 
 it("keeps partial legacy dates without inventing a day and formats selected dates in local time", () => {
