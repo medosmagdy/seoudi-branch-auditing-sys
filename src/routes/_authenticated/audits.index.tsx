@@ -300,7 +300,7 @@ function AuditsList() {
       const zip = new JSZip();
       for (const [index, audit] of selected.entries()) {
         setBulkProgress(`تجهيز ${index + 1} من ${selected.length}`);
-        const model = await loadReportModel(audit.id, { includePhotos: kind === "pdf" });
+        const model = await loadReportModel(audit.id, { includePhotos: kind === "pdf", includeHistory: kind === "pdf" });
         const base = auditReportFileBase(model);
         const unique = `${base} - ${audit.id}`;
         if (kind === "excel") {
