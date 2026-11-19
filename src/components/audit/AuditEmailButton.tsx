@@ -310,7 +310,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
           inert
         >
           <div ref={reportRef} className="w-[900px] bg-white p-4 text-black">
-            <ReportDocument model={model} />
+            <ReportDocument model={model} forPdf />
           </div>
         </div>
       )}

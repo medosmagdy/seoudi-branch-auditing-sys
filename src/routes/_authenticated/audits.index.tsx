@@ -180,7 +180,7 @@ function AuditsList() {
       container.appendChild(root);
       const { createRoot } = await import("react-dom/client");
       reportRoot = createRoot(root);
-      reportRoot.render(<ReportDocument model={model} />);
+      reportRoot.render(<ReportDocument model={model} forPdf />);
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       await downloadElementAsPdf(root, auditReportFileBase(model));
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
@@ -314,7 +314,7 @@ function AuditsList() {
           const { flushSync } = await import("react-dom");
           const root = createRoot(container);
           try {
-            flushSync(() => root.render(<ReportDocument model={model} />));
+            flushSync(() => root.render(<ReportDocument model={model} forPdf />));
             await document.fonts.ready;
             zip.file(`${unique}.pdf`, await nodeToPdfBlob(container));
           } finally { root.unmount(); container.remove(); }
