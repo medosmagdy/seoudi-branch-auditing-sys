@@ -3,6 +3,7 @@ import { useAuditSharing } from "@/hooks/useAuditSharing";
 import { auditReportFileBase } from "@/lib/audit-report-name";
 import { invalidateDashboard } from "@/lib/dashboard/cache";
 import { useState, useRef } from "react";
+import { flushSync } from "react-dom";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -35,12 +36,14 @@ function ReportPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const reportRef = useRef<HTMLDivElement>(null);
+  const pdfRef = useRef<HTMLDivElement>(null);
   const { profile } = useSession();
   const sharing = useAuditSharing();
 
   const [reopening, setReopening] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfWidth, setPdfWidth] = useState<number | null>(null);
+  const exportingPdf = pdfWidth !== null;
 
   // 1. جلب بيانات التقرير والـ NCRs
   const {
@@ -128,21 +131,25 @@ function ReportPage() {
 
   // تصدير الـ PDF عبر html2canvas المنظف
   const handleExportPdf = async () => {
+    if (exportingPdf) return;
     if (!reportRef.current) {
       toast.error("وثيقة التقرير غير جاهزة للتصدير");
       return;
     }
     try {
-      setExportingPdf(true);
+      const width = reportRef.current.getBoundingClientRect().width;
+      // Match the on-screen report dimensions; only switch its chart for capture.
+      flushSync(() => setPdfWidth(width));
       toast.info("جاري تجهيز وتنسيق ملف الـ PDF...");
       const fileName = auditReportFileBase(model);
-      await downloadElementAsPdf(reportRef.current, fileName);
+      if (!pdfRef.current) throw new Error("وثيقة التقرير غير جاهزة للتصدير");
+      await downloadElementAsPdf(pdfRef.current, fileName);
       toast.success("تم تحميل تقرير الـ PDF بنجاح");
     } catch (err: any) {
       console.error("PDF Export Error:", err);
       toast.error("حدث خطأ أثناء تصدير الـ PDF: " + (err?.message || ""));
     } finally {
-      setExportingPdf(false);
+      setPdfWidth(null);
     }
   };
 
@@ -263,6 +270,22 @@ function ReportPage() {
       >
         <ReportDocument model={model} />
       </div>
+
+      {pdfWidth !== null && (
+        <div
+          className="pointer-events-none fixed left-0 top-0 h-0 w-0 overflow-hidden"
+          aria-hidden="true"
+          inert
+        >
+          <div
+            ref={pdfRef}
+            style={{ width: pdfWidth }}
+            className="overflow-x-auto rounded-2xl border border-border bg-white p-4 shadow-sm"
+          >
+            <ReportDocument model={model} forPdf />
+          </div>
+        </div>
+      )}
 
       {/* سجل التعديلات */}
       <div className="surface-card mt-6 p-4 rounded-xl border border-border print:hidden" dir="rtl">

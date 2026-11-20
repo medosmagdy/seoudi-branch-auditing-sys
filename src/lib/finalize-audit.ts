@@ -55,7 +55,7 @@ export function assertResolvedScores(model: ReportModel) {
 }
 
 export async function finalizeAudit(auditId: string) {
-  const before = await loadReportModel(auditId, { includePhotos: false });
+  const before = await loadReportModel(auditId, { includePhotos: false, includeHistory: false });
   assertResolvedScores(before);
   const defaults = defaultAnswersForReport(before);
   await saveAuditNaDefaults(auditId, {
@@ -75,7 +75,7 @@ export async function finalizeAudit(auditId: string) {
 
   // Re-read saved answers; the displayed summary can predate the last edit.
   // Keep the existing computeAudit rules, defaults and rounding unchanged.
-  const fresh = await loadReportModel(auditId, { includePhotos: false });
+  const fresh = await loadReportModel(auditId, { includePhotos: false, includeHistory: false });
   assertResolvedScores(fresh);
   const { result } = fresh;
   const { error } = await supabase

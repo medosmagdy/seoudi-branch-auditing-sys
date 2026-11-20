@@ -3,6 +3,8 @@ import { loadAuditNaDefaults, mergeAuditDefaults } from "./audit-na";
 import { loadAuditAnswers } from "@/lib/audit-answers";
 import { supabase } from "@/integrations/supabase/client";
 import { signedPhotoUrls } from "@/lib/photos";
+import { loadHistoricalReportScores, reportMonthHistory } from "./report-history";
+import { readAllPages } from "./query-pages";
 import { computeAudit, type AuditResult, type ScoringSection } from "@/lib/scoring";
 
 export interface ReportPhoto {
@@ -84,7 +86,7 @@ export interface ReportModel {
 
 export async function loadReportModel(
   auditId: string,
-  options: { includePhotos?: boolean } = {},
+  options: { includePhotos?: boolean; includeHistory?: boolean } = {},
 ): Promise<ReportModel> {
   const { data: audit, error } = await supabase
     .from("audits")
@@ -128,14 +130,19 @@ export async function loadReportModel(
       ? Promise.resolve({ data: [], error: null })
       : supabase.from("photos").select("*").eq("audit_id", auditId),
     supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
-    // التعديل هنا: جلب الفحوصات التاريخية مع درجاتها المحفوظة مسبقاً وتصفيتها حسب نوع التفتيش
-    supabase
-      .from("audits")
-      .select("id, audit_date, score, overall_score")
-      .eq("branch_id", audit.branch_id)
-      .eq("audit_type_id", audit.audit_type_id)
-      .eq("status", "submitted")
-      .order("audit_date", { ascending: true }),
+    options.includeHistory === false
+      ? Promise.resolve([])
+      : readAllPages((from, to) =>
+          supabase
+            .from("audits")
+            .select("id, audit_date, score, overall_score")
+            .eq("branch_id", audit.branch_id)
+            .eq("audit_type_id", audit.audit_type_id)
+            .eq("status", "submitted")
+            .order("audit_date", { ascending: true })
+            .order("id")
+            .range(from, to),
+        ),
   ]);
 
   // Never calculate or submit a score from a partially failed load.
@@ -148,7 +155,6 @@ export async function loadReportModel(
     generalDeductions,
     photos,
     auditor,
-    pastAudits,
   ]) {
     if (response.error) throw response.error;
   }
@@ -164,8 +170,6 @@ export async function loadReportModel(
       .filter((row) => row.is_na)
       .map((row) => row.section_id),
   );
-
-  const urls = await signedPhotoUrls(photoRows.map((photo) => photo.storage_path));
 
   // 1. خريطة الإجابات المسجلة
   const rawAnswerMap: Record<string, { score: number | null; isNa: boolean; comment: string }> = {};
@@ -215,41 +219,29 @@ export async function loadReportModel(
     percentage: Number(row.percentage),
   }));
 
-  const result = computeAudit(
-    scoringSections,
-    answerMap,
-    generalRows,
-    (audit.branches as { name_ar?: string } | null)?.name_ar,
-  );
-
-  // الاعتماد على النتائج المحفوظة تاريخياً في جدول audits مباشرة دون إعادة حساب
-  const historyByMonth = new Map<string, number[]>();
-  const historicalAudits = (pastAudits.data ?? []).filter((row) => row.id !== auditId);
-
-  for (const row of historicalAudits) {
-    const month = String(row.audit_date ?? "").slice(0, 7);
-    const scoreVal = Number(row.overall_score ?? row.score ?? 0);
-
-    if (month && Number.isFinite(scoreVal)) {
-      historyByMonth.set(month, [
-        ...(historyByMonth.get(month) ?? []),
-        Math.max(0, Math.min(100, scoreVal)),
-      ]);
-    }
-  }
+  const branchName = (audit.branches as { name_ar?: string } | null)?.name_ar;
+  const result = computeAudit(scoringSections, answerMap, generalRows, branchName);
 
   const currentMonth = audit.audit_date.slice(0, 7);
-  const currentScore = Math.max(0, Math.min(100, Number(result.finalPercentage)));
-
-  const history = [...historyByMonth.entries()]
-    .filter(([month]) => month !== currentMonth)
-    .map(([month, scores]) => ({
-      month,
-      score: Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(2)),
-    }));
-
-  history.push({ month: currentMonth, score: currentScore });
-  history.sort((a, b) => a.month.localeCompare(b.month));
+  const [urls, historicalScores] = await Promise.all([
+    signedPhotoUrls(photoRows.map((photo) => photo.storage_path)),
+    options.includeHistory === false
+      ? Promise.resolve([])
+      : loadHistoricalReportScores(
+          pastAudits.filter(
+            (row) => row.id !== auditId && row.audit_date.slice(0, 7) !== currentMonth,
+          ),
+          scoringSections,
+          branchName,
+        ),
+  ]);
+  const history =
+    options.includeHistory === false
+      ? []
+      : reportMonthHistory(
+          { date: audit.audit_date, score: result.finalPercentage },
+          historicalScores,
+        );
 
   const ncrs: ReportNCR[] = [];
   const allPhotos: ReportModel["allPhotos"] = [];

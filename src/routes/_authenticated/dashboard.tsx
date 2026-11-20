@@ -15,6 +15,7 @@ import {
   aggregateDashboard,
   dashboardErrorMessage,
   dashboardMonthRange,
+  fetchDashboardSnapshot,
 } from "@/lib/dashboard/snapshot";
 import { DashboardFilterBar } from "@/components/DashboardFilterBar";
 import { DashboardRanking } from "@/components/DashboardRanking";
@@ -359,11 +360,19 @@ function ExecutiveDashboard() {
     try {
       const { downloadDashboardWorkbook, loadDashboardDeductions } =
         await import("@/lib/dashboard/download");
-      const deductions = await loadDashboardDeductions(
-        filteredData.audits.map((audit) => audit.id),
-      );
+      const [deductions, scoreSnapshot] = await Promise.all([
+        loadDashboardDeductions(filteredData.audits.map((audit) => audit.id)),
+        fetchDashboardSnapshot(snapshotFilters),
+      ]);
       downloadDashboardWorkbook(
-        { data, filteredData, summary, ...deductions, scope: scope as LocationScope },
+        {
+          data,
+          filteredData,
+          summary: aggregateDashboard(scoreSnapshot, snapshotFilters),
+          scoreSnapshot,
+          ...deductions,
+          scope: scope as LocationScope,
+        },
         `${scope === "warehouses" ? "Warehouses" : "Branches"}_Quality_Dashboard_${new Date().toISOString().slice(0, 10)}.xlsx`,
       );
       toast.success("تم تجهيز ملف التجميعة للتنزيل");
@@ -575,7 +584,7 @@ function ExecutiveDashboard() {
             </div>
             {summary?.before != null && (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                قبل الخصومات: {summary.before}%
+                درجة الاعتماد (قبل الخصم): {summary.before}%
               </p>
             )}
           </button>

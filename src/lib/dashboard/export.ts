@@ -1,4 +1,4 @@
-import { dashboardProgram } from "./snapshot";
+import { dashboardProgram, snapshotAuditBreakdown, type DashboardSnapshot } from "./snapshot";
 import type { LocationScope } from "../location-scope";
 import type * as XLSXType from "xlsx-js-style";
 import type { DashboardData } from "./data";
@@ -17,12 +17,13 @@ export type DashboardWorkbookInput = {
   data: DashboardData;
   filteredData: DashboardDetails;
   summary: ReturnType<typeof aggregateDashboard> | null;
+  scoreSnapshot: DashboardSnapshot;
   genDeductions: Tables<"audit_general_deductions">[];
   secDeductions: Tables<"audit_section_deductions">[];
 };
 export function buildDashboardWorkbook(
   XLSX: typeof XLSXType,
-  { data, filteredData, summary, genDeductions, secDeductions, scope }: DashboardWorkbookInput,
+  { data, filteredData, summary, scoreSnapshot, genDeductions, secDeductions, scope }: DashboardWorkbookInput,
 ) {
   const warehouse = scope === "warehouses";
   const entity = warehouse ? "المخزن" : "الفرع";
@@ -270,6 +271,12 @@ export function buildDashboardWorkbook(
     XLSX.utils.book_append_sheet(wb, sheet, `${code} - أقسام`);
   });
 
+  const submittedScores = new Map(
+    scoreSnapshot.audits
+      .filter((audit) => audit.status === "submitted")
+      .map((audit) => [audit.id, snapshotAuditBreakdown(audit)?.after ?? null] as const),
+  );
+
   const auditsByMonth: Record<string, any[]> = {};
   filteredData.audits.forEach((audit: any) => {
     const mKey = audit.audit_date ? audit.audit_date.slice(0, 7) : "غير محدد";
@@ -304,8 +311,15 @@ export function buildDashboardWorkbook(
     monthAudits.forEach((audit: any) => {
       const calc = auditScoresMap[audit.id] || { earned: 0, possible: 0, secScores: {} };
       const rawPct = calc.possible > 0 ? (calc.earned / calc.possible) * 100 : null;
-      const finalPct =
-        rawPct === null
+      // The stored number can predate edits and deductions. Use the same
+      // calculation as the report for completed visits; leave drafts alone.
+      const approved = audit.status === "submitted";
+      if (approved && !submittedScores.has(audit.id)) {
+        throw new Error("بيانات الأوديتس اتغيّرت أثناء التصدير. حدّث الداش بورد وأعد المحاولة.");
+      }
+      const finalPct = approved
+        ? (submittedScores.get(audit.id) ?? null)
+        : rawPct === null
           ? null
           : audit.score !== null && audit.score !== undefined
             ? Number(audit.score)

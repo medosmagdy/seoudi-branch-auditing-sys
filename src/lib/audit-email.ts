@@ -1,5 +1,6 @@
 import type { ReportModel } from "./report-data";
 import { auditReportFileBase } from "./audit-report-name";
+import { includesDeliveryInOverall } from "./scoring";
 
 const months = [
   "يناير",
@@ -30,6 +31,16 @@ export function emailPercentage(value: number) {
   if (!Number.isFinite(value) || value < 0 || value > 100)
     throw new Error("درجة التقرير غير صالحة لتجهيز البريد");
   return `${Number(value.toFixed(2))}%`;
+}
+function hasIntegratedDeliveryInEmail(branchName: string) {
+  const normalized = branchName
+    .normalize("NFKC")
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u0640]/g, "")
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/الكيتكات$/, "الكيت كات");
+  return includesDeliveryInOverall(normalized);
 }
 export function auditEmailTemplate(model: EmailAudit) {
   if (model.status !== "submitted") throw new Error("تجهيز البريد متاح للأوديت المعتمد فقط");
@@ -91,7 +102,11 @@ export function auditEmailTemplate(model: EmailAudit) {
   }
   const period = `${months[Number(date[2]) - 1]} ${date[1]}`;
   const delivery = model.result.delivery;
-  const hasDelivery = !!delivery && !delivery.excluded && delivery.max > 0;
+  const hasDelivery =
+    !hasIntegratedDeliveryInEmail(model.branchName) &&
+    !!delivery &&
+    !delivery.excluded &&
+    delivery.max > 0;
   const paragraphs = [
     `السادة/ إدارة فرع "${model.branchName}"`,
     ...(hasDelivery ? ["السادة/ إدارة التوصيل"] : []),

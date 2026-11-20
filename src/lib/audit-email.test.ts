@@ -67,15 +67,38 @@ describe("audit email template", () => {
     m.result.delivery!.max = 0;
     expect(auditEmailTemplate(m).hasDelivery).toBe(false);
   });
-  it("uses GHP wording and preserves dark-store delivery inclusion in the overall score", () => {
+  it("uses GHP wording and only shows the already combined branch score for dark stores", () => {
     const m = model("دارك ستور المعادي");
     m.auditTypeCode = "GHP";
     const draft = auditEmailTemplate(m);
     expect(draft.body).toContain("تقرير مراجعة الممارسات الصحية");
     expect(draft.body).toContain(`النهائية للفرع: ${m.result.finalPercentage}%`);
     expect(m.result.finalPercentage).toBe(25);
-    expect(draft.body).toContain("النهائية لقسم التوصيل: 0%");
+    expect(draft.hasDelivery).toBe(false);
+    expect(draft.body).not.toContain("التوصيل");
   });
+  it.each([
+    "دارك ستور زايد",
+    "دارك ستور المعادي",
+    "دارك ستور الكيت كات",
+    "  دارك  ستور ألمعادي ",
+    "دارك ستور الكيتكات",
+  ])("omits the separate delivery greeting and score for %s only", (branchName) => {
+    const m = { ...model("دارك ستور المعادي"), branchName };
+    const draft = auditEmailTemplate(m);
+    expect(draft.body).toContain("النهائية للفرع: 25%");
+    expect(draft.body).not.toContain("التوصيل");
+    expect(draft.hasDelivery).toBe(false);
+  });
+  it.each(["سوديك", "سوديك سيزر", "سوديك إيست", "المعادي 1", "المعادي 2", "زايد", "دارك ستور آخر"])(
+    "keeps the separate delivery greeting and zero score for %s",
+    (branch) => {
+      const draft = auditEmailTemplate(model(branch));
+      expect(draft.body).toContain("السادة/ إدارة التوصيل");
+      expect(draft.body).toContain("النهائية لقسم التوصيل: 0%");
+      expect(draft.hasDelivery).toBe(true);
+    },
+  );
   it("rejects drafts, invalid dates, invalid percentages and entirely N/A results", () => {
     const m = model();
     expect(() => auditEmailTemplate({ ...m, status: "draft" })).toThrow("المعتمد");

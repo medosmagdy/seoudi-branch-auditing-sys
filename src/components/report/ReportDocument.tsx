@@ -1,4 +1,5 @@
 import { ImageLightbox } from "@/components/ImageLightbox";
+import { PdfMonthlyTrend } from "./PdfMonthlyTrend";
 import { useState } from "react";
 import type { ReportModel } from "@/lib/report-data";
 import { formatPercentage } from "@/lib/dashboard/metrics";
@@ -10,7 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-export function ReportDocument({ model }: { model: ReportModel }) {
+export function ReportDocument({ model, forPdf = false }: { model: ReportModel; forPdf?: boolean }) {
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
   const rawScore = Number(model?.result?.finalScore);
   const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
@@ -82,7 +83,7 @@ export function ReportDocument({ model }: { model: ReportModel }) {
             }`}
           >
             <span className="text-xs font-bold text-muted-foreground">
-              النتيجة النهائية المعتمدة
+              النتيجة النهائية بعد الخصم
             </span>
             <div
               className={`mt-1 text-3xl font-black ${isPassed ? "text-emerald-600" : "text-destructive"}`}
@@ -131,7 +132,9 @@ export function ReportDocument({ model }: { model: ReportModel }) {
         </div>
 
         {/* 3. اتجاه درجات الفرع شهريًا */}
-        {model.history.length > 0 && (
+        {forPdf ? (
+          <PdfMonthlyTrend history={model.history} currentMonth={model.auditDate.slice(0, 7)} />
+        ) : model.history.length > 0 && (
           <div data-report-block className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h3 className="mb-3 flex items-center gap-1.5 text-xs font-bold text-primary">
               <TrendingUp className="size-4" /> اتجاه درجات الفرع حسب الشهر

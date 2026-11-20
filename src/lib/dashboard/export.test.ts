@@ -8,7 +8,7 @@ import { aggregateDashboard } from "./snapshot";
 import { detailFixture } from "./__fixtures__/detail-data";
 
 describe("dashboard Excel behavior before and after refactoring", () => {
-  it("preserves all cells, styles, worksheet order, dimensions, RTL and deduction output", () => {
+  it("preserves the workbook except for the final score cells of submitted visits", () => {
     for (let seed = 0; seed < 4; seed++) {
       const { data, snapshot } = detailFixture(seed);
       const filteredData = buildDashboardDetails({
@@ -23,6 +23,7 @@ describe("dashboard Excel behavior before and after refactoring", () => {
       const input = {
         data,
         filteredData,
+        scoreSnapshot: snapshot,
         summary: aggregateDashboard(snapshot, {
           scope: "branches",
           start: "",
@@ -62,6 +63,16 @@ describe("dashboard Excel behavior before and after refactoring", () => {
           }
         }
       }
+      const beforeVisits = before.Sheets["الفروع والزيارات"]!;
+      const afterVisits = after.Sheets["الفروع والزيارات"]!;
+      for (const address of Object.keys(beforeVisits)) {
+        if (
+          /^H\d+$/.test(address) &&
+          beforeVisits[`G${address.slice(1)}`]?.v === "Approved (معتمد)"
+        ) {
+          beforeVisits[address] = afterVisits[address]!;
+        }
+      }
       expect(after).toEqual(before);
       const roundTrip = XLSX.read(XLSX.write(after, { type: "buffer", bookType: "xlsx" }), {
         type: "buffer",
@@ -76,3 +87,67 @@ describe("dashboard Excel behavior before and after refactoring", () => {
     }
   });
 });
+
+it.each(["branches", "warehouses"] as const)(
+  "exports the current after-discount figure of an approved visit for %s",
+  (scope) => {
+    const { data, snapshot } = detailFixture(1);
+    const approved = data.audits[0]!;
+    approved.status = "submitted";
+    approved.score = 92.47;
+    approved.audit_date = "2026-11-16";
+    const section = snapshot.audits[0]!.sections[0]!;
+    snapshot.audits = [
+      {
+        ...snapshot.audits[0]!,
+        status: "submitted",
+        date: approved.audit_date,
+        generalDeductions: [5],
+        sections: [
+          {
+            ...section,
+            maximum: 372,
+            earned: 350,
+            isNa: false,
+            isDelivery: false,
+            deductions: [],
+            deduction: 0,
+          },
+          { ...section, id: "delivery", maximum: 4, earned: 0, isNa: false, isDelivery: true },
+        ],
+      },
+    ];
+    data.audits = [approved];
+    const filteredData = buildDashboardDetails({
+      data,
+      snapshot,
+      profile: { id: "user" },
+      canViewAll: true,
+      branchFilter: "all",
+      startDate: "",
+      endDate: "",
+    })!;
+    const input = {
+      data,
+      filteredData,
+      summary: null,
+      scoreSnapshot: snapshot,
+      genDeductions: [],
+      secDeductions: [],
+      scope,
+    };
+    const workbook = buildDashboardWorkbook(XLSX, input);
+    const bytes = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+    const visitSheet = XLSX.read(bytes, { type: "buffer" }).Sheets[
+      scope === "branches" ? "الفروع والزيارات" : "المخازن والزيارات"
+    ]!;
+    expect(visitSheet["H2"]?.v).toBe("FinalPercentage (النسبة)");
+    expect(visitSheet["H3"]?.v).toBe("89.09%"); // 350/372 − 5pp; separate delivery excluded.
+    expect(() =>
+      buildDashboardWorkbook(XLSX, {
+        ...input,
+        scoreSnapshot: { ...snapshot, audits: [] },
+      }),
+    ).toThrow("بيانات الأوديتس اتغيّرت");
+  },
+);

@@ -83,7 +83,7 @@ describe("audit submission", () => {
         overall_score: 96,
       }),
     );
-    expect(mocks.load).toHaveBeenNthCalledWith(1, "audit-fs", { includePhotos: false });
+    expect(mocks.load).toHaveBeenNthCalledWith(1, "audit-fs", { includePhotos: false, includeHistory: false });
   });
 
   it("does not submit if saving default answers fails", async () => {

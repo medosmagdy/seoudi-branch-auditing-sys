@@ -91,7 +91,7 @@ export function InspectorReport({
   const models = useQuery({
     queryKey: ["inspector-analysis", user.id, submitted.map((r) => r.id)],
     queryFn: () =>
-      mapLimited(submitted, (row) => loadReportModel(row.id, { includePhotos: false })),
+      mapLimited(submitted, (row) => loadReportModel(row.id, { includePhotos: false, includeHistory: false })),
     enabled: !!query.data && !invalidRange,
     refetchOnWindowFocus: false,
     retry: 1,

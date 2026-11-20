@@ -27,7 +27,7 @@ export function DashboardScoreDetails({
       <DashboardFilterBar {...filters} />
       <div className="rounded-lg border p-3 text-sm">
         <p className="font-bold">
-          متوسط الفروع: قبل {percentage(summary.before)} · بعد {percentage(summary.after)}
+          متوسط الفروع: درجة الاعتماد {percentage(summary.before)} · بعد الخصم {percentage(summary.after)}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
           {summary.provisional
@@ -35,7 +35,7 @@ export function DashboardScoreDetails({
             : "مؤشر الأوديتس المختارة."}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          قبل: قبل جميع الخصومات. بعد: بعد خصومات الأقسام والخصم العام. الفروع والشهور متساوية
+          درجة الاعتماد: قبل جميع الخصومات. بعد الخصم: بعد خصومات الأقسام والخصم العام. الفروع والشهور متساوية
           الوزن؛ الفترات بلا فحوصات لا تدخل المتوسط.
         </p>
       </div>
@@ -50,8 +50,8 @@ export function DashboardScoreDetails({
                 <tr>
                   <th className="p-2">البرنامج</th>
                   <th className="p-2">طريقة التجميع</th>
-                  <th className="p-2">قبل</th>
-                  <th className="p-2">بعد</th>
+                  <th className="p-2">درجة الاعتماد</th>
+                  <th className="p-2">بعد الخصم</th>
                   <th className="p-2">الزيارات</th>
                 </tr>
               </thead>
@@ -82,7 +82,7 @@ export function DashboardScoreDetails({
             </table>
           </div>
           <p className="mt-3 text-xs font-semibold">
-            قبل {percentage(row.before)} · بعد {percentage(row.after)}{" "}
+            درجة الاعتماد {percentage(row.before)} · بعد الخصم {percentage(row.after)}{" "}
             {row.provisional ? "— مؤشر مبدئي" : ""}
           </p>
           {!!row.missing.length && (
