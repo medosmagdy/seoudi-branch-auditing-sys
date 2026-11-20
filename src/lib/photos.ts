@@ -85,9 +85,17 @@ export async function uploadExpiryPhotos(expiryRecordId: string, files: File[]) 
   return uploaded;
 }
 export async function uploadQuestionPhotos(auditId: string, questionId: string, files: File[]) {
-  const uploaded = [];
-  for (const file of files) uploaded.push(await uploadQuestionPhoto(auditId, questionId, file));
-  return uploaded;
+  let uploaded = 0;
+  const failed: string[] = [];
+  for (const file of files) {
+    try {
+      await uploadQuestionPhoto(auditId, questionId, file);
+      uploaded++;
+    } catch {
+      failed.push(file.name);
+    }
+  }
+  return { uploaded, failed };
 }
 export async function deletePhoto(photoId: string, _storagePath: string) {
   return deleteWithSessionRecovery(photoAuthorization, (headers) =>

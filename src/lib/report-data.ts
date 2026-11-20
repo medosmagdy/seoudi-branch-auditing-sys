@@ -3,8 +3,8 @@ import { loadAuditNaDefaults, mergeAuditDefaults } from "./audit-na";
 import { loadAuditAnswers } from "@/lib/audit-answers";
 import { supabase } from "@/integrations/supabase/client";
 import { signedPhotoUrls } from "@/lib/photos";
-import { loadHistoricalReportScores, reportMonthHistory } from "./report-history";
-import { readAllPages } from "./query-pages";
+import { loadReportHistory } from "./report-history";
+import { loadActiveChecklistTree } from "./checklist-data";
 import { computeAudit, type AuditResult, type ScoringSection } from "@/lib/scoring";
 
 export interface ReportPhoto {
@@ -73,6 +73,7 @@ export interface ReportModel {
   generalDeductions: { id: string; reasonText: string; percentage: number }[];
   result: AuditResult;
   history: { month: string; score: number }[];
+  historyUnavailable?: boolean;
   ncrs: ReportNCR[];
   allPhotos: {
     photoId: string;
@@ -97,71 +98,25 @@ export async function loadReportModel(
     .single();
   if (error) throw error;
 
-  const [
-    sections,
-    headers,
-    questions,
-    answers,
-    statuses,
-    sectionDeductions,
-    generalDeductions,
-    photos,
-    auditor,
-    pastAudits,
-  ] = await Promise.all([
-    supabase
-      .from("sections")
-      .select("*")
-      .eq("audit_type_id", audit.audit_type_id)
-      .eq("active", true)
-      .order("order_index"),
-    supabase.from("headers").select("*").order("order_index"),
-    supabase
-      .from("questions")
-      .select("*")
-      .eq("audit_type_id", audit.audit_type_id)
-      .eq("active", true)
-      .order("item_order"),
-    loadAuditAnswers(auditId, audit.audit_type_id),
-    supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
-    supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
-    supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
-    options.includePhotos === false
-      ? Promise.resolve({ data: [], error: null })
-      : supabase.from("photos").select("*").eq("audit_id", auditId),
-    supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
-    options.includeHistory === false
-      ? Promise.resolve([])
-      : readAllPages((from, to) =>
-          supabase
-            .from("audits")
-            .select("id, audit_date, score, overall_score")
-            .eq("branch_id", audit.branch_id)
-            .eq("audit_type_id", audit.audit_type_id)
-            .eq("status", "submitted")
-            .order("audit_date", { ascending: true })
-            .order("id")
-            .range(from, to),
-        ),
-  ]);
+  const [checklist, answers, statuses, sectionDeductions, generalDeductions, photos, auditor] =
+    await Promise.all([
+      loadActiveChecklistTree(audit.audit_type_id),
+      loadAuditAnswers(auditId, audit.audit_type_id),
+      supabase.from("audit_section_status").select("*").eq("audit_id", auditId),
+      supabase.from("audit_section_deductions").select("*").eq("audit_id", auditId),
+      supabase.from("audit_general_deductions").select("*").eq("audit_id", auditId),
+      options.includePhotos === false
+        ? Promise.resolve({ data: [], error: null })
+        : supabase.from("photos").select("*").eq("audit_id", auditId),
+      supabase.from("profiles").select("full_name, email").eq("id", audit.auditor_id).maybeSingle(),
+    ]);
 
   // Never calculate or submit a score from a partially failed load.
-  for (const response of [
-    sections,
-    headers,
-    questions,
-    statuses,
-    sectionDeductions,
-    generalDeductions,
-    photos,
-    auditor,
-  ]) {
+  for (const response of [statuses, sectionDeductions, generalDeductions, photos, auditor]) {
     if (response.error) throw response.error;
   }
 
-  const sectionRows = sections.data ?? [];
-  const headerRows = headers.data ?? [];
-  const questionRows = questions.data ?? [];
+  const { sections: sectionRows, headers: headerRows, questions: questionRows } = checklist;
   const inherited = await loadAuditNaDefaults(audit);
   const answerRows = mergeAuditDefaults(inherited.answers, answers, (row) => row.question_id);
   const photoRows = photos.data ?? [];
@@ -222,26 +177,16 @@ export async function loadReportModel(
   const branchName = (audit.branches as { name_ar?: string } | null)?.name_ar;
   const result = computeAudit(scoringSections, answerMap, generalRows, branchName);
 
-  const currentMonth = audit.audit_date.slice(0, 7);
-  const [urls, historicalScores] = await Promise.all([
+  const [urls, history] = await Promise.all([
     signedPhotoUrls(photoRows.map((photo) => photo.storage_path)),
     options.includeHistory === false
       ? Promise.resolve([])
-      : loadHistoricalReportScores(
-          pastAudits.filter(
-            (row) => row.id !== auditId && row.audit_date.slice(0, 7) !== currentMonth,
-          ),
-          scoringSections,
-          branchName,
+      : // Historical data is supplementary. Never show a partial history as
+        // complete, but allow the verified current audit to be opened/exported.
+        loadReportHistory(audit, result.finalPercentage, scoringSections, branchName).catch(
+          () => null,
         ),
   ]);
-  const history =
-    options.includeHistory === false
-      ? []
-      : reportMonthHistory(
-          { date: audit.audit_date, score: result.finalPercentage },
-          historicalScores,
-        );
 
   const ncrs: ReportNCR[] = [];
   const allPhotos: ReportModel["allPhotos"] = [];
@@ -360,7 +305,8 @@ export async function loadReportModel(
     sections: modelSections,
     generalDeductions: generalRows,
     result,
-    history,
+    history: history ?? [],
+    historyUnavailable: history === null,
     ncrs,
     allPhotos,
   };

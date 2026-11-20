@@ -37,10 +37,12 @@ function AuthPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
   const [requestReset, setRequestReset] = useState(false);
   const resetMode = isPasswordRecovery ? "update" : requestReset ? "request" : null;
 
   useEffect(() => {
+    setReady(true);
     if (!hasExpiredRecoveryLink(window.location.search, window.location.hash)) return;
     window.history.replaceState(window.history.state, "", "/auth");
     setRequestReset(true);
@@ -166,7 +168,7 @@ function AuthPage() {
                   onChange={(event) => setEmail(event.target.value)}
                 />
               </div>
-              <Button className="w-full" size="lg" type="submit" disabled={loading}>
+              <Button className="w-full" size="lg" type="submit" disabled={!ready || loading}>
                 {loading ? "Sending..." : "Send reset link"}
               </Button>
               <Button
@@ -196,7 +198,7 @@ function AuthPage() {
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </div>
-              <Button className="w-full" size="lg" type="submit" disabled={loading}>
+              <Button className="w-full" size="lg" type="submit" disabled={!ready || loading}>
                 {loading ? "Updating..." : "Update password"}
               </Button>
             </form>
@@ -207,6 +209,7 @@ function AuthPage() {
                 <Input
                   id="email"
                   type="email"
+                  disabled={!ready}
                   autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -217,17 +220,19 @@ function AuthPage() {
                 <Input
                   id="password"
                   type="password"
+                  disabled={!ready}
                   autoComplete="current-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                 />
               </div>
-              <Button className="w-full" size="lg" type="submit" disabled={loading}>
+              <Button className="w-full" size="lg" type="submit" disabled={!ready || loading}>
                 {loading ? "Signing in..." : "Sign In"}
               </Button>
               <button
                 type="button"
                 className="w-full text-center text-sm text-primary underline-offset-4 hover:underline"
+                disabled={!ready}
                 onClick={() => setRequestReset(true)}
               >
                 Forgot password?

@@ -90,3 +90,89 @@ it("uses report scores consistently for each month's own data, keeping existing 
   ]);
   expect(fake.fetch.mock.calls.every(([, options]) => options.method === "GET")).toBe(true);
 });
+
+it.each(["list", "answers"])(
+  "keeps the current audit available when historical %s fail",
+  async (failure) => {
+    fake.fetch.mockReset();
+    fake.fetch.mockImplementation(async (input: string) => {
+      const url = new URL(input);
+      const table = url.pathname.split("/").at(-1);
+      const auditId = url.searchParams.get("audit_id");
+      const reply = (data: unknown, status = 200) =>
+        new Response(JSON.stringify(data), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
+      const networkFailure = () => reply({ code: "42501", message: "Access denied" }, 403);
+      if (table === "audits") {
+        if (url.searchParams.get("id") === "eq.current")
+          return reply({
+            id: "current",
+            audit_date: "2026-11-20",
+            status: "submitted",
+            branch_id: "branch",
+            audit_type_id: "fs",
+          });
+        if (failure === "list") return networkFailure();
+        return reply([{ id: "older", audit_date: "2026-10-20", score: 94 }]);
+      }
+      if (table === "sections") return reply([{ id: "section", name_ar: "الأسماك" }]);
+      if (table === "questions") return reply([{ id: "q1", section_id: "section", max_score: 4 }]);
+      if (table === "audit_answers")
+        return auditId === "eq.current"
+          ? reply([{ question_id: "q1", score: 2, is_na: false }])
+          : networkFailure();
+      if (table === "profiles") return reply({ full_name: "Reviewer" });
+      return reply([]);
+    });
+    const model = await loadReportModel("current", { includePhotos: false });
+    expect(model.result.finalPercentage).toBe(50);
+    expect(model.history).toEqual([]);
+    expect(model.historyUnavailable).toBe(true);
+  },
+);
+
+it("includes active scoring questions and their headers after the first results page", async () => {
+  fake.fetch.mockReset();
+  fake.fetch.mockImplementation(async (input: string) => {
+    const url = new URL(input);
+    const table = url.pathname.split("/").at(-1);
+    const offset = Number(url.searchParams.get("offset"));
+    let data: unknown = [];
+    if (table === "audits")
+      data = {
+        id: "large",
+        audit_date: "2026-11-20",
+        status: "submitted",
+        branch_id: "branch",
+        audit_type_id: "fs",
+      };
+    if (table === "sections") data = [{ id: "section", name_ar: "الأسماك", order_index: 0 }];
+    if (table === "questions") {
+      expect(url.searchParams.get("active")).toBe("eq.true");
+      expect(url.searchParams.get("order")).toBe("item_order.asc,id.asc");
+      data = Array.from({ length: offset ? 1 : 500 }, (_, index) => ({
+        id: `q-${offset + index}`,
+        section_id: "section",
+        header_id: offset ? "late-header" : null,
+        max_score: 4,
+      }));
+    }
+    if (table === "headers") {
+      expect(url.searchParams.get("section_id")).toBe("in.(section)");
+      data = [
+        { id: "late-header", section_id: "section", label_ar: "بنود إضافية", order_index: 0 },
+      ];
+    }
+    if (table === "audit_answers") data = [{ question_id: "q-500", score: 0, is_na: false }];
+    if (table === "profiles") data = { full_name: "Reviewer" };
+    return new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json" },
+    });
+  });
+  const model = await loadReportModel("large", { includePhotos: false, includeHistory: false });
+  expect(model.result.overallMax).toBe(2004);
+  expect(model.result.finalPercentage).toBe(99.8);
+  expect(model.ncrs).toMatchObject([{ id: "q-500", headerLabel: "بنود إضافية" }]);
+});

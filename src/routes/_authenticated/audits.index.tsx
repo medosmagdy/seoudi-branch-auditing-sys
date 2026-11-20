@@ -27,6 +27,7 @@ import { loadReportModel } from "@/lib/report-data";
 import { nodeToPdfBlob, downloadElementAsPdf } from "@/lib/export-pdf";
 import { ReportDocument } from "@/components/report/ReportDocument";
 import { useSession } from "@/hooks/useSession";
+import { readAllPages } from "@/lib/query-pages";
 import {
   canReadAudit,
   canEditAudit,
@@ -86,7 +87,7 @@ function AuditsList() {
     : null;
 
   // 2. جلب الفحوصات مع الفلترة حسب الصلاحية
-  const { data: audits, isLoading } = useQuery({
+  const { data: audits, isLoading, isError, refetch } = useQuery({
     queryKey: [
       "audits",
       userProfile?.user?.id,
@@ -94,7 +95,7 @@ function AuditsList() {
       sharing.peerIds,
       sharing.visibleBranchIds,
     ],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       let auditsQuery = supabase
         .from("audits")
         .select("*")
@@ -111,46 +112,44 @@ function AuditsList() {
           ),
         );
 
-      const [auditsRes, branchesRes, typesRes, profilesRes] = await Promise.all([
-        (async () => {
-          const rows: any[] = [];
-          for (let offset = 0; ; offset += 500) {
-            const result = await auditsQuery.range(offset, offset + 499);
-            if (result.error) throw result.error;
-            rows.push(...(result.data ?? []));
-            if ((result.data?.length ?? 0) < 500) break;
-          }
-          return { data: [...new Map(rows.map((row) => [row.id, row])).values()], error: null };
-        })(),
-        supabase.from("branches").select("*"),
-        supabase.from("audit_types").select("*"),
-        supabase.from("profiles").select("id, full_name, email"),
+      const [auditRows, branches, types, profiles] = await Promise.all([
+        readAllPages((from, to) => auditsQuery.range(from, to).abortSignal(signal), signal),
+        readAllPages(
+          (from, to) =>
+            supabase.from("branches").select("*").order("id").range(from, to).abortSignal(signal),
+          signal,
+        ),
+        readAllPages(
+          (from, to) =>
+            supabase.from("audit_types").select("*").order("id").range(from, to).abortSignal(signal),
+          signal,
+        ),
+        readAllPages(
+          (from, to) =>
+            supabase
+              .from("profiles")
+              .select("id, full_name, email")
+              .order("id")
+              .range(from, to)
+              .abortSignal(signal),
+          signal,
+        ),
       ]);
 
-      if (auditsRes.error) {
-        console.error("Fetch audits error:", auditsRes.error);
-        throw auditsRes.error;
-      }
-
       const branchMap = new Map(
-        (branchesRes.data || []).map((b: any) => [b.id, b.name_ar || b.name || "فرع غير محدد"]),
+        branches.map((b) => [b.id, b.name_ar || "فرع غير محدد"]),
       );
-      const typeMap = new Map(
-        (typesRes.data || []).map((t: any) => [
-          t.id,
-          t.name_ar || t.name || t.name_en || "سلامة الغذاء",
-        ]),
-      );
+      const typeMap = new Map(types.map((t) => [t.id, t.name_ar || t.name_en || "سلامة الغذاء"]));
       const profileMap = new Map(
-        (profilesRes.data || []).map((profile: any) => [
+        profiles.map((profile) => [
           profile.id,
           profile.full_name || profile.email || "مراجع غير محدد",
         ]),
       );
 
-      const raw = auditsRes.data || [];
+      const raw = [...new Map(auditRows.map((row) => [row.id, row])).values()];
 
-      return raw.map((audit: any) => ({
+      return raw.map((audit) => ({
         ...audit,
         branchName: branchMap.get(audit.branch_id) || "فرع غير محدد",
         typeName: typeMap.get(audit.audit_type_id) || "سلامة الغذاء",
@@ -160,6 +159,7 @@ function AuditsList() {
     },
     enabled: !!userProfile?.user?.id && sharing.isSuccess,
   });
+  const listUnavailable = isError || sharing.isError || !sharing.isSuccess;
 
   const exportAuditPdf = async (auditId: string) => {
     if (pdfLock.current) return;
@@ -428,6 +428,14 @@ function AuditsList() {
     );
   };
 
+  const bulkExportDisabled =
+    listUnavailable ||
+    isLoading ||
+    !completedAudits.length ||
+    !!bulkProgress ||
+    !!exportingPdfId ||
+    !!exportingExcelId;
+
   return (
     <AppShell
       contentClassName="audit-list-page"
@@ -444,8 +452,20 @@ function AuditsList() {
       }
     >
       <div className="mb-4 flex flex-wrap items-center gap-3" dir="rtl">
-        <Button variant="outline" disabled={!!bulkProgress || isLoading || !completedAudits.length || !!exportingPdfId || !!exportingExcelId} onClick={() => void exportFiltered("excel")}>تحميل المعتمدين Excel ({completedAudits.length})</Button>
-        <Button variant="outline" disabled={!!bulkProgress || isLoading || !completedAudits.length || !!exportingPdfId || !!exportingExcelId} onClick={() => void exportFiltered("pdf")}>تحميل المعتمدين PDF ({completedAudits.length})</Button>
+        <Button
+          variant="outline"
+          disabled={bulkExportDisabled}
+          onClick={() => void exportFiltered("excel")}
+        >
+          تحميل المعتمدين Excel ({completedAudits.length})
+        </Button>
+        <Button
+          variant="outline"
+          disabled={bulkExportDisabled}
+          onClick={() => void exportFiltered("pdf")}
+        >
+          تحميل المعتمدين PDF ({completedAudits.length})
+        </Button>
         <p role="status" className="text-sm text-muted-foreground">{bulkProgress ?? "ملف ZIP للتقارير المعتمدة المطابقة للفلاتر الحالية"}</p>
       </div>
       {sharing.isError && (
@@ -453,6 +473,12 @@ function AuditsList() {
           تعذر تحميل صلاحيات المشاركة.{" "}
           <Button onClick={() => void sharing.refetch()}>إعادة المحاولة</Button>
         </p>
+      )}
+      {isError && !sharing.isError && (
+        <div role="alert" className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4">
+          <p>تعذر تحميل سجل الفحوصات كاملًا. أعد المحاولة قبل التصدير.</p>
+          <Button variant="outline" onClick={() => void refetch()}>إعادة المحاولة</Button>
+        </div>
       )}
       <div className="surface-card mb-4 flex flex-wrap items-center gap-3 p-4" dir="rtl">
         <span className="text-sm font-semibold">
@@ -592,24 +618,24 @@ function AuditsList() {
           </TabsTrigger>
         </TabsList>
 
-        {isLoading && (
+        {(isLoading || sharing.isPending) && (
           <p className="text-sm text-muted-foreground text-center py-8">جاري تحميل سجل الفحوصات…</p>
         )}
 
         <TabsContent value="completed" className="space-y-3 mt-0">
-          {!isLoading && completedAudits.length === 0 && (
+          {!isLoading && !listUnavailable && completedAudits.length === 0 && (
             <div className="surface-card p-10 text-center text-sm text-muted-foreground" dir="rtl">
               لا توجد فحوصات مكتملة مسجلة حالياً.
             </div>
           )}
           <div className="grid gap-3">
-            {completedAudits.map((audit) => renderAuditCard(audit, false))}
+            {!listUnavailable && completedAudits.map((audit) => renderAuditCard(audit, false))}
           </div>
         </TabsContent>
 
         {showDrafts && (
           <TabsContent value="drafts" className="space-y-3 mt-0">
-            {!isLoading && draftAudits.length === 0 && (
+            {!isLoading && !listUnavailable && draftAudits.length === 0 && (
               <div
                 className="surface-card p-10 text-center text-sm text-muted-foreground"
                 dir="rtl"
@@ -618,7 +644,7 @@ function AuditsList() {
               </div>
             )}
             <div className="grid gap-3">
-              {draftAudits.map((audit) => renderAuditCard(audit, true))}
+              {!listUnavailable && draftAudits.map((audit) => renderAuditCard(audit, true))}
             </div>
           </TabsContent>
         )}

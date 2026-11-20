@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { registrationSchema } from "@/lib/auth-flow";
@@ -20,6 +20,9 @@ function RegisterPage() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => setReady(true), []);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -73,6 +76,7 @@ function RegisterPage() {
             <Label htmlFor="register-name">Full Name</Label>
             <Input
               id="register-name"
+              disabled={!ready}
               autoComplete="name"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
@@ -83,6 +87,7 @@ function RegisterPage() {
             <Input
               id="register-email"
               type="email"
+              disabled={!ready}
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -93,12 +98,13 @@ function RegisterPage() {
             <Input
               id="register-password"
               type="password"
+              disabled={!ready}
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
           </div>
-          <Button type="submit" size="lg" disabled={loading}>
+          <Button type="submit" size="lg" disabled={!ready || loading}>
             {loading ? "Creating account..." : "Create Account"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => navigate({ to: "/auth" })}>

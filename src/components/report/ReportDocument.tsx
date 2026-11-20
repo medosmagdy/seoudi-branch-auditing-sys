@@ -132,6 +132,15 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
         </div>
 
         {/* 3. اتجاه درجات الفرع شهريًا */}
+        {model.historyUnavailable && (
+          <p
+            data-report-block
+            role="status"
+            className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+          >
+            تعذر تحميل المقارنة الشهرية. النتيجة المعروضة تخص هذا الأوديت.
+          </p>
+        )}
         {forPdf ? (
           <PdfMonthlyTrend history={model.history} currentMonth={model.auditDate.slice(0, 7)} />
         ) : model.history.length > 0 && (
