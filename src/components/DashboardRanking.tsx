@@ -35,8 +35,8 @@ export function DashboardRanking({
             <tr>
               <th className="p-2">الترتيب</th>
               <th className="p-2">الفرع</th>
-              <th className="p-2">قبل</th>
-              <th className="p-2">بعد</th>
+              <th className="p-2">درجة الاعتماد</th>
+              <th className="p-2">بعد الخصم</th>
               <th className="p-2">الزيارات</th>
               <th className="p-2">الأوديتس المتاحة</th>
             </tr>

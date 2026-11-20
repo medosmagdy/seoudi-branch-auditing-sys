@@ -83,7 +83,7 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
             }`}
           >
             <span className="text-xs font-bold text-muted-foreground">
-              النتيجة النهائية المعتمدة
+              النتيجة النهائية بعد الخصم
             </span>
             <div
               className={`mt-1 text-3xl font-black ${isPassed ? "text-emerald-600" : "text-destructive"}`}

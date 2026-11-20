@@ -17,6 +17,10 @@ it("changes only the exported chart while preserving report values and section t
   const pdf = renderToStaticMarkup(createElement(ReportDocument, { model, forPdf: true }));
   expect(screen).not.toContain("المحور الرأسي");
   expect(pdf).toContain("المحور الرأسي");
+  expect(pdf).not.toContain("النتيجة النهائية المعتمدة");
+  expect(pdf).toMatch(
+    new RegExp(`النتيجة النهائية بعد الخصم</span><div[^>]*>${model.result.finalPercentage}%`),
+  );
   expect(pdf).toContain(">89%</text>");
   expect(pdf).toContain(">96%</text>");
   expect(pdf).toContain(">-1</text>");

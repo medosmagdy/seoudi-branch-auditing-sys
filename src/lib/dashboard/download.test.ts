@@ -54,7 +54,7 @@ describe("warehouse aggregate Excel download", () => {
       branch: "all",
     });
     downloadDashboardWorkbook(
-      { data, filteredData, summary, genDeductions: [], secDeductions: [], scope: "warehouses" },
+      { data, filteredData, summary, scoreSnapshot: snapshot, genDeductions: [], secDeductions: [], scope: "warehouses" },
       "warehouse.xlsx",
     );
     const [wb, name] = mocks.write.mock.calls.at(-1)!;
@@ -106,6 +106,7 @@ it("downloads an audit aggregate with no discrepancies instead of styling a miss
         data,
         filteredData,
         summary: null,
+        scoreSnapshot: snapshot,
         genDeductions: [],
         secDeductions: [],
         scope: "warehouses",
