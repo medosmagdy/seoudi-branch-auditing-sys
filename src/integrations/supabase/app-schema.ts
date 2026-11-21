@@ -65,6 +65,15 @@ export type AppDatabase = Omit<Database, "public"> & {
     Enums: Omit<Database["public"]["Enums"], "app_role"> & { app_role: AppRole };
     Functions: Database["public"]["Functions"] & {
       delete_user_completely: { Args: { target_user_id: string }; Returns: undefined };
+      sqop_audit_na_defaults: {
+        Args: { p_audit_id: string };
+        Returns: import("./types").Json;
+      };
+      sqop_audit_photo_access: { Args: { p_audit_id: string }; Returns: boolean };
+      sqop_import_checklist: {
+        Args: { p_type_id: string; p_replace: boolean; p_rows: import("./types").Json };
+        Returns: import("./types").Json;
+      };
     };
   };
 };

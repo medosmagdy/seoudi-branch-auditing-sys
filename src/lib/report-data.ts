@@ -74,6 +74,7 @@ export interface ReportModel {
   result: AuditResult;
   history: { month: string; score: number }[];
   historyUnavailable?: boolean;
+  photosUnavailable?: boolean;
   ncrs: ReportNCR[];
   allPhotos: {
     photoId: string;
@@ -178,7 +179,10 @@ export async function loadReportModel(
   const result = computeAudit(scoringSections, answerMap, generalRows, branchName);
 
   const [urls, history] = await Promise.all([
-    signedPhotoUrls(photoRows.map((photo) => photo.storage_path)),
+    signedPhotoUrls(
+      auditId,
+      photoRows.map((photo) => photo.storage_path),
+    ).catch(() => null),
     options.includeHistory === false
       ? Promise.resolve([])
       : // Historical data is supplementary. Never show a partial history as
@@ -224,7 +228,7 @@ export async function loadReportModel(
             const questionPhotos = photoRows
               .filter((photo) => photo.question_id === question.id)
               .map((photo) => {
-                const photoUrl = urls[photo.storage_path] ?? "";
+                const photoUrl = urls?.[photo.storage_path] ?? "";
                 if (photoUrl) {
                   allPhotos.push({
                     photoId: photo.id,
@@ -307,6 +311,7 @@ export async function loadReportModel(
     result,
     history: history ?? [],
     historyUnavailable: history === null,
+    photosUnavailable: urls === null,
     ncrs,
     allPhotos,
   };

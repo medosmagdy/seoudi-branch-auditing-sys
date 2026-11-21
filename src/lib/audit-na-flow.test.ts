@@ -74,6 +74,15 @@ it("retains inherited question/section N/A through a partial zero save, summary,
     const url = new URL(input),
       table = url.pathname.split("/").at(-1),
       select = url.searchParams.get("select") || "";
+    if (table === "sqop_audit_na_defaults") {
+      expect(url.searchParams.get("p_audit_id")).toBe("new");
+      return json({
+        answers: sourceChanged
+          ? []
+          : [{ question_id: "q-na", score: null, is_na: true, comment: null }],
+        statuses: sourceChanged ? [] : [{ section_id: "excluded", is_na: true }],
+      });
+    }
     if (init.method === "POST") {
       const rows = JSON.parse(String(init.body));
       expect(new Headers(init.headers).get("Prefer")).toContain("resolution=ignore-duplicates");

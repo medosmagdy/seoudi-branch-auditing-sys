@@ -247,47 +247,6 @@ export function ChecklistManager() {
     refresh();
   };
 
-  const purgeChecklist = async () => {
-    const { data: oldQuestions } = await supabase
-      .from("questions")
-      .select("id")
-      .eq("audit_type_id", typeId)
-      .throwOnError();
-    const ids = (oldQuestions ?? []).map((question) => question.id);
-    if (ids.length) {
-      const { count } = await supabase
-        .from("audit_answers")
-        .select("id", { count: "exact", head: true })
-        .in("question_id", ids)
-        .throwOnError();
-      if (count && count > 0) {
-        await supabase
-          .from("questions")
-          .update({ active: false })
-          .eq("audit_type_id", typeId)
-          .throwOnError();
-        await supabase
-          .from("sections")
-          .update({ active: false })
-          .eq("audit_type_id", typeId)
-          .throwOnError();
-        return "archived" as const;
-      }
-      await supabase.from("questions").delete().eq("audit_type_id", typeId).throwOnError();
-    }
-    const { data: oldSections } = await supabase
-      .from("sections")
-      .select("id")
-      .eq("audit_type_id", typeId)
-      .throwOnError();
-    const sectionIds = (oldSections ?? []).map((section) => section.id);
-    if (sectionIds.length) {
-      await supabase.from("headers").delete().in("section_id", sectionIds).throwOnError();
-      await supabase.from("sections").delete().eq("audit_type_id", typeId).throwOnError();
-    }
-    return "deleted" as const;
-  };
-
   // معالج استيراد ذكي وشامل لجميع أنواع الفحوصات (FS, GHP, FSMS)
   const importChecklist = async (file: File) => {
     if (importing) return;
@@ -297,20 +256,13 @@ export function ChecklistManager() {
     }
     setImporting(true);
     try {
-      const { readChecklistFile, validateChecklistWorkbook, importChecklistWorkbook } =
-        await import("@/lib/checklist-import");
+      const { readChecklistFile, saveChecklistWorkbook } = await import("@/lib/checklist-import");
       const workbook = await readChecklistFile(file);
-      await validateChecklistWorkbook(workbook, {
+      const { totalSections, totalQuestions } = await saveChecklistWorkbook(
+        workbook,
         typeId,
-        sectionCount: tree?.sections?.length ?? 0,
-        questionCount: tree?.questions?.length ?? 0,
-      });
-      await (replaceExisting ? purgeChecklist() : Promise.resolve(null));
-      const { totalSections, totalQuestions } = await importChecklistWorkbook(workbook, {
-        typeId,
-        sectionCount: tree?.sections?.length ?? 0,
-        questionCount: tree?.questions?.length ?? 0,
-      });
+        replaceExisting,
+      );
 
       toast.success(`تم استيراد ${totalSections} قسماً و ${totalQuestions} بنداً بنجاح!`);
     } catch (error: any) {

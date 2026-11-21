@@ -457,3 +457,84 @@ export async function validateChecklistWorkbook(
     throw new Error("الملف لا يحتوي على بنود فحص قابلة للاستيراد؛ لم يتم استبدال القائمة الحالية");
   return result;
 }
+
+type ManifestRow = { [key: string]: import("@/integrations/supabase/types").Json | undefined };
+
+export async function buildChecklistImportManifest(workbook: XLSX.WorkBook, typeId: string) {
+  const rows = {
+    sections: [] as ManifestRow[],
+    headers: [] as ManifestRow[],
+    questions: [] as ManifestRow[],
+  };
+  const defaults = new Map<string, string>();
+  const sink = {
+    from(table: keyof typeof rows) {
+      return {
+        insert(raw: ManifestRow) {
+          const id = crypto.randomUUID();
+          const row = { ...raw, id };
+          if (table === "questions" && typeof raw["section_id"] === "string" && !raw["header_id"]) {
+            let headerId = defaults.get(raw["section_id"]);
+            if (!headerId) {
+              headerId = crypto.randomUUID();
+              rows.headers.push({
+                id: headerId,
+                section_id: raw["section_id"],
+                label_ar: "عام",
+                order_index: -1,
+              });
+              defaults.set(raw["section_id"], headerId);
+            }
+            Object.assign(row, { header_id: headerId });
+          }
+          rows[table].push(row);
+          const query = {
+            select: () => query,
+            single: () => query,
+            throwOnError: async () => ({ data: { id }, error: null }),
+          };
+          return query;
+        },
+      };
+    },
+  };
+  const result = await importChecklistWorkbook(
+    workbook,
+    { typeId, sectionCount: 0, questionCount: 0 },
+    sink as unknown as typeof supabase,
+  );
+  if (!result.totalQuestions)
+    throw new Error("الملف لا يحتوي على بنود فحص قابلة للاستيراد؛ لم يتم تغيير القائمة الحالية");
+  return rows;
+}
+
+export async function saveChecklistWorkbook(
+  workbook: XLSX.WorkBook,
+  typeId: string,
+  replace: boolean,
+) {
+  const rows = await buildChecklistImportManifest(workbook, typeId);
+  const { data, error } = await supabase.rpc("sqop_import_checklist", {
+    p_type_id: typeId,
+    p_replace: replace,
+    p_rows: rows,
+  });
+  if (error) {
+    if (["PGRST202", "42883"].includes(error.code))
+      throw new Error("الاستيراد الآمن لم يُفعّل على قاعدة البيانات؛ لم يتم تغيير القائمة.");
+    if (error.code === "55000")
+      throw new Error(
+        "البرنامج فيه فحوصات محفوظة؛ الاستيراد متوقف لحماية درجاتها. استخدم برنامجًا جديدًا.",
+      );
+    throw new Error(error.message);
+  }
+  if (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data) ||
+    typeof data["totalSections"] !== "number" ||
+    typeof data["totalQuestions"] !== "number"
+  )
+    throw new Error("تعذر تأكيد نتيجة استيراد القائمة. أعد تحميلها قبل المحاولة مرة أخرى.");
+  return { totalSections: data["totalSections"], totalQuestions: data["totalQuestions"] };
+}

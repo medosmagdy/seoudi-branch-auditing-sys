@@ -1,7 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
-import { photoUploadServerFn, registerPhotoServerFn, deletePhotoServerFn } from "./photo.functions";
+import {
+  photoUploadServerFn,
+  registerPhotoServerFn,
+  deletePhotoServerFn,
+  readAuditPhotoServerFn,
+} from "./photo.functions";
 import { createPhotoAuthorization, deleteWithSessionRecovery } from "./photo-auth";
-const R2_PUBLIC_URL = (import.meta.env["VITE_R2_PUBLIC_URL"] || "").replace(/\/$/, "");
 // Access the lazy client only when a photo operation actually runs.
 const photoAuthorization = createPhotoAuthorization({
   getSession: () => supabase.auth.getSession(),
@@ -102,20 +106,22 @@ export async function deletePhoto(photoId: string, _storagePath: string) {
     deletePhotoServerFn({ data: { photoId }, headers }),
   );
 }
-export async function signedPhotoUrls(storagePaths: string[]): Promise<Record<string, string>> {
-  if (!storagePaths.length) return {};
-
-  const map: Record<string, string> = {};
-
-  storagePaths.forEach((path) => {
-    if (path.startsWith("http://") || path.startsWith("https://")) {
-      map[path] = path;
-    } else if (R2_PUBLIC_URL) {
-      map[path] = `${R2_PUBLIC_URL}/${path.split("/").map(encodeURIComponent).join("/")}`;
-    } else {
-      map[path] = "";
-    }
-  });
-
-  return map;
+export async function signedPhotoUrls(
+  auditId: string,
+  photoIds: string[],
+): Promise<Record<string, string>> {
+  if (!photoIds.length) return {};
+  const headers = await authorizationHeaders();
+  const unique = [...new Set(photoIds)];
+  const urls: Record<string, string> = {};
+  for (let start = 0; start < unique.length; start += 100) {
+    Object.assign(
+      urls,
+      await readAuditPhotoServerFn({
+        data: { auditId, photoIds: unique.slice(start, start + 100) },
+        headers,
+      }),
+    );
+  }
+  return urls;
 }

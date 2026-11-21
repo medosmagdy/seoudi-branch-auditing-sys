@@ -132,6 +132,15 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
         </div>
 
         {/* 3. اتجاه درجات الفرع شهريًا */}
+        {model.photosUnavailable && (
+          <p
+            data-report-block
+            role="status"
+            className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+          >
+            تعذر تحميل صور الفحص. قد لا يحتوي هذا التقرير على جميع المرفقات.
+          </p>
+        )}
         {model.historyUnavailable && (
           <p
             data-report-block

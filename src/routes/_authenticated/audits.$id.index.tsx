@@ -270,10 +270,12 @@ function AuditRunner() {
     return map;
   }, [data]);
 
-  const { data: photoUrls } = useQuery({
-    queryKey: ["photo-urls", id, data?.photos.length],
+  const { data: photoUrls, isError: photoUrlsError, refetch: reloadPhotoUrls } = useQuery({
+    queryKey: ["photo-urls", id, data?.photos.map((photo) => photo.storage_path)],
     enabled: !!data && data.photos.length > 0,
-    queryFn: () => signedPhotoUrls((data?.photos ?? []).map((photo) => photo.storage_path)),
+    queryFn: () => signedPhotoUrls(id, (data?.photos ?? []).map((photo) => photo.id)),
+    staleTime: 25 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
   });
 
   const scoringSections: ScoringSection[] = useMemo(() => {
@@ -758,6 +760,11 @@ function AuditRunner() {
 
                 {questionPhotos.length > 0 && (
                   <div className="mt-3 border-t border-border/50 pt-3">
+                    {photoUrlsError && (
+                      <Button size="sm" variant="outline" onClick={() => void reloadPhotoUrls()}>
+                        تعذر عرض الصور — أعد المحاولة
+                      </Button>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       {questionPhotos.map((photo) => (
                         <div

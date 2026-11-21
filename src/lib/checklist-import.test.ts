@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as XLSX from "xlsx";
-const db = vi.hoisted(() => ({ trace: [] as unknown[], nextId: 0, failAt: 0, errorAt: 0 }));
+const db = vi.hoisted(() => ({
+  trace: [] as unknown[],
+  nextId: 0,
+  failAt: 0,
+  errorAt: 0,
+  rpc: vi.fn(),
+}));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
+    rpc: db.rpc,
     from(table: string) {
       const query = {
         insert(payload: unknown) {
@@ -41,6 +48,7 @@ import {
   importChecklistWorkbook,
   importChecklistFile,
   readChecklistFile,
+  saveChecklistWorkbook,
   validateChecklistWorkbook,
 } from "./checklist-import";
 import { importChecklistWorkbook as beforeImport } from "./__fixtures__/pre-refactor-checklist-import";
@@ -174,4 +182,27 @@ describe("checklist format preflight before replacement", () => {
     ).rejects.toThrow("لا يحتوي");
     expect(db.trace).toHaveLength(before);
   });
+});
+
+it("rejects an empty import locally and stages a valid workbook into one atomic request", async () => {
+  db.rpc.mockReset();
+  await expect(
+    saveChecklistWorkbook(workbook("Unsupported", [["Unrelated title"]]), "type", true),
+  ).rejects.toThrow("لا يحتوي");
+  expect(db.rpc).not.toHaveBeenCalled();
+
+  db.rpc.mockResolvedValue({ data: { totalSections: 2, totalQuestions: 3 }, error: null });
+  const priorWrites = db.trace.length;
+  await expect(saveChecklistWorkbook(files[0]!, "type", true)).resolves.toEqual({
+    totalSections: 2,
+    totalQuestions: 3,
+  });
+  expect(db.trace).toHaveLength(priorWrites);
+  expect(db.rpc).toHaveBeenCalledTimes(1);
+  const [name, { p_type_id, p_replace, p_rows }] = db.rpc.mock.calls[0]!;
+  expect([name, p_type_id, p_replace]).toEqual(["sqop_import_checklist", "type", true]);
+  for (const q of p_rows.questions)
+    expect(p_rows.headers).toContainEqual(
+      expect.objectContaining({ id: q.header_id, section_id: q.section_id }),
+    );
 });

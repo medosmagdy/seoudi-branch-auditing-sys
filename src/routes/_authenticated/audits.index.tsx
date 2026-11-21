@@ -301,6 +301,8 @@ function AuditsList() {
       for (const [index, audit] of selected.entries()) {
         setBulkProgress(`تجهيز ${index + 1} من ${selected.length}`);
         const model = await loadReportModel(audit.id, { includePhotos: kind === "pdf", includeHistory: kind === "pdf" });
+        if (model.status !== "submitted" && model.status !== "approved")
+          throw new Error("حالة أحد الفحوصات اتغيّرت أثناء التصدير. حدّث السجل وحاول مرة تانية.");
         const base = auditReportFileBase(model);
         const unique = `${base} - ${audit.id}`;
         if (kind === "excel") {

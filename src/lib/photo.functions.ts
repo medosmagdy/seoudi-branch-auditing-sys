@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { photoDeleteResult } from "./photo-delete-result";
+import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { ServerDatabase } from "./server-access.server";
 const upload = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("audit"),
@@ -54,3 +56,12 @@ export const deletePhotoServerFn = createServerFn({ method: "POST" })
       );
     }),
   );
+export const readAuditPhotoServerFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator(
+    z.object({ auditId: z.string().uuid(), photoIds: z.array(z.string().uuid()).max(100) }),
+  )
+  .handler(async ({ data, context }) => {
+    const { signAuditPhotoReads } = await import("./photo-storage.server");
+    return signAuditPhotoReads(context.supabase as unknown as ServerDatabase, data);
+  });

@@ -14,11 +14,12 @@ describe("browser environment credential boundary", () => {
     expect(result).toEqual({
       "import.meta.env.VITE_SUPABASE_URL": '"https://example.test"',
       "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": '"public-key"',
-      "import.meta.env.VITE_R2_PUBLIC_URL": '"https://images.example.test"',
     });
-    expect(JSON.stringify(result)).not.toMatch(/sentinel|private-access|another-secret/);
+    expect(JSON.stringify(result)).not.toMatch(
+      /sentinel|private-access|another-secret|images\.example/,
+    );
   });
   it("handles absent public settings without exposing fallback environment contents", () => {
-    expect(Object.values(publicEnvDefines({}))).toEqual(['""', '""', '""']);
+    expect(Object.values(publicEnvDefines({}))).toEqual(['""', '""']);
   });
 });

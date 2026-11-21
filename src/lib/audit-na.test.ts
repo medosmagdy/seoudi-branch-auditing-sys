@@ -64,6 +64,8 @@ describe("N/A carry-over across partial saves", () => {
   it("keeps prior reads branch/program scoped and older than the current audit", async () => {
     network.fetch.mockImplementation(async (input: string) => {
       const url = new URL(input);
+      if (url.pathname.endsWith("/sqop_audit_na_defaults"))
+        return json({ code: "PGRST202", message: "not installed" }, 404);
       if (url.pathname.endsWith("/audits")) {
         expect(url.searchParams.get("branch_id")).toBe("eq.branch");
         expect(url.searchParams.get("audit_type_id")).toBe("eq.FS");
@@ -84,6 +86,11 @@ describe("N/A carry-over across partial saves", () => {
       statuses: [{ section_id: "excluded" }],
     });
     expect(network.fetch.mock.calls.every(([, init]) => init.method === "GET")).toBe(true);
+  });
+  it("does not fall back to legacy reads when the protected endpoint denies access", async () => {
+    network.fetch.mockResolvedValue(json({ code: "42501", message: "not permitted" }, 403));
+    await expect(loadAuditNaDefaults(audit)).rejects.toMatchObject({ code: "42501" });
+    expect(network.fetch).toHaveBeenCalledTimes(1);
   });
   it("never dynamically changes a submitted audit from a later/default source", async () => {
     expect(await loadAuditNaDefaults({ ...audit, status: "submitted" })).toEqual({
@@ -111,6 +118,8 @@ describe("N/A carry-over across partial saves", () => {
 it("copies active N/A defaults as part of explicit audit creation before the runner opens", async () => {
   network.fetch.mockImplementation(async (input: string, init: RequestInit) => {
     const url = new URL(input);
+    if (url.pathname.endsWith("/sqop_audit_na_defaults"))
+      return json({ code: "PGRST202", message: "not installed" }, 404);
     if (init.method === "POST") return new Response(null, { status: 201 });
     if (url.pathname.endsWith("/audits"))
       return json(url.searchParams.get("id") === "eq.new" ? audit : { id: "previous" });
