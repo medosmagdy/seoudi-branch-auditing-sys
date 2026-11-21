@@ -7,6 +7,11 @@ import {
   type ServerDatabase,
 } from "./server-access.server";
 import { z } from "zod";
+import {
+  auditPhotoIdentityColumns,
+  auditPhotoObjectName,
+  isUploadPhotoName,
+} from "./audit-photo-name";
 export const photoUploadSchema = z.discriminatedUnion("scope", [
   z.object({
     scope: z.literal("audit"),
@@ -54,7 +59,17 @@ export async function createPhotoUpload(
   await authorizeUpload(db, token, input);
   const prefix =
     input.scope === "audit" ? `${input.recordId}/${input.questionId}` : `expiry/${input.recordId}`;
-  const path = `${prefix}/${Date.now()}-${crypto.randomUUID()}.jpg`;
+  const nonce = crypto.randomUUID();
+  let fileName = `${Date.now()}-${nonce}.jpg`;
+  if (input.scope === "audit") {
+    const { data } = await db
+      .from("audits")
+      .select(auditPhotoIdentityColumns)
+      .eq("id", input.recordId)
+      .maybeSingle();
+    fileName = auditPhotoObjectName(data ?? {}, input.recordId, nonce);
+  }
+  const path = `${prefix}/${fileName}`;
   const { client, bucket } = storage();
   const url = await getSignedUrl(client, new PutObjectCommand({ Bucket: bucket, Key: path }), {
     expiresIn: 300,
@@ -72,7 +87,7 @@ export async function registerPhoto(db: ServerDatabase, token: string | undefine
     upload.scope === "audit"
       ? `${upload.recordId}/${upload.questionId}/`
       : `expiry/${upload.recordId}/`;
-  if (!path.startsWith(prefix) || !/^\d+-[a-f0-9-]+\.jpg$/.test(path.slice(prefix.length)))
+  if (!path.startsWith(prefix) || !isUploadPhotoName(path.slice(prefix.length), upload.scope))
     throw new Error("مسار الصورة غير صالح");
   const result =
     upload.scope === "audit"

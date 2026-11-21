@@ -25,6 +25,9 @@ function scenario(
         id: auditId,
         status: "submitted",
         branch_id: "permitted",
+        audit_date: "2026-09-25",
+        branches: { name_ar: "شيراتون", name_en: null },
+        audit_types: { code: "FSMS", name_ar: "أنظمة سلامة الغذاء", name_en: "FSMS" },
         created_by: opts.owner ?? "reviewer",
         auditor_id: opts.owner ?? "reviewer",
       },
@@ -87,6 +90,9 @@ describe("authenticated audit photo response", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(response.headers.get("location")).toBeNull();
     expect(response.headers.get("content-type")).toBe("image/jpeg");
+    expect(response.headers.get("content-disposition")).toBe(
+      `inline; filename*=UTF-8''Sheraton-FSMS-Audit-Report-Q3-2026-52345678--${photoId}.jpg`,
+    );
     expect(await response.text()).toBe("photo bytes");
     expect(storage).toHaveBeenCalledWith(key);
   });

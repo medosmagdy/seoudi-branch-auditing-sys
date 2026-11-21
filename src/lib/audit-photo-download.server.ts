@@ -1,6 +1,7 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { z } from "zod";
 import { canReadAudit } from "./permissions";
+import { auditPhotoFileBase, auditPhotoIdentityColumns } from "./audit-photo-name";
 import { requireAuditWrite, requireServerActor, type ServerDatabase } from "./server-access.server";
 
 const photoIdSchema = z.string().uuid();
@@ -71,7 +72,7 @@ export async function serveAuditPhoto(
   if (photo.error || !photo.data) return fail(404);
   const audit = await db
     .from("audits")
-    .select("id, auditor_id, created_by, status, branch_id")
+    .select(`id, auditor_id, created_by, status, branch_id, ${auditPhotoIdentityColumns}`)
     .eq("id", photo.data.audit_id)
     .maybeSingle();
   if (audit.error || !audit.data) return fail(404);
@@ -115,8 +116,13 @@ export async function serveAuditPhoto(
   try {
     const image = await getImage(key);
     if (!image.Body) return fail(404);
+    const filename = `${auditPhotoFileBase(audit.data, audit.data.id)}--${photoId}.${extension}`;
     return new Response(image.Body.transformToWebStream() as ReadableStream<Uint8Array>, {
-      headers: { ...headers, "Content-Type": contentType },
+      headers: {
+        ...headers,
+        "Content-Type": contentType,
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      },
     });
   } catch {
     return fail(502);

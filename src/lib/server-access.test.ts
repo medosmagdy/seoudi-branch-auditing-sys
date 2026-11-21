@@ -77,6 +77,9 @@ const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
       auditor_id: state.owner,
       created_by: state.owner,
       status: "draft",
+      audit_date: "2026-10-26",
+      branches: { name_ar: "التجمع", name_en: null },
+      audit_types: { code: "FS", name_ar: "سلامة الغذاء", name_en: "Food Safety" },
     });
   if (table === "questions") return response({ id: id(3), audit_type_id: state.questionType });
   if (table === "photos") return response({ id: id(7), audit_id: id(2), storage_path: path });
@@ -174,7 +177,11 @@ describe("server-side authorization and storage operations with isolated mocks",
     state.questionType = id(9);
     const result = await createPhotoUpload(client, "test-token", upload);
     expect(result.url).toBe("https://storage.example.test/upload");
-    expect(result.path).toMatch(new RegExp(`^${id(2)}/${id(3)}/\\d+-[a-f0-9-]+\\.jpg$`));
+    expect(result.path).toMatch(
+      new RegExp(
+        `^${id(2)}/${id(3)}/Silver-Star-FS-Audit-Report-26-10-2026-${id(2).slice(0, 8)}--[a-f0-9-]{36}\\.jpg$`,
+      ),
+    );
     expect(r2.sign.mock.calls[0]![2]).toEqual({ expiresIn: 300 });
     expect(state.calls.every((call) => call.method === "GET")).toBe(true);
   });
@@ -194,6 +201,11 @@ describe("server-side authorization and storage operations with isolated mocks",
       audit_id: id(2),
       question_id: id(3),
       storage_path: path,
+    });
+    const named = (await createPhotoUpload(client, "test-token", upload)).path;
+    await registerPhoto(client, "test-token", { upload, path: named });
+    expect(state.calls.filter((call) => call.method === "POST").at(-1)?.body).toMatchObject({
+      storage_path: named,
     });
     state.writeFails = true;
     await expect(registerPhoto(client, "test-token", { upload, path })).rejects.toThrow(
