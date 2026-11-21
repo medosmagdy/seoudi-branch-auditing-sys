@@ -10,7 +10,7 @@ vi.mock("@/integrations/supabase/client", async () => {
     }),
   };
 });
-vi.mock("@/lib/photos", () => ({ publicAuditPhotoUrls: () => ({}) }));
+vi.mock("@/lib/photos", () => ({ loadAuditPhotoUrls: async () => ({}) }));
 import { loadReportModel } from "./report-data";
 
 it("uses report scores consistently for each month's own data, keeping existing month aggregation", async () => {

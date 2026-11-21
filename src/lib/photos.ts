@@ -101,19 +101,44 @@ export async function deletePhoto(photoId: string, _storagePath: string) {
     deletePhotoServerFn({ data: { photoId }, headers }),
   );
 }
-export function publicAuditPhotoUrls(
-  storagePaths: string[],
-  publicBase = import.meta.env["VITE_R2_PUBLIC_URL"] || "",
-): Record<string, string> {
-  const base = publicBase.trim().replace(/\/+$/, "");
-  return Object.fromEntries(
-    storagePaths.map((path) => [
-      path,
-      /^https?:\/\//i.test(path)
-        ? path
-        : base
-          ? `${base}/${path.split("/").map(encodeURIComponent).join("/")}`
-          : "",
-    ]),
-  );
+async function fetchAuditPhoto(photoId: string, headers: { Authorization: string }) {
+  const response = await fetch(`/api/audit-photos/${encodeURIComponent(photoId)}`, {
+    headers,
+    cache: "no-store",
+  });
+  if (response.status === 401) throw new Error("سجّل الدخول أولًا لعرض الصورة أو تنزيلها");
+  if (!response.ok) throw new Error("تعذر تحميل الصورة");
+  return response.blob();
+}
+
+export async function loadAuditPhotoUrls(photoIds: string[]): Promise<Record<string, string>> {
+  if (!photoIds.length) return {};
+  const headers = await authorizationHeaders();
+  const urls: Record<string, string> = {};
+  const ids = [...new Set(photoIds)];
+  for (let i = 0; i < ids.length; i += 5) {
+    await Promise.allSettled(
+      ids.slice(i, i + 5).map(async (id) => {
+        const image = await fetchAuditPhoto(id, headers);
+        urls[id] = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(image);
+        });
+      }),
+    );
+  }
+  return urls;
+}
+
+export async function downloadAuditPhoto(photoId: string) {
+  const image = await fetchAuditPhoto(photoId, await authorizationHeaders());
+  const extension = image.type === "image/jpeg" ? "jpg" : image.type.split("/")[1] || "jpg";
+  const url = URL.createObjectURL(image);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `audit-photo-${photoId.slice(0, 8)}.${extension}`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

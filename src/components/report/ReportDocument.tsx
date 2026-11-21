@@ -1,3 +1,4 @@
+import { AuditPhotoDownloadButton } from "@/components/AuditPhotoDownloadButton";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { PdfMonthlyTrend } from "./PdfMonthlyTrend";
 import { useState } from "react";
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 
 export function ReportDocument({ model, forPdf = false }: { model: ReportModel; forPdf?: boolean }) {
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string; photoId: string } | null>(null);
   const rawScore = Number(model?.result?.finalScore);
   const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
   const isPassed = finalPercentage >= 85;
@@ -344,7 +345,7 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
               >
 <button
                 type="button"
-                onClick={() => setSelectedPhoto({ url: item.url, alt: item.questionText })}
+                onClick={() => setSelectedPhoto({ url: item.url, alt: item.questionText, photoId: item.photoId })}
                 className="group relative block h-52 w-full overflow-hidden rounded-lg border border-border/80 bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 aria-label={`تكبير صورة ${item.questionText}`}
               >
@@ -439,16 +440,7 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
           >
             ×
           </button>
-          <a
-            href={selectedPhoto.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-            className="absolute left-4 top-4 rounded-full bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25"
-            onClick={(event) => event.stopPropagation()}
-          >
-            فتح / تنزيل الصورة
-          </a>
+          <AuditPhotoDownloadButton photoId={selectedPhoto.photoId} />
           <img
             src={selectedPhoto.url}
             alt={selectedPhoto.alt}

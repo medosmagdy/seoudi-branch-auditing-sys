@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { computeAudit, type ScoringSection } from "@/lib/scoring";
-import { deletePhoto, publicAuditPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
+import { deletePhoto, loadAuditPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
 import { loadActiveChecklistTree } from "@/lib/checklist-data";
 import { useSession } from "@/hooks/useSession";
 import { canEditAudit } from "@/lib/permissions";
@@ -270,10 +270,12 @@ function AuditRunner() {
     return map;
   }, [data]);
 
-  const photoUrls = useMemo(
-    () => publicAuditPhotoUrls((data?.photos ?? []).map((photo) => photo.storage_path)),
-    [data],
-  );
+  const photoIds = (data?.photos ?? []).map((photo) => photo.id);
+  const { data: photoUrls, refetch: retryPhotoUrls, isFetching: loadingPhotoUrls } = useQuery({
+    queryKey: ["audit-photo-bytes", id, photoIds],
+    enabled: photoIds.length > 0,
+    queryFn: () => loadAuditPhotoUrls(photoIds),
+  });
 
   const scoringSections: ScoringSection[] = useMemo(() => {
     if (!data) return [];
@@ -763,13 +765,24 @@ function AuditRunner() {
                           key={photo.id}
                           className="relative rounded-lg border border-border p-1 bg-muted/20"
                         >
-                          <ImageLightbox
-                            src={photoUrls[photo.storage_path] ?? ""}
-                            showDirectLink
-                            alt="Audit evidence"
-                            className="size-16"
-                            imageClassName="size-16 rounded-md object-cover"
-                          />
+                          {photoUrls?.[photo.id] ? (
+                            <ImageLightbox
+                              src={photoUrls[photo.id]!}
+                              auditPhotoId={photo.id}
+                              alt="Audit evidence"
+                              className="size-16"
+                              imageClassName="size-16 rounded-md object-cover"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={loadingPhotoUrls}
+                              className="grid size-16 place-items-center p-1 text-xs"
+                              onClick={() => void retryPhotoUrls()}
+                            >
+                              {loadingPhotoUrls ? "جارٍ التحميل…" : "إعادة تحميل الصورة"}
+                            </button>
+                          )}
                           {!readOnly && (
                             <button
                               type="button"

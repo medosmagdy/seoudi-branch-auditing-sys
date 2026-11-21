@@ -9,7 +9,7 @@ vi.mock("@/integrations/supabase/client", async () => {
     }),
   };
 });
-vi.mock("@/lib/photos", () => ({ publicAuditPhotoUrls: () => ({}) }));
+vi.mock("@/lib/photos", () => ({ loadAuditPhotoUrls: async () => ({}) }));
 import { loadReportModel } from "./report-data";
 import { finalizeAudit } from "./finalize-audit";
 import { buildAuditWorkbook } from "./audit-workbook";

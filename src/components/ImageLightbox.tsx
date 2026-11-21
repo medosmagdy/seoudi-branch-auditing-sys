@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { AuditPhotoDownloadButton } from "./AuditPhotoDownloadButton";
 
 type ImageLightboxProps = {
   src: string;
   alt: string;
   className?: string;
   imageClassName?: string;
-  showDirectLink?: boolean;
+  auditPhotoId?: string;
 };
 
 export function ImageLightbox({
@@ -15,7 +16,7 @@ export function ImageLightbox({
   alt,
   className,
   imageClassName,
-  showDirectLink,
+  auditPhotoId,
 }: ImageLightboxProps) {
   const [open, setOpen] = useState(false);
 
@@ -53,18 +54,7 @@ export function ImageLightbox({
           >
             ×
           </button>
-          {showDirectLink && src && (
-            <a
-              href={src}
-              target="_blank"
-              rel="noopener noreferrer"
-              download
-              className="absolute left-4 top-4 rounded-full bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25"
-              onClick={(event) => event.stopPropagation()}
-            >
-              فتح / تنزيل الصورة
-            </a>
-          )}
+          {auditPhotoId && <AuditPhotoDownloadButton photoId={auditPhotoId} />}
           <img
             src={src}
             alt={alt}

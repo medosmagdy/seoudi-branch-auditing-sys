@@ -13,22 +13,9 @@ vi.mock("@/integrations/supabase/client", () => ({
     },
   },
 }));
-import { publicAuditPhotoUrls, uploadQuestionPhotos } from "./photos";
+import { uploadQuestionPhotos } from "./photos";
 
 afterEach(() => vi.unstubAllGlobals());
-
-it("opens an audit image by its public link without a session or signing request", () => {
-  const path = "audit/question/evidence #1.jpg";
-  const remote = "https://legacy.example.test/image.jpg";
-  const request = vi.fn();
-  vi.stubGlobal("fetch", request);
-  expect(publicAuditPhotoUrls([path, remote], "https://bucket.example.test/")).toEqual({
-    [path]: "https://bucket.example.test/audit/question/evidence%20%231.jpg",
-    [remote]: remote,
-  });
-  expect(request).not.toHaveBeenCalled();
-  expect(mock.sign).not.toHaveBeenCalled();
-});
 
 it("returns successful attachments before and after an individual failed upload", async () => {
   mock.sign
