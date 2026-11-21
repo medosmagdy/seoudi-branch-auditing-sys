@@ -108,7 +108,7 @@ async function fetchAuditPhoto(photoId: string, headers: { Authorization: string
   });
   if (response.status === 401) throw new Error("سجّل الدخول أولًا لعرض الصورة أو تنزيلها");
   if (!response.ok) throw new Error("تعذر تحميل الصورة");
-  return response.blob();
+  return response;
 }
 
 export async function loadAuditPhotoUrls(photoIds: string[]): Promise<Record<string, string>> {
@@ -119,7 +119,8 @@ export async function loadAuditPhotoUrls(photoIds: string[]): Promise<Record<str
   for (let i = 0; i < ids.length; i += 5) {
     await Promise.allSettled(
       ids.slice(i, i + 5).map(async (id) => {
-        const image = await fetchAuditPhoto(id, headers);
+        const photo = await fetchAuditPhoto(id, headers);
+        const image = await photo.blob();
         urls[id] = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result));
@@ -133,12 +134,22 @@ export async function loadAuditPhotoUrls(photoIds: string[]): Promise<Record<str
 }
 
 export async function downloadAuditPhoto(photoId: string) {
-  const image = await fetchAuditPhoto(photoId, await authorizationHeaders());
+  const response = await fetchAuditPhoto(photoId, await authorizationHeaders());
+  const image = await response.blob();
   const extension = image.type === "image/jpeg" ? "jpg" : image.type.split("/")[1] || "jpg";
   const url = URL.createObjectURL(image);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `audit-photo-${photoId.slice(0, 8)}.${extension}`;
+  const named = response.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i);
+  let filename = `audit-photo-${photoId.slice(0, 8)}.${extension}`;
+  if (named) {
+    try {
+      filename = decodeURIComponent(named[1]!);
+    } catch {
+      // An older server or a malformed name should not prevent downloading.
+    }
+  }
+  link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
