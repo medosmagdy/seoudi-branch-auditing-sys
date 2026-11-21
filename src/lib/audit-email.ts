@@ -206,6 +206,7 @@ export async function auditEmailDraft(input: {
   cc: string;
   pdf: Blob;
   pdfName: string;
+  renderHtml?: (body: string) => string;
 }) {
   if (/[\r\n]/.test(input.subject) || !input.subject.trim() || input.subject.length > 500)
     throw new Error("عنوان الرسالة غير صالح");
@@ -242,7 +243,7 @@ export async function auditEmailDraft(input: {
     "",
     lines(
       encoded(
-        `<!doctype html><html><head><meta charset="UTF-8"></head><body>${auditEmailHtml(input.body)}</body></html>`,
+        `<!doctype html><html><head><meta charset="UTF-8"></head><body>${(input.renderHtml ?? auditEmailHtml)(input.body)}</body></html>`,
       ),
     ),
     `--${alt}--`,

@@ -12,15 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  auditEmailDraft,
-  auditEmailHtml,
-  downloadEmailDraft,
-  emailRecipients,
-} from "@/lib/audit-email";
+import { auditEmailDraft, downloadEmailDraft, emailRecipients } from "@/lib/audit-email";
 import { summarizeNcr, type NcrFilters } from "@/lib/ncr-management";
 import { loadNcrAnalysis, loadNcrRecipients } from "@/lib/report-feature-client";
-import { NcrAnalysisReport, ncrProgramLabel, scoreLabel } from "./NcrAnalysisReport";
+import { ncrMailHtml, ncrMailTemplate, ncrProgramLabel, scoreLabel } from "@/lib/ncr-presentation";
+import { NcrAnalysisReport } from "./NcrAnalysisReport";
 
 type Analysis = Awaited<ReturnType<typeof loadNcrAnalysis>>;
 export function NcrAnalysisView({
@@ -53,18 +49,9 @@ export function NcrAnalysisView({
 
   async function openMail() {
     if (addressesBusy || busy) return;
-    setSubject(
-      `تحليل عدم المطابقة | ${analysis.branch.name} | ${ncrProgramLabel[filters.program]} | ${filters.start} إلى ${filters.end}`,
-    );
-    setBody(
-      [
-        "السادة الأفاضل،",
-        "تحية طيبة وبعد،،،",
-        `مرفق تقرير تحليل حالات عدم المطابقة لفرع ${analysis.branch.name} عن الفترة من ${filters.start} إلى ${filters.end} (${ncrProgramLabel[filters.program]}).`,
-        `التقرير يشمل ${overall.visits} أوديت معتمد و${overall.findings} حالة عدم مطابقة، منها ${repeated.length} نمط متكرر.`,
-        "برجاء مراجعة الأولويات الموضحة بالتقرير ومتابعة الإجراءات التصحيحية.",
-      ].join("\n\n"),
-    );
+    const draft = ncrMailTemplate(analysis.branch, filters, summary);
+    setSubject(draft.subject);
+    setBody(draft.body);
     setTo("");
     setCc("");
     setAddressHint("");
@@ -99,7 +86,7 @@ export function NcrAnalysisView({
       if (mode === "copy") {
         await navigator.clipboard.write([
           new ClipboardItem({
-            "text/html": new Blob([auditEmailHtml(body)], { type: "text/html" }),
+            "text/html": new Blob([ncrMailHtml(body)], { type: "text/html" }),
             "text/plain": new Blob([body], { type: "text/plain" }),
           }),
         ]);
@@ -112,7 +99,15 @@ export function NcrAnalysisView({
       const pdf = await nodeToPdfBlob(node);
       if (mode === "pdf") downloadEmailDraft(pdf, `${file}.pdf`);
       else {
-        const eml = await auditEmailDraft({ subject, body, to, cc, pdf, pdfName: `${file}.pdf` });
+        const eml = await auditEmailDraft({
+          subject,
+          body,
+          to,
+          cc,
+          pdf,
+          pdfName: `${file}.pdf`,
+          renderHtml: ncrMailHtml,
+        });
         downloadEmailDraft(eml, `${file}.eml`);
         toast.success("مسودة البريد جاهزة بالـPDF؛ افتحها في Outlook وراجع المستلمين");
       }
@@ -377,6 +372,10 @@ export function NcrAnalysisView({
                 onChange={(event) => setBody(event.target.value)}
               />
             </label>
+            <details className="rounded-lg border p-3">
+              <summary className="cursor-pointer text-sm font-semibold">معاينة شكل الإيميل</summary>
+              <div className="mt-3" dangerouslySetInnerHTML={{ __html: ncrMailHtml(body) }} />
+            </details>
             <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
