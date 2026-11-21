@@ -1,11 +1,17 @@
 import { forwardRef, type ReactNode } from "react";
-import type { NcrAudit, NcrBranch, NcrFilters } from "@/lib/ncr-management";
+import {
+  deliveryLastHighlights,
+  type NcrAudit,
+  type NcrBranch,
+  type NcrFilters,
+} from "@/lib/ncr-management";
 import {
   ncrExcerpt,
   ncrPeriodLabel,
   ncrPriorityCoverage,
   ncrProgramLabel,
   priorityEvidence,
+  priorityLabel,
   scoreLabel,
   type NcrPriority,
   type NcrSummary,
@@ -27,7 +33,9 @@ export const NcrAnalysisReport = forwardRef<HTMLDivElement, ReportProps>(functio
 ) {
   const { overall, priorities, repeated, byProgram, sections } = summary;
   const [first] = priorities;
-  const visibleSections = sections.slice(0, 4);
+  const visibleSections = deliveryLastHighlights(sections, 4);
+  const maxSectionCases = Math.max(1, ...visibleSections.map((section) => section.count));
+  const hasDelivery = visibleSections.some((section) => section.isDelivery);
   const auditById = new Map(audits.map((audit) => [audit.id, audit]));
   const hasAppendix = priorities.length > 2 || audits.length > 4;
   const totalPages = hasAppendix ? 2 : 1;
@@ -65,7 +73,7 @@ export const NcrAnalysisReport = forwardRef<HTMLDivElement, ReportProps>(functio
             <p className="ncr-pdf-kicker">{first ? "أولوية المتابعة" : "نظرة تنفيذية"}</p>
             <h2>
               {first
-                ? ncrExcerpt(first.label, 116)
+                ? ncrExcerpt(priorityLabel(first), 116)
                 : overall.visits
                   ? "لم تُسجّل بنود أقل من الحد الأقصى"
                   : "لا توجد أوديتات معتمدة في الفترة"}
@@ -86,7 +94,7 @@ export const NcrAnalysisReport = forwardRef<HTMLDivElement, ReportProps>(functio
                 <p className="ncr-pdf-small">لا توجد حالات مدرجة في الفترة.</p>
               )}
               {visibleSections.map((section) => {
-                const size = (100 * section.count) / visibleSections[0]!.count;
+                const size = (100 * section.count) / maxSectionCases;
                 const zeroSize = (100 * section.zero) / section.count;
                 return (
                   <div className="ncr-pdf-section-row" key={section.label}>
@@ -107,9 +115,12 @@ export const NcrAnalysisReport = forwardRef<HTMLDivElement, ReportProps>(functio
                   <span /> الجزء الأحمر: بنود بدرجة صفر
                 </p>
               )}
+              {hasDelivery && (
+                <p className="ncr-pdf-small">الدليفري معروض أخيرًا، وعدده داخل الإجمالي.</p>
+              )}
               {sections.length > visibleSections.length && (
                 <p className="ncr-pdf-small">
-                  معروض أعلى {visibleSections.length} أقسام حسب عدد الحالات.
+                  معروض {visibleSections.length} أقسام من أصل {sections.length}.
                 </p>
               )}
             </section>
@@ -256,7 +267,7 @@ function ActionCard({
       </span>
       <div>
         <div className="ncr-pdf-action-head">
-          <h3>{ncrExcerpt(priority.label, 116)}</h3>
+          <h3>{ncrExcerpt(priorityLabel(priority), 116)}</h3>
           <span className="ncr-pdf-chip">{priority.visits > 1 ? "متكرر" : "أوديت واحد"}</span>
         </div>
         <div className="ncr-pdf-meta">
@@ -267,7 +278,7 @@ function ActionCard({
           )}
         </div>
         <p>
-          <b>الإجراء المقترح:</b> {ncrExcerpt(priority.action, 165)}
+          <b>الإجراء المقترح:</b> {priority.action}
         </p>
         {evidence && (
           <div className="ncr-pdf-evidence">

@@ -45,7 +45,8 @@ it("asks the branch to act on a real repeated finding and preserves the edited m
   expect(draft.body).not.toContain("فرع فرع");
   expect(draft.body).toContain("غياب أو عدم وضوح بيانات التاريخ");
   expect(draft.body).toContain("في أوديتين");
-  expect(draft.body).toContain("المسؤول عن تنفيذه، والموعد المتوقع");
+  expect(draft.body).toContain("ثبّت بيانات التاريخ من مصدر موثّق");
+  expect(draft.body).toContain("المسؤول عن تنفيذه، والموعد المتوقع للتحقق");
   const body = draft.body.replace("شكرًا لتعاونكم،", "تمت إضافة <ملاحظة> قبل الإرسال.");
   const pdf = new Blob(["%PDF-fixture"], { type: "application/pdf" });
   const message = await auditEmailDraft({
@@ -80,4 +81,35 @@ it("keeps standard audit email formatting and does not invent a priority for a b
   expect(draft.body).not.toContain("المطلوب من الفرع:");
   expect(auditEmailHtml("88%")).toContain("#ffff00");
   expect(ncrMailHtml("88%")).not.toContain("#ffff00");
+});
+
+it("sends the actual cooking and recording actions before the last delivery finding", () => {
+  const summary = summarizeNcr(
+    [...audits],
+    [
+      { ...finding, question: "التحقق من التسوية", observation: "الشيف بيعمل التسوية بالعين" },
+      {
+        ...finding,
+        questionId: "incomplete-cook-log",
+        question: "سجل التسوية",
+        observation: "سجل التسوية غير مكتمل",
+      },
+      ...audits.map((audit, index) => ({
+        ...finding,
+        auditId: audit.id,
+        questionId: `delivery-${index}`,
+        section: "دليفري",
+        observation: "عدم وجود تاريخ على العبوات",
+        earned: 0,
+      })),
+    ],
+  );
+  const text = ncrMailTemplate(branch, filters, summary).body;
+  expect(text).toContain("المطلوب من الفرع:");
+  expect(text).toContain("قِس حرارة قلب المنتج بترمومتر معاير");
+  expect(text).toContain("استكمل سجل التسوية من القراءات الموثقة فقط");
+  expect(text).toContain("نبّه الشيف إلى القياس بدل التقدير");
+  expect(text).toContain("الدليفري: غياب أو عدم وضوح بيانات التاريخ.");
+  expect(text.indexOf("الدليفري:")).toBeGreaterThan(text.indexOf("المطلوب من الفرع:"));
+  expect(text).not.toContain("مراجعة الملاحظة مع مسؤول القسم");
 });

@@ -13,9 +13,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { auditEmailDraft, downloadEmailDraft, emailRecipients } from "@/lib/audit-email";
-import { summarizeNcr, type NcrFilters } from "@/lib/ncr-management";
+import {
+  deliveryLastHighlights,
+  ncrActionForFinding,
+  summarizeNcr,
+  type NcrFilters,
+} from "@/lib/ncr-management";
 import { loadNcrAnalysis, loadNcrRecipients } from "@/lib/report-feature-client";
-import { ncrMailHtml, ncrMailTemplate, ncrProgramLabel, scoreLabel } from "@/lib/ncr-presentation";
+import {
+  ncrMailHtml,
+  ncrMailTemplate,
+  ncrProgramLabel,
+  priorityLabel,
+  scoreLabel,
+} from "@/lib/ncr-presentation";
 import { NcrAnalysisReport } from "./NcrAnalysisReport";
 
 type Analysis = Awaited<ReturnType<typeof loadNcrAnalysis>>;
@@ -209,7 +220,7 @@ export function NcrAnalysisView({
               )}
               {priorities.map((item) => (
                 <article key={item.id} className="rounded-lg border p-3 text-sm">
-                  <p className="font-semibold">{item.label}</p>
+                  <p className="font-semibold">{priorityLabel(item)}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {item.findings.length} حالة في {item.visits} أوديت
                     {item.zero > 0 && ` · ${item.zero} بدرجة صفر`}
@@ -219,13 +230,13 @@ export function NcrAnalysisView({
               ))}
             </section>
             <section className="surface-card space-y-3 p-4 sm:p-5">
-              <h3 className="font-bold">الأقسام الأكثر تأثرًا</h3>
+              <h3 className="font-bold">توزيع حالات عدم المطابقة</h3>
               {!sections.length && (
                 <p className="text-sm text-muted-foreground">
                   لا توجد بنود مسجلة أقل من الحد الأقصى.
                 </p>
               )}
-              {sections.slice(0, 8).map((section) => (
+              {deliveryLastHighlights(sections, 8).map((section) => (
                 <div
                   key={section.label}
                   className="flex items-center justify-between gap-3 border-b pb-2 text-sm"
@@ -252,7 +263,7 @@ export function NcrAnalysisView({
             {repeated.map((item) => (
               <details key={item.id} className="rounded-lg border px-3 py-2">
                 <summary className="cursor-pointer text-sm font-semibold">
-                  {item.label} · {item.visits} أوديت · {item.findings.length} حالة
+                  {priorityLabel(item)} · {item.visits} أوديت · {item.findings.length} حالة
                 </summary>
                 <ul className="mt-2 space-y-2">
                   {item.findings.map((issue) => (
@@ -420,6 +431,9 @@ function Evidence({
           {issue.observation}
         </p>
       )}
+      <p className="mt-2 text-xs">
+        <b>الإجراء المقترح:</b> {ncrActionForFinding(issue)}
+      </p>
       <Link
         className="mt-1 inline-block text-xs font-semibold underline"
         to="/audits/$id/report"

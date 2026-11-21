@@ -129,7 +129,7 @@ export async function ncrAnalysis(db: ServerDatabase, actor: ServerActor, filter
         db
           .from("audit_answers")
           .select(
-            "id, audit_id, question_id, score, comment, questions!inner(id, audit_type_id, item_id, section_id, text_ar, max_score, sections(name_ar))",
+            "id, audit_id, question_id, score, comment, questions!inner(id, audit_type_id, item_id, section_id, text_ar, max_score, sections(name_ar, is_delivery))",
           )
           .in("audit_id", ids)
           .eq("is_na", false)
@@ -165,6 +165,7 @@ export async function ncrAnalysis(db: ServerDatabase, actor: ServerActor, filter
         auditId: row.audit_id,
         questionId: row.question_id,
         section: q.sections?.name_ar ?? "عام",
+        isDelivery: q.sections?.is_delivery === true,
         itemId: q.item_id,
         question: q.text_ar,
         observation: row.comment ?? "",

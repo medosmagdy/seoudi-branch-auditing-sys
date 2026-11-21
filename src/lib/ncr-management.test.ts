@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  deliveryLastHighlights,
+  ncrActionForFinding,
   ncrFiltersSchema,
   ncrPeriodBounds,
   summarizeNcr,
@@ -89,4 +91,60 @@ describe("NCR summaries", () => {
     expect(ncrFiltersSchema.safeParse(filter).success).toBe(false);
     expect(ncrFiltersSchema.safeParse({ ...filter, start: "2026-04-01" }).success).toBe(false);
   });
+});
+
+it("recommends the observed correction, distinguishes missing records from missing measurement, and coaches documented behaviour only", () => {
+  const correction = (question: string, observation: string) =>
+    ncrActionForFinding(finding("fs", "behaviour", { question, observation }));
+  const log = correction("استكمال سجل التسوية", "لم يتم استكمال سجل التسوية");
+  expect(log).toContain("استكمل سجل التسوية من القراءات الموثقة فقط");
+  expect(log).toContain("دون تقديرها");
+  expect(log).toContain("نبّه الشيف إلى تسجيل القراءة");
+  const practice = correction("التحقق من التسوية", "الشيف بيعمل التسوية بالعين");
+  expect(practice).toContain("قِس حرارة قلب المنتج بترمومتر معاير");
+  expect(practice).toContain("نبّه الشيف إلى القياس بدل التقدير");
+  const equipment = correction("استخدام الترمومتر أثناء التسوية", "الترمومتر مش موجود عند الشيف");
+  expect(equipment).toContain("وفّر ترمومترًا صالحًا");
+  expect(equipment).not.toContain("نبّه الشيف");
+  expect(correction("استخدام القفازات", "الموظف مش بيغير الجوانتي بين المهام")).toContain(
+    "نبّه الموظف إلى تغيير القفاز",
+  );
+  const label = correction("عرض المنتج", "تاريخ الاكسباير مش مطبوع");
+  expect(label).toContain("ثبّت بيانات التاريخ من مصدر موثّق");
+  expect(label).not.toContain("اعزل المنتجات المنتهية");
+  expect(correction("بند من غير ملاحظة", "")).toContain("سجّل سبب الخصم");
+});
+
+it("keeps the delivery count and score facts while pinning delivery last in capped views", () => {
+  const note = "عدم وجود تاريخ على منتجات التحضير";
+  const floor = [
+    finding("fs", "floor-date", { observation: note }),
+    ...Array.from({ length: 5 }, (_, index) =>
+      finding("fs", `floor-${index}`, {
+        section: `قسم ${index}`,
+        question: `بند مستقل ${index}`,
+        earned: 2,
+      }),
+    ),
+  ];
+  const delivery = Array.from({ length: 9 }, (_, index) =>
+    finding(index < 5 ? "fs" : "ghp", `del-${index}`, {
+      section: index === 0 ? "نقطة التجهيز الخارجي" : "قسم التوصيل",
+      isDelivery: index === 0,
+      observation: note,
+      earned: 0,
+    }),
+  );
+  const data = summarizeNcr([a, b], [...delivery, ...floor]);
+  expect(data.overall).toMatchObject({ findings: 15, zero: 9, average: 42.5 });
+  expect(data.priorities).toHaveLength(5);
+  expect(data.priorities.at(-1)).toMatchObject({ isDelivery: true, visits: 2, zero: 9 });
+  expect(data.sections.at(-1)).toMatchObject({ label: "الدليفري", count: 9, isDelivery: true });
+  expect(deliveryLastHighlights(data.sections, 4).at(-1)).toMatchObject({ label: "الدليفري" });
+  expect(data.findings.map((issue) => issue.questionId)).toEqual(
+    [...floor, ...delivery].map((f) => f.questionId),
+  );
+  expect(data.repeated.at(-1)?.isDelivery).toBe(true);
+  expect(data.priorities[0]?.isDelivery).toBe(false);
+  expect(summarizeNcr([a, b], [floor[0]!, ...delivery]).priorities[0]?.findings).toHaveLength(1);
 });

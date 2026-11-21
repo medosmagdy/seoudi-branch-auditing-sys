@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { correctiveAction } from "./ncr-corrective-action";
 
 export const ncrProgram = z.enum(["FS", "GHP", "both"]);
 export type NcrProgram = z.infer<typeof ncrProgram>;
@@ -33,6 +34,7 @@ export type NcrFinding = {
   questionId: string;
   itemId: string;
   section: string;
+  isDelivery?: boolean;
   question: string;
   observation: string;
   earned: number;
@@ -63,15 +65,38 @@ export function normalizeNcrText(raw: string) {
     .trim();
 }
 
+export function isDeliveryFinding(finding: Pick<NcrFinding, "section" | "isDelivery">) {
+  return (
+    finding.isDelivery === true ||
+    /(?:^|\s)(?:ال)?(?:دليفري|ديليفري|توصيل|delivery|dispatch)(?:\s|$)/.test(
+      normalizeNcrText(finding.section),
+    )
+  );
+}
+
+// Reserve the last visible place for delivery even when the list is capped.
+export function deliveryLastHighlights<T extends { isDelivery: boolean }>(
+  ranked: T[],
+  limit: number,
+) {
+  if (limit <= 0) return [];
+  const floor = ranked.filter((item) => !item.isDelivery);
+  const delivery = ranked.filter((item) => item.isDelivery);
+  if (!floor.length) return delivery.slice(0, limit);
+  if (!delivery.length) return floor.slice(0, limit);
+  if (limit === 1) return floor.slice(0, 1);
+  const floorCount = Math.min(floor.length, limit - 1);
+  return [...floor.slice(0, floorCount), ...delivery.slice(0, limit - floorCount)];
+}
+
 // Only clear pairs of terms imply the same problem. Match one topic per finding;
 // multiple matches keep their original checklist grouping rather than guessing.
 const topics = [
   {
     id: "date-labels",
     label: "غياب أو عدم وضوح بيانات التاريخ",
-    action: "راجع بطاقات التاريخ عند التحضير والاستلام وتحقق منها قبل العرض.",
     patterns: [
-      /(تاريخ|تواريخ|تاريخه|تارخ|ديت|داتا|ليبل|ملصق|بطاقه).{0,36}(غير واضح|ناقص|مش واضح|ممسوح|مفقود|غايب|بدون|لا يوجد)/,
+      /(تاريخ|تواريخ|تاريخه|تارخ|ديت|داتا|اكسباير|ليبل|ملصق|بطاقه).{0,36}(غير واضح|ناقص|مش واضح|مش مطبوع|ممسوح|مفقود|غايب|بدون|لا يوجد)/,
       /(عدم وجود|بدون|مفيش|لا يوجد|غير مدون|مش مكتوب).{0,30}(تاريخ|تواريخ|ديت|ليبل|ملصق|بطاقه)/,
       /(?:missing|illegible|unreadable).{0,25}(?:date label|date code|expiry date)/,
     ],
@@ -79,13 +104,13 @@ const topics = [
   {
     id: "expired",
     label: "منتجات منتهية الصلاحية",
-    action: "راجع تطبيق الأقدم انتهاءً أولاً واعزل المنتجات المنتهية عند اكتشافها.",
-    patterns: [/منتهي.{0,9}الصلاحيه|انتهت.{0,9}الصلاحيه|منتهيه.{0,9}الصلاحيه|اكسباير|\bexpired\b/],
+    patterns: [
+      /منتهي.{0,9}الصلاحيه|انتهت.{0,9}الصلاحيه|منتهيه.{0,9}الصلاحيه|اكسباير.{0,12}(منتهي|عدي عليه)|\bexpired (?:product|food|item)|(?:product|food|item) expired\b/,
+    ],
   },
   {
     id: "temperature",
     label: "حرارة الحفظ خارج الحدود",
-    action: "تحقق من حرارة الحفظ الفعلية، وسلامة أجهزة القياس، والاستجابة عند تجاوز الحدود.",
     patterns: [
       /(حراره|درجه الحراره).{0,36}(مرتفع|عالي|غير مطابق|خارج|غير مناسب|مش مظبوط)/,
       /(ارتفاع|انخفاض|تجاوز).{0,30}(حراره|درجه الحراره)/,
@@ -95,7 +120,6 @@ const topics = [
   {
     id: "cross-contamination",
     label: "خلط النيئ بالجاهز أو خطر تلوث تبادلي",
-    action: "افصل النيئ عن الجاهز وراجع ترتيب التخزين وتخصيص الأدوات.",
     patterns: [
       /تلوث (تبادلي|خلطي|متبادل)|(?:نيئ|ناي).{0,25}(?:مع|فوق).{0,25}(?:مطهي|مستوي|جاهز)|cross contamination/,
     ],
@@ -103,7 +127,6 @@ const topics = [
   {
     id: "hand-hygiene",
     label: "قصور في نظافة الأيدي",
-    action: "تحقق من مستلزمات غسل الأيدي وراجع التطبيق مع العاملين في الوردية.",
     patterns: [
       /(عدم|لا يوجد|بدون|مفيش).{0,24}(غسل اليد|غسيل اليد|نظافه الايدي|صابون الايدي)/,
       /(?:poor|no|not).{0,20}hand ?washing/,
@@ -112,7 +135,6 @@ const topics = [
   {
     id: "dirty-food-contact",
     label: "اتساخ أسطح أو أدوات ملامسة الغذاء",
-    action: "راجع تنظيف وتطهير أدوات وأسطح ملامسة الغذاء وتحقق من التنفيذ بعد التنظيف.",
     patterns: [
       /(غير نظيف|متسخ|بقايا|اتساخ|غير مطهر).{0,30}(سطح|اسطح|لوح تقطيع|ادوات|سكاكين)/,
       /(سطح|اسطح|لوح تقطيع|ادوات|سكاكين).{0,24}(غير نظيف|متسخ|بقايا|اتساخ|غير مطهر)/,
@@ -122,7 +144,6 @@ const topics = [
   {
     id: "pest-evidence",
     label: "وجود آفات أو آثارها",
-    action: "راجع برنامج مكافحة الآفات ونقاط الدخول وسجّل نتائج المتابعة.",
     patterns: [
       /(وجود|رصد|اثار|انتشار).{0,24}(حشرات|صراصير|فيران|قوارض|ذباب|افات)/,
       /(?:presence|evidence).{0,16}(?:pest|rodent|flies)|cockroach/,
@@ -134,6 +155,22 @@ function explicitConcept(observation: string) {
   const normalized = normalizeNcrText(observation);
   const matches = topics.filter((x) => x.patterns.some((p) => p.test(normalized)));
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+export function ncrActionForFinding(finding: NcrFinding) {
+  return correctiveAction(
+    normalizeNcrText(finding.observation),
+    normalizeNcrText(finding.question),
+    explicitConcept(finding.observation)?.id,
+  );
+}
+
+export function pickNcrEvidence(findings: readonly NcrFinding[]) {
+  return [...findings].sort(
+    (a, b) =>
+      Number(Boolean(b.observation.trim())) - Number(Boolean(a.observation.trim())) ||
+      a.earned / a.maximum - b.earned / b.maximum,
+  )[0];
 }
 
 export function summarizeNcr(audits: NcrAudit[], findings: NcrFinding[]) {
@@ -152,28 +189,36 @@ export function summarizeNcr(audits: NcrAudit[], findings: NcrFinding[]) {
   });
   const groups = new Map<
     string,
-    { label: string; action: string; kind: "concept" | "checklist"; findings: NcrFinding[] }
+    { label: string; isDelivery: boolean; kind: "concept" | "checklist"; findings: NcrFinding[] }
   >();
-  const sections = new Map<string, { label: string; count: number; zero: number }>();
+  const sections = new Map<
+    string,
+    { label: string; count: number; zero: number; isDelivery: boolean }
+  >();
   // Exact question wording can group equivalent checklist entries across programs.
   // Unclassified or ambiguous comments never group across unrelated question text.
   for (const issue of issues) {
     const concept = explicitConcept(issue.observation);
-    const section = normalizeNcrText(issue.section);
+    const isDelivery = isDeliveryFinding(issue);
+    const section = isDelivery ? "delivery" : normalizeNcrText(issue.section);
     const wording = normalizeNcrText(issue.question);
     const key = concept
-      ? `concept/${concept.id}`
+      ? `concept/${isDelivery ? "delivery/" : ""}${concept.id}`
       : `checklist/${section}/${wording || issue.questionId}`;
     const bucket = groups.get(key) ?? {
       label: concept?.label ?? issue.question,
       kind: concept ? "concept" : "checklist",
-      action:
-        concept?.action ?? "راجع سبب عدم المطابقة مع مسؤول القسم وتحقق من تنفيذ الإجراء التصحيحي.",
+      isDelivery,
       findings: [],
     };
     bucket.findings.push(issue);
     groups.set(key, bucket);
-    const current = sections.get(section) ?? { label: issue.section, count: 0, zero: 0 };
+    const current = sections.get(section) ?? {
+      label: isDelivery ? "الدليفري" : issue.section,
+      count: 0,
+      zero: 0,
+      isDelivery,
+    };
     current.count++;
     if (issue.earned === 0) current.zero++;
     sections.set(section, current);
@@ -183,11 +228,13 @@ export function summarizeNcr(audits: NcrAudit[], findings: NcrFinding[]) {
     .map(([id, group]) => ({
       id,
       ...group,
+      action: ncrActionForFinding(pickNcrEvidence(group.findings)!),
       visits: new Set(group.findings.map((finding) => finding.auditId)).size,
       zero: group.findings.filter((finding) => finding.earned === 0).length,
     }))
     .sort(
       (a, b) =>
+        Number(a.isDelivery) - Number(b.isDelivery) ||
         b.visits - a.visits ||
         b.zero - a.zero ||
         b.findings.length - a.findings.length ||
@@ -214,8 +261,12 @@ export function summarizeNcr(audits: NcrAudit[], findings: NcrFinding[]) {
     overall: result("both"),
     byProgram: { FS: result("FS"), GHP: result("GHP") },
     repeated: priority.filter((p) => p.visits > 1),
-    priorities: priority.slice(0, 5),
-    sections: [...sections.values()].sort((a, b) => b.count - a.count || b.zero - a.zero),
-    findings: issues,
+    priorities: deliveryLastHighlights(priority, 5),
+    sections: [...sections.values()].sort(
+      (a, b) => Number(a.isDelivery) - Number(b.isDelivery) || b.count - a.count || b.zero - a.zero,
+    ),
+    findings: [...issues].sort(
+      (a, b) => Number(isDeliveryFinding(a)) - Number(isDeliveryFinding(b)),
+    ),
   };
 }
