@@ -1,6 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 import { readAllPages } from "./query-pages";
-import { z } from "zod";
 export type NaAnswer = {
   question_id: string;
   score: number | null;
@@ -9,17 +8,6 @@ export type NaAnswer = {
 };
 export type NaStatus = { section_id: string; is_na: boolean };
 export type NaDefaults = { answers: NaAnswer[]; statuses: NaStatus[] };
-const naDefaultsSchema = z.object({
-  answers: z.array(
-    z.object({
-      question_id: z.string(),
-      score: z.null(),
-      is_na: z.literal(true),
-      comment: z.string().nullable(),
-    }),
-  ),
-  statuses: z.array(z.object({ section_id: z.string(), is_na: z.literal(true) })),
-});
 type AuditContext = {
   id: string;
   branch_id: string;
@@ -37,14 +25,6 @@ export function mergeAuditDefaults<T>(defaults: T[], saved: T[], key: (row: T) =
 }
 export async function loadAuditNaDefaults(audit: AuditContext): Promise<NaDefaults> {
   if (audit.status !== "draft") return { answers: [], statuses: [] };
-  const result = await supabase.rpc(
-    "sqop_audit_na_defaults",
-    { p_audit_id: audit.id },
-    { get: true },
-  );
-  if (!result.error) return naDefaultsSchema.parse(result.data);
-  // Keep older deployments functional during rollout, but never hide a denial.
-  if (!["PGRST202", "42883"].includes(result.error.code)) throw result.error;
   let previous = supabase
     .from("audits")
     .select("id")
