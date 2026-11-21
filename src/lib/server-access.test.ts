@@ -12,23 +12,11 @@ vi.mock("@aws-sdk/client-s3", () => ({
   DeleteObjectCommand: class {
     constructor(public input: unknown) {}
   },
-  GetObjectCommand: class {
-    constructor(public input: unknown) {}
-  },
 }));
 vi.mock("@aws-sdk/s3-request-presigner", () => ({ getSignedUrl: r2.sign }));
-import {
-  requireServerActor,
-  requireAuditQuestion,
-  type ServerDatabase,
-} from "./server-access.server";
+import { requireServerActor, requireAuditQuestion } from "./server-access.server";
 import { changeUserRole } from "./admin-roles.server";
-import {
-  createPhotoUpload,
-  registerPhoto,
-  removePhoto,
-  signAuditPhotoReads,
-} from "./photo-storage.server";
+import { createPhotoUpload, registerPhoto, removePhoto } from "./photo-storage.server";
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const state = {
   actor: id(1),
@@ -267,50 +255,4 @@ it("permits peer photo operations only with a verified server actor and common a
   await expect(
     requireAuditQuestion(client, { id: state.actor, role: "auditor" }, id(2), id(3)),
   ).rejects.toThrow("غير مصرح");
-});
-
-describe("private audit photo reads", () => {
-  beforeEach(() => {
-    vi.stubEnv("R2_ACCOUNT_ID", "test");
-    vi.stubEnv("R2_ACCESS_KEY_ID", "test");
-    vi.stubEnv("R2_SECRET_ACCESS_KEY", "test");
-    r2.sign.mockReset().mockResolvedValue("https://signed.test/photo");
-  });
-  afterEach(() => vi.unstubAllEnvs());
-
-  function mockPhotoRead(allowed: boolean, rows: string[]) {
-    const inKeys = vi.fn().mockResolvedValue({
-      data: rows.map((storage_path) => ({ storage_path })),
-      error: null,
-    });
-    const from = vi.fn(() => ({ select: () => ({ eq: () => ({ in: inKeys }) }) }));
-    const rpc = vi.fn().mockResolvedValue({ data: allowed, error: null });
-    return { db: { from, rpc } as unknown as ServerDatabase, from, rpc };
-  }
-
-  it("does not look up or sign attachments when the requester cannot see the audit", async () => {
-    const { db, from } = mockPhotoRead(false, [path]);
-    await expect(signAuditPhotoReads(db, { auditId: id(2), photoIds: [id(7)] })).rejects.toThrow(
-      "غير مصرح",
-    );
-    expect(from).not.toHaveBeenCalled();
-    expect(r2.sign).not.toHaveBeenCalled();
-  });
-
-  it("signs only registered photos in the requested audit", async () => {
-    const { db } = mockPhotoRead(true, [path]);
-    const absent = id(8);
-    await expect(
-      signAuditPhotoReads(db, { auditId: id(2), photoIds: [id(7), absent] }),
-    ).rejects.toThrow("غير متاحة");
-    expect(r2.sign).not.toHaveBeenCalled();
-    await expect(
-      signAuditPhotoReads(db, { auditId: id(2), photoIds: [id(7), id(7)] }),
-    ).resolves.toEqual({
-      [path]: "https://signed.test/photo",
-    });
-    expect(r2.sign).toHaveBeenCalledTimes(1);
-    expect(r2.sign.mock.calls[0]![1].input.Key).toBe(path);
-    expect(r2.sign.mock.calls[0]![2]).toEqual({ expiresIn: 3600 });
-  });
 });

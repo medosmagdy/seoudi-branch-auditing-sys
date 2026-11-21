@@ -55,7 +55,6 @@ function ReportPage() {
   } = useQuery({
     queryKey: ["audit-report", id],
     queryFn: () => loadReportModel(id),
-    refetchInterval: (query) => (query.state.data?.allPhotos.length ? 30 * 60 * 1000 : false),
   });
 
   // 2. جلب سجل التعديلات

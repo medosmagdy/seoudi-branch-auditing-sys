@@ -19,7 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { computeAudit, type ScoringSection } from "@/lib/scoring";
-import { deletePhoto, signedPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
+import { deletePhoto, publicAuditPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
 import { loadActiveChecklistTree } from "@/lib/checklist-data";
 import { useSession } from "@/hooks/useSession";
 import { canEditAudit } from "@/lib/permissions";
@@ -270,13 +270,10 @@ function AuditRunner() {
     return map;
   }, [data]);
 
-  const { data: photoUrls, isError: photoUrlsError, refetch: reloadPhotoUrls } = useQuery({
-    queryKey: ["photo-urls", id, data?.photos.map((photo) => photo.storage_path)],
-    enabled: !!data && data.photos.length > 0,
-    queryFn: () => signedPhotoUrls(id, (data?.photos ?? []).map((photo) => photo.id)),
-    staleTime: 25 * 60 * 1000,
-    refetchInterval: 30 * 60 * 1000,
-  });
+  const photoUrls = useMemo(
+    () => publicAuditPhotoUrls((data?.photos ?? []).map((photo) => photo.storage_path)),
+    [data],
+  );
 
   const scoringSections: ScoringSection[] = useMemo(() => {
     if (!data) return [];
@@ -760,11 +757,6 @@ function AuditRunner() {
 
                 {questionPhotos.length > 0 && (
                   <div className="mt-3 border-t border-border/50 pt-3">
-                    {photoUrlsError && (
-                      <Button size="sm" variant="outline" onClick={() => void reloadPhotoUrls()}>
-                        تعذر عرض الصور — أعد المحاولة
-                      </Button>
-                    )}
                     <div className="flex flex-wrap gap-2">
                       {questionPhotos.map((photo) => (
                         <div
@@ -772,7 +764,8 @@ function AuditRunner() {
                           className="relative rounded-lg border border-border p-1 bg-muted/20"
                         >
                           <ImageLightbox
-                            src={photoUrls?.[photo.storage_path] ?? ""}
+                            src={photoUrls[photo.storage_path] ?? ""}
+                            showDirectLink
                             alt="Audit evidence"
                             className="size-16"
                             imageClassName="size-16 rounded-md object-cover"

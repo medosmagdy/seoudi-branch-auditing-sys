@@ -2,7 +2,7 @@ import { auditReportFileBase } from "./audit-report-name";
 import { loadAuditNaDefaults, mergeAuditDefaults } from "./audit-na";
 import { loadAuditAnswers } from "@/lib/audit-answers";
 import { supabase } from "@/integrations/supabase/client";
-import { signedPhotoUrls } from "@/lib/photos";
+import { publicAuditPhotoUrls } from "@/lib/photos";
 import { loadReportHistory } from "./report-history";
 import { loadActiveChecklistTree } from "./checklist-data";
 import { computeAudit, type AuditResult, type ScoringSection } from "@/lib/scoring";
@@ -178,19 +178,15 @@ export async function loadReportModel(
   const branchName = (audit.branches as { name_ar?: string } | null)?.name_ar;
   const result = computeAudit(scoringSections, answerMap, generalRows, branchName);
 
-  const [urls, history] = await Promise.all([
-    signedPhotoUrls(
-      auditId,
-      photoRows.map((photo) => photo.storage_path),
-    ).catch(() => null),
+  const urls = publicAuditPhotoUrls(photoRows.map((photo) => photo.storage_path));
+  // Historical data is supplementary. Keep the current report available
+  // without presenting a failed historical comparison as complete.
+  const history =
     options.includeHistory === false
-      ? Promise.resolve([])
-      : // Historical data is supplementary. Never show a partial history as
-        // complete, but allow the verified current audit to be opened/exported.
-        loadReportHistory(audit, result.finalPercentage, scoringSections, branchName).catch(
+      ? []
+      : await loadReportHistory(audit, result.finalPercentage, scoringSections, branchName).catch(
           () => null,
-        ),
-  ]);
+        );
 
   const ncrs: ReportNCR[] = [];
   const allPhotos: ReportModel["allPhotos"] = [];
@@ -228,7 +224,7 @@ export async function loadReportModel(
             const questionPhotos = photoRows
               .filter((photo) => photo.question_id === question.id)
               .map((photo) => {
-                const photoUrl = urls?.[photo.storage_path] ?? "";
+                const photoUrl = urls[photo.storage_path] ?? "";
                 if (photoUrl) {
                   allPhotos.push({
                     photoId: photo.id,
@@ -311,7 +307,7 @@ export async function loadReportModel(
     result,
     history: history ?? [],
     historyUnavailable: history === null,
-    photosUnavailable: urls === null,
+    photosUnavailable: photoRows.some((photo) => !urls[photo.storage_path]),
     ncrs,
     allPhotos,
   };

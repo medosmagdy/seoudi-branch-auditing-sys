@@ -1,10 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import {
-  photoUploadServerFn,
-  registerPhotoServerFn,
-  deletePhotoServerFn,
-  readAuditPhotoServerFn,
-} from "./photo.functions";
+import { photoUploadServerFn, registerPhotoServerFn, deletePhotoServerFn } from "./photo.functions";
 import { createPhotoAuthorization, deleteWithSessionRecovery } from "./photo-auth";
 // Access the lazy client only when a photo operation actually runs.
 const photoAuthorization = createPhotoAuthorization({
@@ -106,22 +101,19 @@ export async function deletePhoto(photoId: string, _storagePath: string) {
     deletePhotoServerFn({ data: { photoId }, headers }),
   );
 }
-export async function signedPhotoUrls(
-  auditId: string,
-  photoIds: string[],
-): Promise<Record<string, string>> {
-  if (!photoIds.length) return {};
-  const headers = await authorizationHeaders();
-  const unique = [...new Set(photoIds)];
-  const urls: Record<string, string> = {};
-  for (let start = 0; start < unique.length; start += 100) {
-    Object.assign(
-      urls,
-      await readAuditPhotoServerFn({
-        data: { auditId, photoIds: unique.slice(start, start + 100) },
-        headers,
-      }),
-    );
-  }
-  return urls;
+export function publicAuditPhotoUrls(
+  storagePaths: string[],
+  publicBase = import.meta.env["VITE_R2_PUBLIC_URL"] || "",
+): Record<string, string> {
+  const base = publicBase.trim().replace(/\/+$/, "");
+  return Object.fromEntries(
+    storagePaths.map((path) => [
+      path,
+      /^https?:\/\//i.test(path)
+        ? path
+        : base
+          ? `${base}/${path.split("/").map(encodeURIComponent).join("/")}`
+          : "",
+    ]),
+  );
 }

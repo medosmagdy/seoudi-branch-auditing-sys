@@ -1,16 +1,23 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
 
 type ImageLightboxProps = {
-  src: string
-  alt: string
-  className?: string
-  imageClassName?: string
-}
+  src: string;
+  alt: string;
+  className?: string;
+  imageClassName?: string;
+  showDirectLink?: boolean;
+};
 
-export function ImageLightbox({ src, alt, className, imageClassName }: ImageLightboxProps) {
-  const [open, setOpen] = useState(false)
+export function ImageLightbox({
+  src,
+  alt,
+  className,
+  imageClassName,
+  showDirectLink,
+}: ImageLightboxProps) {
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -46,6 +53,18 @@ export function ImageLightbox({ src, alt, className, imageClassName }: ImageLigh
           >
             ×
           </button>
+          {showDirectLink && src && (
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              className="absolute left-4 top-4 rounded-full bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25"
+              onClick={(event) => event.stopPropagation()}
+            >
+              فتح / تنزيل الصورة
+            </a>
+          )}
           <img
             src={src}
             alt={alt}
@@ -55,5 +74,5 @@ export function ImageLightbox({ src, alt, className, imageClassName }: ImageLigh
         </div>
       )}
     </>
-  )
+  );
 }

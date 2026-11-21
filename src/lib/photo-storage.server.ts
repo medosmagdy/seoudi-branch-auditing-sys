@@ -1,9 +1,4 @@
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-  GetObjectCommand,
-} from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   requireServerActor,
@@ -21,10 +16,6 @@ export const photoUploadSchema = z.discriminatedUnion("scope", [
   z.object({ scope: z.literal("expiry"), recordId: z.string().uuid() }),
 ]);
 export type PhotoUpload = z.infer<typeof photoUploadSchema>;
-export const photoReadSchema = z.object({
-  auditId: z.string().uuid(),
-  photoIds: z.array(z.string().uuid()).max(100),
-});
 function storage() {
   const account = process.env["R2_ACCOUNT_ID"],
     accessKeyId = process.env["R2_ACCESS_KEY_ID"],
@@ -39,43 +30,6 @@ function storage() {
       credentials: { accessKeyId, secretAccessKey },
     }),
   };
-}
-
-export async function signAuditPhotoReads(db: ServerDatabase, value: unknown) {
-  const { auditId, photoIds } = photoReadSchema.parse(value);
-  // Use the requester-scoped database client. Never sign a raw caller-supplied key.
-  const access = await db.rpc("sqop_audit_photo_access", { p_audit_id: auditId });
-  if (access.error || access.data !== true) throw new Error("غير مصرح بعرض صور هذا الفحص");
-  const ids = [...new Set(photoIds)];
-  if (!ids.length) return {};
-  const rows = await db
-    .from("photos")
-    .select("id, storage_path")
-    .eq("audit_id", auditId)
-    .in("id", ids);
-  if (rows.error) throw new Error("تعذر تحميل ملفات الفحص");
-  const keys = (rows.data ?? []).map((photo) => photo.storage_path);
-  if (
-    keys.length !== ids.length ||
-    keys.some((key) => !key.startsWith(`${auditId}/`) || key.includes(".."))
-  )
-    throw new Error("بعض صور الفحص غير متاحة");
-  const { client, bucket } = storage();
-  const signed: Record<string, string> = {};
-  for (let start = 0; start < keys.length; start += 10) {
-    await Promise.all(
-      keys.slice(start, start + 10).map(async (key) => {
-        signed[key] = await getSignedUrl(
-          client,
-          new GetObjectCommand({ Bucket: bucket, Key: key }),
-          {
-            expiresIn: 3600,
-          },
-        );
-      }),
-    );
-  }
-  return signed;
 }
 async function authorizeUpload(db: ServerDatabase, token: string | undefined, input: PhotoUpload) {
   const actor = await requireServerActor(db, token);

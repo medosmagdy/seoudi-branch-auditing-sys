@@ -439,6 +439,16 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
           >
             ×
           </button>
+          <a
+            href={selectedPhoto.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            className="absolute left-4 top-4 rounded-full bg-white/15 px-3 py-2 text-sm text-white hover:bg-white/25"
+            onClick={(event) => event.stopPropagation()}
+          >
+            فتح / تنزيل الصورة
+          </a>
           <img
             src={selectedPhoto.url}
             alt={selectedPhoto.alt}

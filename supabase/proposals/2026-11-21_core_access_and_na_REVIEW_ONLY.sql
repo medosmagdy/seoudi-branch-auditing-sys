@@ -213,14 +213,6 @@ END $$;
 REVOKE ALL ON FUNCTION public.sqop_audit_na_defaults(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sqop_audit_na_defaults(uuid) TO authenticated;
 
--- The service that signs R2 reads first checks the caller's actual JWT.
-CREATE OR REPLACE FUNCTION public.sqop_audit_photo_access(p_audit_id uuid) RETURNS boolean
-LANGUAGE sql STABLE SECURITY INVOKER SET search_path = '' AS $$
- SELECT sqop_access.can_read_audit(p_audit_id)
-$$;
-REVOKE ALL ON FUNCTION public.sqop_audit_photo_access(uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sqop_audit_photo_access(uuid) TO authenticated;
-
 -- Keep the admin endpoint, but retain its transaction and verify the caller first.
 CREATE OR REPLACE FUNCTION public.delete_user_completely(target_user_id uuid) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
