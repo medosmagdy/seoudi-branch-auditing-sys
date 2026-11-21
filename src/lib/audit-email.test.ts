@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { describe, it, expect } from "vitest";
 import {
   auditEmailTemplate,
+  auditCorrectionEmailTemplate,
   auditEmailHtml,
   auditEmailDraft,
   emailRecipients,
@@ -215,4 +216,25 @@ describe("email drafts and recipient validation", () => {
       }),
     ).rejects.toThrow("20");
   });
+});
+
+it("uses the approved branch result in the correction template and rejects drafts", async () => {
+  const approved = model();
+  const correction = auditCorrectionEmailTemplate(approved);
+  expect(correction.subject).toBe("تعديل النتيجة | Maadi 1 FS Audit Report 26-10-2026");
+  expect(correction.body).toBe("السادة الأفاضل\n\nتحية طيبة وبعد،،،\n\nتم تعديل النتيجة لتصبح 50%");
+  expect(() => auditCorrectionEmailTemplate({ ...approved, status: "draft" })).toThrow("المعتمد");
+  const pdf = new Blob(["%PDF-1.4"], { type: "application/pdf" });
+  const message = await auditEmailDraft({
+    ...correction,
+    to: "branch@example.test",
+    cc: "",
+    pdf,
+    pdfName: "Revised.pdf",
+  });
+  const eml = await message.text();
+  expect(eml).toContain("To: branch@example.test");
+  expect(eml).not.toContain("\r\nCc:");
+  expect(eml).toContain("Content-Type: application/pdf");
+  expect(eml).toContain("filename*=UTF-8''Revised.pdf");
 });

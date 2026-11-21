@@ -119,6 +119,17 @@ export function auditEmailTemplate(model: EmailAudit) {
   ];
   return { subject: auditReportFileBase(model), body: paragraphs.join("\n\n"), hasDelivery };
 }
+export function auditCorrectionEmailTemplate(model: EmailAudit) {
+  auditEmailTemplate(model); // Reuse the same approval, scoring, date and program checks.
+  return {
+    subject: `تعديل النتيجة | ${auditReportFileBase(model)}`,
+    body: [
+      "السادة الأفاضل",
+      "تحية طيبة وبعد،،،",
+      `تم تعديل النتيجة لتصبح ${emailPercentage(model.result.finalPercentage)}`,
+    ].join("\n\n"),
+  };
+}
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")

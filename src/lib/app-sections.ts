@@ -7,6 +7,7 @@ export const APP_SECTIONS = [
     path: "/audits",
     roles: ["admin", "manager", "auditor"],
   },
+  { id: "ncr_management", label: "NCRs Management", path: "/ncr-management", roles: ["admin"] },
   { id: "maintenance", label: "الصيانة", path: "/maintenance", roles: ["admin"] },
   { id: "slaughtering", label: "المجازر", path: "/slaughtering", roles: ["admin"] },
   {
@@ -42,6 +43,7 @@ export function sectionForRoute(path: string, scope?: unknown): SectionId | null
 }
 export function canSeeSection(role: AppRole, id: SectionId, overrides: SectionOverrides = {}) {
   if (role === "admin") return true;
+  if (id === "ncr_management" && overrides.audits === false) return false;
   if ((id === "branches" || id === "warehouses") && role === "auditor") return false;
   if (typeof overrides[id] === "boolean") return overrides[id]!;
   return (APP_SECTIONS.find((s) => s.id === id)!.roles as readonly string[]).includes(role);

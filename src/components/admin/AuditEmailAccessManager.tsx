@@ -1,3 +1,4 @@
+import { loadCorrectionEmailAccess, saveCorrectionEmailAccess } from "@/lib/report-feature-client";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -10,18 +11,37 @@ import {
 } from "@/lib/audit-email-access";
 const labels = { admin: "مديرو النظام", manager: "المشرفون", auditor: "المراقبون" } as const;
 export function AuditEmailAccessManager() {
-  const access = useQuery({ queryKey: ["audit-email-access"], queryFn: loadAuditEmailAccess });
+  return (
+    <>
+      <EmailAccessCard />
+      <EmailAccessCard correction />
+    </>
+  );
+}
+function EmailAccessCard({ correction = false }: { correction?: boolean }) {
+  const queryKey = [correction ? "audit-correction-email-access" : "audit-email-access"];
+  const access = useQuery({
+    queryKey,
+    queryFn: correction ? loadCorrectionEmailAccess : loadAuditEmailAccess,
+  });
   const users = useQuery({
     queryKey: ["admin-users-list"],
     queryFn: ({ signal }) => loadAdminDirectory(signal),
   });
   return (
     <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
-      <h3 className="font-bold">مين يقدر يجهّز إيميل التقرير؟</h3>
+      <h3 className="font-bold">
+        {correction ? "مين يقدر يجهّز إيميل تعديل النتيجة؟" : "مين يقدر يجهّز إيميل التقرير؟"}
+      </h3>
       <p className="text-sm text-muted-foreground">
         اختار رتبة أو أكثر، أو أشخاص محددين. الشخص المضاف يقدر يجهّز الميل حتى لو رتبته مش مختارة،
         بشرط يكون له وصول للأوديت المعتمد. ده لا يغيّر صلاحيات مشاهدة الأوديتس.
       </p>
+      {correction && (
+        <p className="text-sm text-muted-foreground">
+          صلاحية مستقلة عن إيميل التقرير الأساسي؛ الزر مخفي لحد ما تضيف رتبة أو شخص.
+        </p>
+      )}
       {access.isPending || users.isPending ? (
         <p>جارٍ تحميل الصلاحيات…</p>
       ) : access.isError || users.isError ? (
@@ -44,6 +64,7 @@ export function AuditEmailAccessManager() {
           key={JSON.stringify([access.data.roles, access.data.user_ids])}
           initial={{ roles: access.data.roles ?? [], user_ids: access.data.user_ids ?? [] }}
           users={users.data}
+          correction={correction}
         />
       )}
     </div>
@@ -52,9 +73,11 @@ export function AuditEmailAccessManager() {
 function Editor({
   initial,
   users,
+  correction,
 }: {
   initial: EmailAccessSettings;
   users: Awaited<ReturnType<typeof loadAdminDirectory>>;
+  correction: boolean;
 }) {
   const [config, setConfig] = useState(() => ({
       ...initial,
@@ -69,8 +92,10 @@ function Editor({
     lock.current = true;
     setBusy(true);
     try {
-      await saveAuditEmailAccess(config);
-      await client.invalidateQueries({ queryKey: ["audit-email-access"] });
+      await (correction ? saveCorrectionEmailAccess : saveAuditEmailAccess)(config);
+      await client.invalidateQueries({
+        queryKey: [correction ? "audit-correction-email-access" : "audit-email-access"],
+      });
       toast.success("تم حفظ صلاحية تجهيز الميل");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "تعذر حفظ الصلاحيات");
@@ -141,7 +166,7 @@ function Editor({
         </p>
       )}
       <Button disabled={busy} onClick={() => void save()}>
-        حفظ صلاحية تجهيز الميل
+        {correction ? "حفظ صلاحية إيميل التعديل" : "حفظ صلاحية تجهيز الميل"}
       </Button>
     </div>
   );

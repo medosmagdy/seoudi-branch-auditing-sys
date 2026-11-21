@@ -4,6 +4,7 @@ import { navigationAccess } from "@/lib/navigation";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   ClipboardCheck,
+  ListChecks,
   LayoutDashboard,
   PanelLeftClose,
   PanelLeftOpen,
@@ -23,6 +24,7 @@ type SessionProfile = ReturnType<typeof useSession>["profile"];
 const navItems = [
   { to: "/audits/new", label: "بدء فحص", icon: FilePlus2, search: {} },
   { to: "/audits", label: "سجل الفحوصات", icon: ClipboardCheck, search: {} },
+  { to: "/ncr-management", label: "NCRs Management", icon: ListChecks, search: {} },
   { to: "/maintenance", label: "الصيانة", icon: Wrench, search: {} },
   { to: "/slaughtering", label: "المجازر", icon: ClipboardCheck, search: {} },
   { to: "/dashboard", label: "الفروع", icon: LayoutDashboard, search: { scope: "branches" } },
