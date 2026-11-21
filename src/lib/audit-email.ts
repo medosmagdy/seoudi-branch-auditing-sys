@@ -119,6 +119,17 @@ export function auditEmailTemplate(model: EmailAudit) {
   ];
   return { subject: auditReportFileBase(model), body: paragraphs.join("\n\n"), hasDelivery };
 }
+export function auditCorrectionEmailTemplate(model: EmailAudit) {
+  auditEmailTemplate(model); // Reuse the same approval, scoring, date and program checks.
+  return {
+    subject: `تعديل النتيجة | ${auditReportFileBase(model)}`,
+    body: [
+      "السادة الأفاضل",
+      "تحية طيبة وبعد،،،",
+      `تم تعديل النتيجة لتصبح ${emailPercentage(model.result.finalPercentage)}`,
+    ].join("\n\n"),
+  };
+}
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -195,6 +206,7 @@ export async function auditEmailDraft(input: {
   cc: string;
   pdf: Blob;
   pdfName: string;
+  renderHtml?: (body: string) => string;
 }) {
   if (/[\r\n]/.test(input.subject) || !input.subject.trim() || input.subject.length > 500)
     throw new Error("عنوان الرسالة غير صالح");
@@ -231,7 +243,7 @@ export async function auditEmailDraft(input: {
     "",
     lines(
       encoded(
-        `<!doctype html><html><head><meta charset="UTF-8"></head><body>${auditEmailHtml(input.body)}</body></html>`,
+        `<!doctype html><html><head><meta charset="UTF-8"></head><body>${(input.renderHtml ?? auditEmailHtml)(input.body)}</body></html>`,
       ),
     ),
     `--${alt}--`,

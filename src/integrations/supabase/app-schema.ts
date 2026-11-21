@@ -49,6 +49,21 @@ export type AppDatabase = Omit<Database, "public"> & {
         Insert: RoleColumn<UserRoleTable["Insert"]>;
         Update: Omit<UserRoleTable["Update"], "role"> & { role?: AppRole };
       };
+      user_section_access: ClientTable<{ user_id: string; section_key: string; visible: boolean }>;
+      manager_audit_branch_scopes: ClientTable<{ user_id: string; branch_ids: string[] }>;
+      audit_share_members: ClientTable<{ user_id: string; group_id: string }>;
+      branch_email_recipients: ClientTable<{
+        branch_id: string;
+        to_addresses: string[];
+        cc_addresses: string[];
+      }>;
+      audit_correction_email_settings: ClientTable<{
+        id: boolean;
+        roles: AppRole[];
+        user_ids: string[];
+        updated_by: string | null;
+        updated_at: string;
+      }>;
       monthly_branch_tracking: ClientTable<
         TrackingRecord,
         "branch_id" | "branch_name" | "tracking_month"

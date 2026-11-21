@@ -1,3 +1,4 @@
+import { loadCorrectionEmailAccess, loadCorrectionRecipients } from "@/lib/report-feature-client";
 import { loadAuditEmailAccess } from "@/lib/audit-email-access";
 import { useSession } from "@/hooks/useSession";
 import { loadAuditEmailRecipients } from "@/lib/branch-email-recipients";
@@ -20,6 +21,7 @@ import { ReportDocument } from "@/components/report/ReportDocument";
 import { auditReportFileBase } from "@/lib/audit-report-name";
 import {
   auditEmailTemplate,
+  auditCorrectionEmailTemplate,
   auditEmailHtml,
   auditEmailDraft,
   downloadEmailDraft,
@@ -27,10 +29,26 @@ import {
 } from "@/lib/audit-email";
 
 export function AuditEmailButton({ auditId }: { auditId: string }) {
+  return (
+    <>
+      <AuditEmailAction auditId={auditId} />
+      <AuditEmailAction auditId={auditId} correction />
+    </>
+  );
+}
+
+function AuditEmailAction({
+  auditId,
+  correction = false,
+}: {
+  auditId: string;
+  correction?: boolean;
+}) {
+  const template = correction ? auditCorrectionEmailTemplate : auditEmailTemplate;
   const { profile } = useSession();
   const permission = useQuery({
-    queryKey: ["audit-email-access", profile?.id],
-    queryFn: loadAuditEmailAccess,
+    queryKey: [correction ? "audit-correction-email-access" : "audit-email-access", profile?.id],
+    queryFn: correction ? loadCorrectionEmailAccess : loadAuditEmailAccess,
     enabled: !!profile?.active,
     staleTime: 10_000,
     refetchOnWindowFocus: true,
@@ -47,18 +65,19 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
   const lock = useRef(false),
     reportRef = useRef<HTMLDivElement>(null);
   const query = useQuery({
-    queryKey: ["audit-email", auditId],
+    queryKey: ["audit-email", auditId, correction],
     queryFn: () => loadReportModel(auditId),
-    enabled: open,
+    enabled: open && permission.data?.allowed === true,
     staleTime: 0,
     refetchOnWindowFocus: false,
     retry: 1,
   });
   const model = query.data;
   const recipients = useQuery({
-    queryKey: ["audit-email-recipients", auditId],
-    queryFn: () => loadAuditEmailRecipients(auditId),
-    enabled: open && !!model && !templateError,
+    queryKey: ["audit-email-recipients", auditId, correction],
+    queryFn: () =>
+      correction ? loadCorrectionRecipients(auditId) : loadAuditEmailRecipients(auditId),
+    enabled: open && permission.data?.allowed === true && !!model && !templateError,
     staleTime: 0,
     refetchOnWindowFocus: false,
     retry: 1,
@@ -77,7 +96,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
   useEffect(() => {
     if (!open || !model) return;
     try {
-      const draft = auditEmailTemplate(model);
+      const draft = template(model);
       setSubject(draft.subject);
       setBody(draft.body);
       setTemplateError("");
@@ -85,7 +104,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
       setTemplateError(e instanceof Error ? e.message : "تعذر تجهيز الرسالة");
       setBody("");
     }
-  }, [open, model]);
+  }, [open, model, template]);
   const ready =
     !!model &&
     model.status === "submitted" &&
@@ -98,9 +117,10 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
     const access = await permission.refetch();
     if (access.isError || !access.data?.allowed)
       throw new Error("صلاحية تجهيز الميل غير متاحة لحسابك");
+    if (correction) await loadCorrectionRecipients(auditId);
     const fresh = await query.refetch();
     if (fresh.isError || !fresh.data) throw new Error("تعذر التحقق من أحدث بيانات الأوديت");
-    auditEmailTemplate(fresh.data);
+    template(fresh.data);
     if (JSON.stringify(fresh.data) !== JSON.stringify(model))
       throw new Error(
         "بيانات الأوديت اتغيرت؛ راجع المعاينة والدرجات المحدثة ثم جهّز المسودة مرة أخرى",
@@ -120,7 +140,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
       const fresh = await verifyLatest();
       const { nodeToPdfBlob } = await import("@/lib/export-pdf");
       const pdf = await nodeToPdfBlob(reportRef.current);
-      const fileBase = auditReportFileBase(fresh);
+      const fileBase = auditReportFileBase(fresh) + (correction ? " - Revised" : "");
       if (mode === "pdf") downloadEmailDraft(pdf, `${fileBase}.pdf`);
       else {
         const eml = await auditEmailDraft({
@@ -172,7 +192,7 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
     <>
       <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setOpen(true)}>
         <Mail className="size-4" />
-        تجهيز إيميل التقرير
+        {correction ? "تجهيز إيميل تعديل النتيجة" : "تجهيز إيميل التقرير"}
       </Button>
       <Dialog
         open={open}
@@ -182,8 +202,12 @@ export function AuditEmailButton({ auditId }: { auditId: string }) {
       >
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle>تجهيز بريد الأوديت المعتمد</DialogTitle>
+            <DialogTitle>
+              {correction ? "تجهيز إيميل تعديل النتيجة" : "تجهيز بريد الأوديت المعتمد"}
+            </DialogTitle>
             <DialogDescription>
+              {correction &&
+                "المسودة فيها النتيجة الحالية من التقرير المعتمد، والـPDF المحدث مرفق. "}
               دي مسودة للمراجعة؛ مفيش إرسال من التطبيق. افتح ملف البريد في Outlook المكتبي وراجع
               خانة From لاختيار حساب الشغل. طريقة فتحه كمسودة تعتمد على إصدار Outlook؛ لو بتستخدم
               الويب انسخ الرسالة المنسقة وأرفق PDF يدويًا.
