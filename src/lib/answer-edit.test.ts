@@ -34,6 +34,38 @@ describe("answer editing", () => {
 });
 
 describe("answer persistence", () => {
+  it("does not retry a stale failed answer over a newer edit made during a retry", async () => {
+    const saved = new Map<string, number>();
+    let offline = true;
+    let release!: () => void;
+    let started!: () => void;
+    const firstRetry = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const networkGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const queue = new AnswerWrites<number>(async (key, value) => {
+      if (offline) throw new Error("offline");
+      if (key === "first") {
+        started();
+        await networkGate;
+      }
+      saved.set(key, value);
+    });
+    await expect(queue.enqueue("first", 4)).rejects.toThrow("offline");
+    await expect(queue.enqueue("second", 2)).rejects.toThrow("offline");
+    offline = false;
+    const flush = queue.flush();
+    await firstRetry;
+    const concurrentFlush = queue.flush();
+    const latest = queue.enqueue("second", 0);
+    release();
+    await Promise.all([flush, concurrentFlush, latest]);
+    expect(saved.get("second")).toBe(0);
+    expect(queue.getPendingCount()).toBe(0);
+  });
+
   it("serializes writes and waits for the latest zero before allowing summary", async () => {
     const saved: number[] = [];
     let release!: () => void;
@@ -81,9 +113,9 @@ describe("visible unsaved answer state", () => {
     fail = false;
     await queue.flush();
     expect(queue.getPendingCount()).toBe(0);
-    expect(counts).toEqual([1, 1, 0]);
+    expect(counts).toEqual([1, 0]);
     unsubscribe();
     await queue.enqueue("other", 4);
-    expect(counts).toEqual([1, 1, 0]);
+    expect(counts).toEqual([1, 0]);
   });
 });

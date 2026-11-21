@@ -47,6 +47,14 @@ function isH3SwallowedErrorBody(body: string): boolean {
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const photoPath = new URL(request.url).pathname.match(/^\/api\/audit-photos\/([^/]+)$/);
+      if (photoPath) {
+        const [{ serveAuditPhoto }, { supabaseAdmin }] = await Promise.all([
+          import("./lib/audit-photo-download.server"),
+          import("./integrations/supabase/client.server"),
+        ]);
+        return serveAuditPhoto(supabaseAdmin, request, photoPath[1]!);
+      }
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);

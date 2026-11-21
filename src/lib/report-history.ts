@@ -8,6 +8,33 @@ type HistoryAudit = {
   score: number | null;
   overall_score: number | null;
 };
+type AuditContext = { id: string; audit_date: string; branch_id: string; audit_type_id: string };
+
+export async function loadReportHistory(
+  audit: AuditContext,
+  score: number,
+  sections: ScoringSection[],
+  branchName: string | undefined,
+) {
+  const pastAudits = await readAllPages((from, to) =>
+    supabase
+      .from("audits")
+      .select("id, audit_date, score, overall_score")
+      .eq("branch_id", audit.branch_id)
+      .eq("audit_type_id", audit.audit_type_id)
+      .eq("status", "submitted")
+      .order("audit_date", { ascending: true })
+      .order("id")
+      .range(from, to),
+  );
+  const currentMonth = audit.audit_date.slice(0, 7);
+  const historicalScores = await loadHistoricalReportScores(
+    pastAudits.filter((row) => row.id !== audit.id && row.audit_date.slice(0, 7) !== currentMonth),
+    sections,
+    branchName,
+  );
+  return reportMonthHistory({ date: audit.audit_date, score }, historicalScores);
+}
 
 export function reportMonthHistory(
   current: { date: string; score: number },

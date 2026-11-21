@@ -15,7 +15,8 @@ export function editAnswer(
 // Serialize writes, retain failed latest values, and allow navigation only after saving.
 export class AnswerWrites<T> {
   private tail: Promise<void> = Promise.resolve();
-  private dirty = new Map<string, T>();
+  private dirty = new Map<string, { value: T }>();
+  private flushing: Promise<void> | null = null;
   private listeners = new Set<() => void>();
   getPendingCount = () => this.dirty.size;
   subscribe = (listener: () => void) => {
@@ -29,11 +30,16 @@ export class AnswerWrites<T> {
   }
   constructor(private save: (key: string, value: T) => Promise<void>) {}
   enqueue(key: string, value: T): Promise<void> {
-    this.dirty.set(key, value);
+    const change = { value };
+    this.dirty.set(key, change);
     this.notify();
+    return this.queueSave(key, change);
+  }
+  private queueSave(key: string, change: { value: T }, retry = false): Promise<void> {
     const task = this.tail.then(async () => {
-      await this.save(key, value);
-      if (this.dirty.get(key) === value) {
+      if (retry && this.dirty.get(key) !== change) return;
+      await this.save(key, change.value);
+      if (this.dirty.get(key) === change) {
         this.dirty.delete(key);
         this.notify();
       }
@@ -41,8 +47,27 @@ export class AnswerWrites<T> {
     this.tail = task.catch(() => {});
     return task;
   }
-  async flush(): Promise<void> {
-    await this.tail;
-    for (const [key, value] of [...this.dirty]) await this.enqueue(key, value);
+  flush(): Promise<void> {
+    this.flushing ??= this.drain().finally(() => {
+      this.flushing = null;
+    });
+    return this.flushing;
+  }
+  private async drain(): Promise<void> {
+    for (;;) {
+      const pending = this.tail;
+      await pending;
+      if (this.tail !== pending) continue;
+      if (!this.dirty.size) return;
+      for (const [key, change] of [...this.dirty]) {
+        if (this.dirty.get(key) !== change) continue;
+        try {
+          // A retry must never make an old value the latest edit again.
+          await this.queueSave(key, change, true);
+        } catch (error) {
+          if (this.dirty.get(key) === change) throw error;
+        }
+      }
+    }
   }
 }

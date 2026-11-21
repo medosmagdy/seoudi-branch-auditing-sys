@@ -1,7 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { photoUploadServerFn, registerPhotoServerFn, deletePhotoServerFn } from "./photo.functions";
 import { createPhotoAuthorization, deleteWithSessionRecovery } from "./photo-auth";
-const R2_PUBLIC_URL = (import.meta.env["VITE_R2_PUBLIC_URL"] || "").replace(/\/$/, "");
 // Access the lazy client only when a photo operation actually runs.
 const photoAuthorization = createPhotoAuthorization({
   getSession: () => supabase.auth.getSession(),
@@ -85,29 +84,61 @@ export async function uploadExpiryPhotos(expiryRecordId: string, files: File[]) 
   return uploaded;
 }
 export async function uploadQuestionPhotos(auditId: string, questionId: string, files: File[]) {
-  const uploaded = [];
-  for (const file of files) uploaded.push(await uploadQuestionPhoto(auditId, questionId, file));
-  return uploaded;
+  let uploaded = 0;
+  const failed: string[] = [];
+  for (const file of files) {
+    try {
+      await uploadQuestionPhoto(auditId, questionId, file);
+      uploaded++;
+    } catch {
+      failed.push(file.name);
+    }
+  }
+  return { uploaded, failed };
 }
 export async function deletePhoto(photoId: string, _storagePath: string) {
   return deleteWithSessionRecovery(photoAuthorization, (headers) =>
     deletePhotoServerFn({ data: { photoId }, headers }),
   );
 }
-export async function signedPhotoUrls(storagePaths: string[]): Promise<Record<string, string>> {
-  if (!storagePaths.length) return {};
-
-  const map: Record<string, string> = {};
-
-  storagePaths.forEach((path) => {
-    if (path.startsWith("http://") || path.startsWith("https://")) {
-      map[path] = path;
-    } else if (R2_PUBLIC_URL) {
-      map[path] = `${R2_PUBLIC_URL}/${path.split("/").map(encodeURIComponent).join("/")}`;
-    } else {
-      map[path] = "";
-    }
+async function fetchAuditPhoto(photoId: string, headers: { Authorization: string }) {
+  const response = await fetch(`/api/audit-photos/${encodeURIComponent(photoId)}`, {
+    headers,
+    cache: "no-store",
   });
+  if (response.status === 401) throw new Error("سجّل الدخول أولًا لعرض الصورة أو تنزيلها");
+  if (!response.ok) throw new Error("تعذر تحميل الصورة");
+  return response.blob();
+}
 
-  return map;
+export async function loadAuditPhotoUrls(photoIds: string[]): Promise<Record<string, string>> {
+  if (!photoIds.length) return {};
+  const headers = await authorizationHeaders();
+  const urls: Record<string, string> = {};
+  const ids = [...new Set(photoIds)];
+  for (let i = 0; i < ids.length; i += 5) {
+    await Promise.allSettled(
+      ids.slice(i, i + 5).map(async (id) => {
+        const image = await fetchAuditPhoto(id, headers);
+        urls[id] = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(image);
+        });
+      }),
+    );
+  }
+  return urls;
+}
+
+export async function downloadAuditPhoto(photoId: string) {
+  const image = await fetchAuditPhoto(photoId, await authorizationHeaders());
+  const extension = image.type === "image/jpeg" ? "jpg" : image.type.split("/")[1] || "jpg";
+  const url = URL.createObjectURL(image);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `audit-photo-${photoId.slice(0, 8)}.${extension}`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

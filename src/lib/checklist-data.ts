@@ -15,25 +15,33 @@ export function loadChecklistTypes(signal?: AbortSignal) {
   }, signal);
 }
 export async function loadChecklistTree(typeId: string, signal?: AbortSignal) {
+  return readChecklistTree(typeId, false, signal);
+}
+export async function loadActiveChecklistTree(typeId: string, signal?: AbortSignal) {
+  return readChecklistTree(typeId, true, signal);
+}
+async function readChecklistTree(typeId: string, activeOnly: boolean, signal?: AbortSignal) {
   const [sections, questions] = await Promise.all([
     readAllPages((from, to) => {
-      const query = supabase
+      let query = supabase
         .from("sections")
         .select("*")
         .eq("audit_type_id", typeId)
         .order("order_index")
         .order("id")
         .range(from, to);
+      if (activeOnly) query = query.eq("active", true);
       return signal ? query.abortSignal(signal) : query;
     }, signal),
     readAllPages((from, to) => {
-      const query = supabase
+      let query = supabase
         .from("questions")
         .select("*")
         .eq("audit_type_id", typeId)
         .order("item_order")
         .order("id")
         .range(from, to);
+      if (activeOnly) query = query.eq("active", true);
       return signal ? query.abortSignal(signal) : query;
     }, signal),
   ]);

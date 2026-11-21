@@ -1,3 +1,4 @@
+import { AuditPhotoDownloadButton } from "@/components/AuditPhotoDownloadButton";
 import { ImageLightbox } from "@/components/ImageLightbox";
 import { PdfMonthlyTrend } from "./PdfMonthlyTrend";
 import { useState } from "react";
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 
 export function ReportDocument({ model, forPdf = false }: { model: ReportModel; forPdf?: boolean }) {
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string } | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; alt: string; photoId: string } | null>(null);
   const rawScore = Number(model?.result?.finalScore);
   const finalPercentage = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, rawScore)) : 0;
   const isPassed = finalPercentage >= 85;
@@ -132,6 +133,24 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
         </div>
 
         {/* 3. اتجاه درجات الفرع شهريًا */}
+        {model.photosUnavailable && (
+          <p
+            data-report-block
+            role="status"
+            className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+          >
+            تعذر تحميل صور الفحص. قد لا يحتوي هذا التقرير على جميع المرفقات.
+          </p>
+        )}
+        {model.historyUnavailable && (
+          <p
+            data-report-block
+            role="status"
+            className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+          >
+            تعذر تحميل المقارنة الشهرية. النتيجة المعروضة تخص هذا الأوديت.
+          </p>
+        )}
         {forPdf ? (
           <PdfMonthlyTrend history={model.history} currentMonth={model.auditDate.slice(0, 7)} />
         ) : model.history.length > 0 && (
@@ -326,7 +345,7 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
               >
 <button
                 type="button"
-                onClick={() => setSelectedPhoto({ url: item.url, alt: item.questionText })}
+                onClick={() => setSelectedPhoto({ url: item.url, alt: item.questionText, photoId: item.photoId })}
                 className="group relative block h-52 w-full overflow-hidden rounded-lg border border-border/80 bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 aria-label={`تكبير صورة ${item.questionText}`}
               >
@@ -421,6 +440,7 @@ export function ReportDocument({ model, forPdf = false }: { model: ReportModel; 
           >
             ×
           </button>
+          <AuditPhotoDownloadButton photoId={selectedPhoto.photoId} />
           <img
             src={selectedPhoto.url}
             alt={selectedPhoto.alt}

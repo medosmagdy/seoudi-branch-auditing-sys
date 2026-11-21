@@ -1,16 +1,24 @@
-"use client"
+"use client";
 
-import { useState } from "react"
+import { useState } from "react";
+import { AuditPhotoDownloadButton } from "./AuditPhotoDownloadButton";
 
 type ImageLightboxProps = {
-  src: string
-  alt: string
-  className?: string
-  imageClassName?: string
-}
+  src: string;
+  alt: string;
+  className?: string;
+  imageClassName?: string;
+  auditPhotoId?: string;
+};
 
-export function ImageLightbox({ src, alt, className, imageClassName }: ImageLightboxProps) {
-  const [open, setOpen] = useState(false)
+export function ImageLightbox({
+  src,
+  alt,
+  className,
+  imageClassName,
+  auditPhotoId,
+}: ImageLightboxProps) {
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -46,6 +54,7 @@ export function ImageLightbox({ src, alt, className, imageClassName }: ImageLigh
           >
             ×
           </button>
+          {auditPhotoId && <AuditPhotoDownloadButton photoId={auditPhotoId} />}
           <img
             src={src}
             alt={alt}
@@ -55,5 +64,5 @@ export function ImageLightbox({ src, alt, className, imageClassName }: ImageLigh
         </div>
       )}
     </>
-  )
+  );
 }

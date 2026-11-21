@@ -19,7 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { computeAudit, type ScoringSection } from "@/lib/scoring";
-import { deletePhoto, signedPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
+import { deletePhoto, loadAuditPhotoUrls, uploadQuestionPhotos } from "@/lib/photos";
+import { loadActiveChecklistTree } from "@/lib/checklist-data";
 import { useSession } from "@/hooks/useSession";
 import { canEditAudit } from "@/lib/permissions";
 
@@ -140,7 +141,7 @@ function AuditRunner() {
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["audit", id],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data: audit, error } = await supabase
         .from("audits")
         .select(
@@ -150,61 +151,31 @@ function AuditRunner() {
         .single();
       if (error) throw error;
 
-      const [
-        sections,
-        headers,
-        questions,
-        savedAnswers,
-        statuses,
-        sectionDeductions,
-        generalDeductions,
-        photos,
-      ] = await Promise.all([
-        supabase
-          .from("sections")
-          .select("*")
-          .eq("audit_type_id", audit.audit_type_id)
-          .eq("active", true)
-          .order("order_index"),
-        supabase.from("headers").select("*").order("order_index"),
-        supabase
-          .from("questions")
-          .select("*")
-          .eq("audit_type_id", audit.audit_type_id)
-          .eq("active", true)
-          .order("item_order"),
-        loadAuditAnswers(id, audit.audit_type_id),
-        supabase.from("audit_section_status").select("*").eq("audit_id", id),
-        supabase.from("audit_section_deductions").select("*").eq("audit_id", id),
-        supabase.from("audit_general_deductions").select("*").eq("audit_id", id),
-        supabase.from("photos").select("*").eq("audit_id", id),
-      ]);
+      const [checklist, savedAnswers, statuses, sectionDeductions, generalDeductions, photos] =
+        await Promise.all([
+          loadActiveChecklistTree(audit.audit_type_id, signal),
+          loadAuditAnswers(id, audit.audit_type_id),
+          supabase.from("audit_section_status").select("*").eq("audit_id", id),
+          supabase.from("audit_section_deductions").select("*").eq("audit_id", id),
+          supabase.from("audit_general_deductions").select("*").eq("audit_id", id),
+          supabase.from("photos").select("*").eq("audit_id", id),
+        ]);
 
-      for (const response of [
-        sections,
-        headers,
-        questions,
-        statuses,
-        sectionDeductions,
-        generalDeductions,
-        photos,
-      ]) {
+      for (const response of [statuses, sectionDeductions, generalDeductions, photos]) {
         if (response.error) throw response.error;
       }
 
       const inherited = await loadAuditNaDefaults(audit);
       const inheritedStatuses = inherited.statuses.filter((row) =>
-        (sections.data ?? []).some((section) => section.id === row.section_id),
+        checklist.sections.some((section) => section.id === row.section_id),
       );
       const inheritedAnswers = inherited.answers.filter((row) =>
-        (questions.data ?? []).some((question) => question.id === row.question_id),
+        checklist.questions.some((question) => question.id === row.question_id),
       );
 
       return {
         audit,
-        sections: sections.data ?? [],
-        headers: headers.data ?? [],
-        questions: questions.data ?? [],
+        ...checklist,
         savedAnswers,
         statuses: statuses.data ?? [],
         inheritedStatuses,
@@ -299,10 +270,11 @@ function AuditRunner() {
     return map;
   }, [data]);
 
-  const { data: photoUrls } = useQuery({
-    queryKey: ["photo-urls", id, data?.photos.length],
-    enabled: !!data && data.photos.length > 0,
-    queryFn: () => signedPhotoUrls((data?.photos ?? []).map((photo) => photo.storage_path)),
+  const photoIds = (data?.photos ?? []).map((photo) => photo.id);
+  const { data: photoUrls, refetch: retryPhotoUrls, isFetching: loadingPhotoUrls } = useQuery({
+    queryKey: ["audit-photo-bytes", id, photoIds],
+    enabled: photoIds.length > 0,
+    queryFn: () => loadAuditPhotoUrls(photoIds),
   });
 
   const scoringSections: ScoringSection[] = useMemo(() => {
@@ -525,13 +497,15 @@ function AuditRunner() {
 
   const handlePhotos = async (questionId: string, files: File[]) => {
     if (files.length === 0) return;
-    try {
-      await uploadQuestionPhotos(id, questionId, files);
-      queryClient.invalidateQueries({ queryKey: ["audit", id] });
-      toast.success(`تم رفع ${files.length} صورة بنجاح`);
-    } catch {
-      toast.error("تعذر رفع بعض الصور أو كلها");
-    }
+    const { uploaded, failed } = await uploadQuestionPhotos(id, questionId, files);
+    if (uploaded) void queryClient.invalidateQueries({ queryKey: ["audit", id] });
+    if (uploaded && failed.length)
+      toast.warning(
+        `تم رفع ${uploaded} صورة. تعذر رفع ${failed.length}؛ أعد رفع الصور الفاشلة فقط.`,
+        { description: failed.join("، ") },
+      );
+    else if (uploaded) toast.success(`تم رفع ${uploaded} صورة بنجاح`);
+    else toast.error("تعذر رفع الصور؛ أعد المحاولة");
   };
 
   const currentDeductions = data.sectionDeductions.filter(
@@ -791,12 +765,24 @@ function AuditRunner() {
                           key={photo.id}
                           className="relative rounded-lg border border-border p-1 bg-muted/20"
                         >
-                          <ImageLightbox
-                            src={photoUrls?.[photo.storage_path] ?? ""}
-                            alt="Audit evidence"
-                            className="size-16"
-                            imageClassName="size-16 rounded-md object-cover"
-                          />
+                          {photoUrls?.[photo.id] ? (
+                            <ImageLightbox
+                              src={photoUrls[photo.id]!}
+                              auditPhotoId={photo.id}
+                              alt="Audit evidence"
+                              className="size-16"
+                              imageClassName="size-16 rounded-md object-cover"
+                            />
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={loadingPhotoUrls}
+                              className="grid size-16 place-items-center p-1 text-xs"
+                              onClick={() => void retryPhotoUrls()}
+                            >
+                              {loadingPhotoUrls ? "جارٍ التحميل…" : "إعادة تحميل الصورة"}
+                            </button>
+                          )}
                           {!readOnly && (
                             <button
                               type="button"
